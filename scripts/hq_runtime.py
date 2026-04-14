@@ -430,14 +430,81 @@ def reflection_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def load_reflections(since: date, until: date) -> list[dict[str, Any]]:
-    reflections: list[dict[str, Any]] = []
-    for path in sorted(RUNTIME_DIRS["reflections"].glob("**/*.jsonl")):
+def normalize_legacy_reflection_payload(payload: dict[str, Any], source_path: Path) -> dict[str, Any]:
+    created_at = str(payload.get("created_at") or utc_now())
+    topic = str(payload.get("session_topic") or source_path.stem).strip()
+    observation = str(payload.get("observation") or "").strip()
+    what_happened = normalize_string_list(payload.get("what_happened"))
+    summary = str(payload.get("impact") or topic or observation).strip()
+    proposed_rule = str(payload.get("proposed_improvement") or "").strip()
+    evidence = normalize_string_list(payload.get("evidence"))
+    legacy_type = str(payload.get("type") or "legacy-reflection").strip()
+    confidence = str(payload.get("confidence") or "").strip()
+    key_fact = next(
+        (
+            item
+            for item in what_happened
+            if any(marker in item.lower() for marker in ("timed out", "failed", "error", "blocked"))
+        ),
+        "",
+    )
+
+    normalized = {
+        "created_at": created_at,
+        "agent": str(payload.get("agent") or "unknown").strip() or "unknown",
+        "task": topic,
+        "session": str(payload.get("session") or slugify(topic) or source_path.stem),
+        "summary": summary,
+        "observation": observation or summary,
+        "issue": key_fact or observation or (what_happened[0] if what_happened else summary),
+        "lesson": str(payload.get("lesson") or "").strip(),
+        "issue_key": str(payload.get("issue_key") or slugify(legacy_type) or source_path.stem),
+        "change_scope": str(payload.get("change_scope") or "workflow").strip() or "workflow",
+        "proposed_rule": proposed_rule,
+        "evidence": evidence,
+        "tags": normalize_string_list(payload.get("tags")) or [legacy_type],
+        "metadata": {
+            "source_format": "legacy_json_reflection",
+            "source_file": source_path.name,
+            "what_happened": what_happened,
+            "impact": str(payload.get("impact") or "").strip(),
+            "confidence": confidence,
+        },
+    }
+    return normalize_reflection_payload(normalized)
+
+
+def parse_reflection_file(path: Path) -> list[dict[str, Any]]:
+    if path.suffix == ".jsonl":
+        reflections: list[dict[str, Any]] = []
         for raw_line in path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
             if not line:
                 continue
-            payload = json.loads(line)
+            reflections.append(json.loads(line))
+        return reflections
+
+    if path.suffix == ".json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, list):
+            return [
+                normalize_legacy_reflection_payload(item, path)
+                if isinstance(item, dict)
+                else {}
+                for item in payload
+                if isinstance(item, dict)
+            ]
+        if isinstance(payload, dict):
+            return [normalize_legacy_reflection_payload(payload, path)]
+    return []
+
+
+def load_reflections(since: date, until: date) -> list[dict[str, Any]]:
+    reflections: list[dict[str, Any]] = []
+    for path in sorted(RUNTIME_DIRS["reflections"].glob("**/*")):
+        if path.suffix not in {".jsonl", ".json"} or not path.is_file():
+            continue
+        for payload in parse_reflection_file(path):
             created_at = str(payload.get("created_at") or "")
             if not created_at:
                 continue

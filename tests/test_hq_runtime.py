@@ -214,6 +214,61 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertEqual(groups["tool-access"]["status"], "manual_only")
         self.assertIn("must stay manual", groups["tool-access"]["guardrail_reason"])
 
+    def test_weekly_review_loads_standalone_json_reflection(self):
+        standalone_path = (
+            self.module.RUNTIME_DIRS["reflections"] / "2026-04-15-deep-research-timeout.json"
+        )
+        standalone_path.write_text(
+            json.dumps(
+                {
+                    "created_at": "2026-04-15T00:00:00+05:00",
+                    "session_topic": "Parallel.ai deep research on agent self-improvement",
+                    "type": "tooling-friction",
+                    "observation": "A 5-minute timeout was too short for this class of prompt.",
+                    "what_happened": [
+                        "The first run used a 5-minute wait.",
+                        "The first run timed out without producing a report.",
+                        "The second run used a 10-minute wait and completed successfully.",
+                    ],
+                    "impact": "The first run delayed implementation work.",
+                    "proposed_improvement": "Default to at least 10 minutes for broad deep research prompts.",
+                    "confidence": "high",
+                    "evidence": ["/tmp/report.md"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "weekly-review",
+                "--since",
+                "2026-04-14",
+                "--until",
+                "2026-04-15",
+                "--min-observations",
+                "1",
+                "--min-unique-sessions",
+                "1",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        latest_json = self.module.RUNTIME_DIRS["improvements"] / "LATEST.json"
+        review = json.loads(latest_json.read_text(encoding="utf-8"))
+        self.assertEqual(review["total_reflections"], 1)
+        self.assertEqual(review["candidate_improvements"], 1)
+        group = review["groups"][0]
+        self.assertEqual(group["status"], "candidate")
+        self.assertIn("10 minutes", group["candidate_rule"])
+        self.assertIn("timed out", group["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

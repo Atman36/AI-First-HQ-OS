@@ -59,6 +59,24 @@ These files turn direction into execution and history:
 - When a task belongs to a specific role, prefer that role's prompt under `agents/`.
 - Keep outputs short, operational, and easy to hand off.
 
+## Private Improvement Loop
+
+- Use `.hq/reflections/` and `.hq/improvements/` only as private runtime artifacts, never as shared truth.
+- Write a `reflection` only when there is a concrete bug, avoidable mistake, repeated friction, missed instruction, tool misuse, or a clear improvement idea worth remembering.
+- Do not write a `reflection` for a clean task with no actionable lesson.
+- Keep each `reflection` grounded in concrete observations. Separate the observation, the factual record of what happened, and the proposed improvement.
+- If the session had several bugs, mistakes, or recurring frictions, list all of them explicitly instead of collapsing them into one vague summary.
+- When several issues happened in one session, either capture them as separate reflection entries or include a clear itemized list of all issues and facts in the same reflection.
+- Do not use this loop to auto-edit `AGENTS.md`, `agents/*/AGENTS.md`, access rules, safety rules, or production logic.
+- After a successful `weekly-review`, processed raw reflections may be removed from the active backlog only if the synthesized review artifact for that window was written to `.hq/improvements/`.
+- If cleanup happens, keep the synthesized review artifacts; do not delete the weekly output that explains what changed and why.
+- Prefer clearing only the reflections already covered by the completed review window, not the newest unreviewed entries.
+- Run `weekly-review` or `improve` only in these cases:
+  1. during the weekly review cadence;
+  2. when the user explicitly asks for synthesis or improvement review;
+  3. when several new reflections have accumulated and there is evidence of a recurring issue.
+- Do not run `weekly-review` after every task or after a single minor reflection unless the user asks for it.
+
 ## Default Routing
 
 - If the user does not name a role, first determine the best-fit owner before doing the work.
