@@ -12,9 +12,17 @@ kanban-plugin: board
   - Owner: COO
   - Project: HQ Bootstrap
   - Support: Documentation and Finance, with Growth or Research only if the cycle exposes a real need
-  - Next step: Keep the three completed setup actions below aligned and finish the week with one lean weekly review.
+  - Next step: Hold the single active operating card steady, then close the cycle with one lean weekly review and next 3 priorities.
   - Done when: The cycle ends with a weekly review, next 3 priorities, and explicit notes about what still broke.
   - Update file: `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
+  - Accepts result: CEO
+- [ ] Watch for real routing bottlenecks before changing roles or routines
+  - Owner: COO
+  - Project: HQ Bootstrap
+  - Support: Documentation
+  - Next step: Treat Documentation load at cycle close as a watchpoint, not a confirmed bottleneck, unless updates start queueing behind one owner.
+  - Done when: The cycle closes with explicit proof of either "no bottleneck" or one concrete routing failure.
+  - Update file: `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
   - Accepts result: CEO
 
 ## Today
@@ -48,10 +56,18 @@ kanban-plugin: board
   - Done when: The two root draft files are renamed, moved into `99 Archive/`, and the archive is ignored by git.
   - Update file: `.gitignore`, `01 Operating System/HQ Audit Roadmap.md`
   - Accepts result: CEO
-- [ ] Keep only one live truth for active tasks
+- [x] 2026-04-14: Filled the first lean weekly review snapshot inside the current cycle files
   - Owner: Documentation
   - Project: HQ Bootstrap
-  - Next step: If a task moves, update this board first and avoid duplicating the card in `Weekly Plan.md`.
+  - Support: COO, Finance
+  - Next step: Keep the review embedded in the weekly summary until real usage proves a separate note is necessary.
+  - Done when: `Weekly Plan.md`, `Decisions.md`, and `HQ Bootstrap.md` show shipped work, active work, blockers, money signal, and next 3 priorities without creating a new file.
+  - Update file: `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
+  - Accepts result: COO
+- [x] 2026-04-14: Confirmed `Task Board.md` remains the only live task board
+  - Owner: Documentation
+  - Project: HQ Bootstrap
+  - Next step: If a task moves, update this board first and keep `Weekly Plan.md` as a summary only.
   - Done when: `Task Board.md` remains the only live task board for active work.
   - Update file: `02 Planning/Task Board.md`
   - Accepts result: COO

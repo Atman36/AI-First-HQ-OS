@@ -26,3 +26,13 @@
 
 - Decision: move archived drafts and long-form notes out of the root into a local `99 Archive/` folder that is ignored by git.
 - Reason: the root should stay reserved for active source-of-truth files and navigation, not for old drafts or large reference notes.
+
+### First Bottleneck Check
+
+- Decision: do not treat COO or Documentation as a confirmed bottleneck yet; keep it as a live watchpoint through the rest of the 2026-04-14 to 2026-04-21 cycle.
+- Reason: the current cycle shows real setup progress, but only one part of the workflow looks fragile so far: Documentation may become overloaded at cycle close if several shared files must be updated manually in one pass.
+
+### Project Page Scope
+
+- Decision: keep `projects.md` as the project registry and keep `04 Projects/HQ Bootstrap.md` limited to project-local context, cycle snapshot, dependencies, and support-role inputs.
+- Reason: this preserves one clear registry at the root while preventing the project page from turning into a second copy of company-level status or weekly commitments.

@@ -45,6 +45,7 @@ Personal memory, heartbeats, and private notes for future Paperclip agents must 
 
 - Do not let two agents edit the same file at the same time.
 - Shared docs in this repo describe company state, not private scratchpads.
+- In this repository, documentation changes are primary project work. If you change shared Markdown files here, make a git commit unless the user explicitly asks not to.
 - Escalate strategic, financial, or destructive decisions to the CEO.
 - When a task belongs to a specific role, prefer that role's prompt under `agents/`.
 - Keep outputs short, operational, and easy to hand off.

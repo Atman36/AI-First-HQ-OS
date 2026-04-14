@@ -33,20 +33,39 @@ Build the first usable operating system for the company.
 - Initial structure created
 - First audit-driven operating cycle is now active for 2026-04-14 to 2026-04-21
 
-## Current Operating Objective
+## Current Cycle Snapshot
 
-- Close the HQ audit follow-through cycle by 2026-04-21
+- Objective: close the HQ audit follow-through cycle by 2026-04-21
+- Status: in progress
 
-## This Cycle Looks Good If
+### Completed In This Cycle
 
-- The same objective is visible in root, planning, and project files
-- One real operating thread is routed without confusion about owner or update file
-- The week closes with a lean review and explicit next priorities
+- 7-day operating objective aligned across root, planning, and project files
+- Lean weekly review format locked
+- Project page expanded to hold support-role inputs
+- Root clutter moved into `99 Archive/` and ignored by git
+
+### Still Active
+
+- Close the first operating cycle by 2026-04-21
+- Keep `Task Board.md` as the only live task board
+- Confirm whether cycle-close documentation work stays lightweight
+
+### Blockers
+
+- No confirmed blocker yet
+- Watchpoint: Documentation may become the closeout bottleneck if end-of-cycle updates require too much manual syncing across shared files
+
+### Next 3 Priorities
+
+1. Finish the first cycle close with one final lean review and carry-forward items.
+2. Validate from real usage whether Documentation needs a lighter closeout path.
+3. Keep the project page focused on project-local context so it does not mirror `projects.md`.
 
 ## Risks
 
 - `Task Board.md` drifts from the real task state
-- Support roles create side notes outside the project page
+- Documentation closeout becomes heavy because too many shared files need hand-syncing at once
 - Root and project layers start repeating the same information
 
 ## Dependencies
@@ -68,9 +87,3 @@ Build the first usable operating system for the company.
 ### Research
 
 - Add evidence only when it changes the operating design or decision quality.
-
-## Next Checkpoints
-
-- Finish the first live cycle and write the weekly review
-- Check whether the live cycle exposed real routing bottlenecks
-- Tighten routines only where the live cycle actually broke
