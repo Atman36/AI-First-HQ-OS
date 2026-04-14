@@ -8,6 +8,30 @@ Use one project root for shared company state and separate agent-specific homes 
 
 The repository is public-safe by default: shared files stay in git, while private runtime state stays under the ignored `.hq/` path.
 
+## Quick Routing
+
+Start with the file that matches the question:
+
+- What we are doing this week and what matters now: `now.md`
+- Which project is active and who owns it: `projects.md`
+- What repeats every day or week: `routines.md`
+- Which tools, runners, and agent surfaces are allowed: `stack.md`
+- What is actively moving right now: `02 Planning/Task Board.md`
+- What the current week commits to and how it closes: `02 Planning/Weekly Plan.md`
+- Why a durable decision was made: `03 Notes/Decisions.md`
+- Local context, risks, and implementation detail for one project: `04 Projects/`
+
+## Operating Model In One Screen
+
+Each role in HQ works through four shared operating objects:
+
+- Task: one active card on `02 Planning/Task Board.md` with owner, done condition, and primary update file
+- Rules: the repo policy in `AGENTS.md` plus the role prompt in `agents/*/AGENTS.md`
+- Skills: repeatable procedures, prompts, and tool patterns used by Codex or future Paperclip agents
+- Queue: one shared execution queue on `02 Planning/Task Board.md`, not separate role-specific boards
+
+This keeps the current HQ model close to the audit screenshots without reintroducing old root files or parallel status ledgers.
+
 ## How To Use
 
 - Run Codex from this directory when you want repo-scoped instructions.

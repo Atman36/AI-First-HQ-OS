@@ -22,6 +22,15 @@ The canonical company state still lives in the root files:
 1. [[How To Operate HQ]]
 2. [[Agent Routing]]
 
+## Quick Question Map
+
+- "What matters now?" -> [[now]]
+- "Who owns this project?" -> [[projects]]
+- "What is moving today?" -> [[02 Planning/Task Board|Task Board]]
+- "What closes this week?" -> [[02 Planning/Weekly Plan|Weekly Plan]]
+- "Why was this decided?" -> [[03 Notes/Decisions|Decisions]]
+- "Where does project-local detail live?" -> [[04 Projects/README|Projects]]
+
 ## Writing Rules
 
 - Update `now.md` when the current company focus changes.

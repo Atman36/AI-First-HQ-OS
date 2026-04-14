@@ -23,6 +23,17 @@ These prompts are shared role definitions.
 
 Do not add more standing agents unless a repeated execution gap appears.
 
+## Role Package
+
+Each role in HQ should stay legible through four operating objects:
+
+- Task: the bounded work card on `02 Planning/Task Board.md`
+- Rules: `AGENTS.md` plus the role prompt in `agents/<role>/AGENTS.md`
+- Skills: repeatable execution patterns the role can call on through Codex skills or future Paperclip support
+- Queue: the shared board in `02 Planning/Task Board.md`
+
+Roles do not get separate standing queues by default.
+
 ## Routing Rule
 
 - CEO decides.
