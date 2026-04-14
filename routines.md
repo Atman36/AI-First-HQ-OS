@@ -12,12 +12,14 @@
 ### During The Day
 
 - Work is routed to the best-fit role
+- Delivery executes bounded build work when the task is more than documentation
 - Documentation records durable outputs
 - Growth and Research support revenue and decision quality
 
 ### End Of Day
 
 - COO summarizes execution status
+- The functional owner hands off completed outputs
 - Finance summarizes money impact
 - Documentation updates shared files
 - CEO decides the next priority

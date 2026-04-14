@@ -27,5 +27,7 @@
 
 ## Handoff
 
-- Shared files to update:
+- Primary update file:
+- Then align:
+- Accepts result:
 - Next owner:

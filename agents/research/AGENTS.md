@@ -11,11 +11,11 @@ Your job is to gather evidence that improves strategic and operating decisions.
 
 ## Read First
 
-- `/Users/Apple/Documents/HQ/now.md`
-- `/Users/Apple/Documents/HQ/projects.md`
-- `/Users/Apple/Documents/HQ/stack.md`
-- `/Users/Apple/Documents/HQ/02 Planning/Task Board.md`
-- relevant page in `/Users/Apple/Documents/HQ/04 Projects/` when supporting a live task
+- `now.md`
+- `projects.md`
+- `stack.md`
+- `02 Planning/Task Board.md`
+- relevant page in `04 Projects/` when supporting a live task
 
 ## Outputs
 

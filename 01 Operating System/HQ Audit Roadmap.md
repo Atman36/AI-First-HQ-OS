@@ -1,38 +1,136 @@
-# HQ Audit Roadmap
+# HQ Audit Review - 2026-04-14
 
-This file tracks which audit findings are still relevant after the 2026-04-14 cleanup pass.
+This is a dated review snapshot, not a live status board.
 
-## Closed Now
+Live state belongs in `now.md`, `projects.md`, `02 Planning/Task Board.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, and `04 Projects/...`.
 
-- Role prompts were rebound to the actual working files: `Task Board`, `Weekly Plan`, `Inbox`, `Decisions`, and relevant project pages.
-- File ownership is clearer now: `now.md` = focus, `projects.md` = registry, `Task Board.md` = live execution, `Weekly Plan.md` = weekly commitments, `Decisions.md` = historical why.
-- `Task Board.md` now uses an Obsidian kanban-compatible format, based on the existing external kanban board pattern.
-- The minimum dispatch schema now exists on the board itself: owner, project, next step, done when, update file, accepts result.
-- Private absolute CEO paths were removed from the shared home page.
-- Template placement is clearer, and a lean `Daily Ops Template` now exists.
-- One 7-day operating objective now exists for 2026-04-14 to 2026-04-21 and is reflected in `now.md`, `projects.md`, `Weekly Plan.md`, `Task Board.md`, and the active project page.
-- The minimum weekly review format is now defined in `routines.md` and the weekly review template.
-- `04 Projects/HQ Bootstrap.md` now has explicit sections for risks, dependencies, and support-role inputs.
-- Root clutter was reduced by moving the two non-operating root drafts into a local ignored archive folder.
+## Executive Summary
 
-## Partially Closed
+### Facts
 
-- COO and Documentation were potential bottlenecks. This is better now because the handoff contract is explicit and fast-track routing is allowed for bounded work, but it still needs one live operating cycle to prove it.
-- `projects.md` and `04 Projects/` still describe the same project from two levels. This is acceptable for now because the contract is clearer, but it should be revisited if project pages start duplicating the registry.
+- The real operating model is a lean manual dispatch loop: CEO sets direction, COO routes work, a role owner executes bounded work, and Documentation aligns the shared record.
+- Root files already hold direction well: `now.md`, `projects.md`, `routines.md`, and `stack.md` are compact and mostly consistent.
+- `02 Planning/Task Board.md` is still the only live task board, but the task-card contract was underspecified because actual cards named several update files.
+- The current weekly cycle was being mirrored across `02 Planning/Weekly Plan.md` and `04 Projects/HQ Bootstrap.md`.
+- Existing agents covered strategy, routing, research, finance, growth, intake, and documentation, but there was no clear default owner for bounded implementation work.
 
-## Still Relevant
+### Interpretation
 
-- The project layer is still thin. That is acceptable with one active initiative, but once there are multiple active projects, each project page will need a more useful local structure.
-- The real test is not finished yet. The first operating objective is defined and routed, but the live cycle still needs to run through the week and close with a review.
+The system is already good enough for a one-founder, one-project operating cycle. The main risk is not lack of structure. The main risk is drift caused by too many files summarizing the same cycle and by the missing execution owner between COO and Documentation.
 
-## Not A Priority Right Now
+## What Works
 
-- A separate orchestrator agent. The current problem was ambiguity, not missing orchestration infrastructure.
-- Heavy migration of personal-vault logic such as energy routing, confidence scoring, or deep personal planning mechanics.
-- New top-level entities like `people.md`, `channels.md`, or extra systems folders before there is repeated real usage.
+### Facts
 
-## Next Recommended Moves
+- `AGENTS.md` clearly separates root truth from the working layer.
+- `now.md` stays at focus level instead of turning into a second board.
+- `projects.md` is still a lean registry, not a project notebook.
+- `02 Planning/Task Board.md` carries owners, done conditions, and acceptance rules.
+- `03 Notes/Decisions.md` already records durable why in compact form.
+- `01 Operating System/Agent Routing.md` already makes COO the default dispatcher and rejects a premature orchestrator.
 
-1. Finish the first 2026-04-14 to 2026-04-21 operating cycle and close it with the lean weekly review.
-2. Keep `projects.md` as the registry unless real project pages start carrying enough signal to justify a simplification.
-3. Expand project-page support sections only if Finance, Growth, or Research start using them regularly.
+### Interpretation
+
+The base architecture is sound. For the current scale, the system does not need more layers. It needs sharper boundaries between the layers it already has.
+
+## Structural Risks
+
+### Facts
+
+- `02 Planning/Weekly Plan.md` contained a live cycle snapshot with completed work, active work, blocker checks, and next priorities.
+- `04 Projects/HQ Bootstrap.md` also contained completed work, still active work, blockers, and next 3 priorities for the same cycle.
+- The previous version of this file (`01 Operating System/HQ Audit Roadmap.md`) also tracked what was closed, partially closed, still relevant, and next moves.
+- `agents/*/AGENTS.md` used machine-specific absolute paths, even though the repo is meant to be shared across Codex and future runners.
+
+### Interpretation
+
+Without intervention, the system would have drifted into three parallel status ledgers: Weekly Plan, project page, and audit roadmap. That would create ambiguity exactly where the system is trying to remove it.
+
+## Source-of-Truth Violations
+
+### Facts
+
+- `agents/coo/AGENTS.md` said every active task should have one target file, while the live cards in `02 Planning/Task Board.md` often named several update files.
+- `01 Operating System/How To Operate HQ.md` and the board schema also used singular `update file`, but live cards already needed more than one alignment step.
+- `02 Planning/Backlog.md` still suggested a separate weekly review note even though `routines.md` and `02 Planning/Weekly Plan.md` explicitly keep the weekly review embedded and lean.
+- Project-local cycle status had started to mirror the weekly summary instead of staying project-local.
+
+### Interpretation
+
+The contract itself was directionally right, but the singular update-file rule and the duplicate weekly snapshot created real openings for drift. The fix is not a bigger process. The fix is a clearer first-write rule and stricter scoping of the project page.
+
+## Role Bottlenecks
+
+### COO
+
+#### Facts
+
+- `stack.md` and `01 Operating System/Agent Routing.md` both make COO the default dispatcher.
+- Both active `This Week` cards on `02 Planning/Task Board.md` were COO-owned.
+- `01 Operating System/Agent Routing.md` already allows a fast-track path for bounded work.
+
+#### Interpretation
+
+COO is not yet a proven bottleneck because there is one active project, one active cycle, and a fast-track escape hatch. The risk is real only when more than one project or repeated inbound work appears.
+
+### Documentation
+
+#### Facts
+
+- `routines.md`, `01 Operating System/Agent Routing.md`, and `agents/documentation/AGENTS.md` all make Documentation the closer of shared records.
+- `02 Planning/Weekly Plan.md` and `04 Projects/HQ Bootstrap.md` both flagged Documentation closeout as the live watchpoint.
+- Many task cards still implied multi-file manual sync.
+
+#### Interpretation
+
+Documentation is not yet the bottleneck by volume. The bottleneck mechanism is multi-file closeout. If one result still requires several shared files to be updated manually, Documentation will queue even with a small workload.
+
+### 04 Projects vs `projects.md`
+
+#### Facts
+
+- `projects.md` remains a short registry.
+- `04 Projects/HQ Bootstrap.md` held extra project detail, risks, dependencies, and support-role inputs.
+- The real duplication happened in cycle snapshot sections, not in project registry fields.
+
+#### Interpretation
+
+`04 Projects/` has not yet broken the registry contract. The actual danger is the project page becoming a second weekly summary, not a second `projects.md`.
+
+### Weekly Plan vs second task board
+
+#### Facts
+
+- `02 Planning/Weekly Plan.md` did not contain owner-level task cards.
+- It did contain shipped work, still active work, blockers, and next priorities.
+
+#### Interpretation
+
+`Weekly Plan.md` was not yet a second task board, but it was drifting toward a second status ledger. Keeping it as the weekly summary is enough. It should not also carry a live mid-cycle board mirror.
+
+## Minimal Fixes
+
+1. Keep one primary update file on each active task card. Align other files only after the result is accepted.
+2. Keep `02 Planning/Weekly Plan.md` as the weekly commitments and weekly summary only.
+3. Keep `04 Projects/...` focused on local context, risks, dependencies, support inputs, and implementation detail.
+4. Make all scoped role prompts repo-relative instead of machine-specific.
+5. Add one missing role: Delivery, as the default bounded execution owner for implementation work that is more than documentation.
+6. Freeze this audit file as a dated review note instead of a live tracker.
+
+## Files To Change First
+
+1. `02 Planning/Task Board.md`
+2. `02 Planning/Weekly Plan.md`
+3. `04 Projects/HQ Bootstrap.md`
+4. `agents/*/AGENTS.md`
+5. `AGENTS.md`
+6. `90 Templates/Task Template.md`
+
+## What Not To Add
+
+- Do not add a separate standing orchestrator yet.
+- Do not add a second task board.
+- Do not add a separate weekly review file unless the embedded weekly review actually fails.
+- Do not add `people.md`, `channels.md`, or extra control-plane files before repeated real usage requires them.
+- Do not add role-specific queues until the shared board becomes too broad.
+- Do not push execution work back into Documentation just because the result eventually changes markdown.

@@ -14,5 +14,8 @@ Use project pages for:
 
 - local detail that would clutter the root
 - open risks and dependencies
-- support notes from Finance, Growth, or Research
+- support notes from Delivery, Finance, Growth, or Research
+- project-specific implementation context
 - project-specific decisions that later need a summary in `Decisions.md`
+
+Do not use project pages as a second weekly summary when `Weekly Plan.md` already carries the weekly review.

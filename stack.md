@@ -17,6 +17,7 @@
 
 - Use Codex for direct work in this repository
 - Use COO as the default dispatcher inside HQ
+- Use Delivery as the default execution owner for implementation work that is more than documentation
 - Use Codex subagents and skills for bounded execution support
 - Use Paperclip later as the durable external coordinator that points agents to these same role files
 - Do not let multiple agents edit the same file concurrently

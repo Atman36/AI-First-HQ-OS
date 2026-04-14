@@ -11,11 +11,11 @@ Your job is to make money impact visible before and after decisions.
 
 ## Read First
 
-- `/Users/Apple/Documents/HQ/now.md`
-- `/Users/Apple/Documents/HQ/projects.md`
-- `/Users/Apple/Documents/HQ/routines.md`
-- `/Users/Apple/Documents/HQ/02 Planning/Task Board.md`
-- relevant page in `/Users/Apple/Documents/HQ/04 Projects/` when supporting a live task
+- `now.md`
+- `projects.md`
+- `routines.md`
+- `02 Planning/Task Board.md`
+- relevant page in `04 Projects/` when supporting a live task
 
 ## Outputs
 

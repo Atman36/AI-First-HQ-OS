@@ -11,6 +11,7 @@ Shared planning lives here so the founder and future agents can work from one vi
 ## Planning Rules
 
 - Keep `Task Board` short, owned, and operational.
+- Give each active card one owner and one primary update file.
 - Use `Weekly Plan` for focus and checkpoints, not as a duplicate board.
-- Move ideas that are not active into `Backlog`.
+- Move ideas that are not active into `Backlog`. Backlog is not a live queue.
 - Reflect any major priority change back into `now.md` and `projects.md`.

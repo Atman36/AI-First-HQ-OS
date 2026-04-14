@@ -15,6 +15,7 @@ Build the first usable operating system for the company.
 ## Supporting Roles
 
 - COO
+- Delivery
 - Documentation
 - Assistant
 - Finance
@@ -32,49 +33,34 @@ Build the first usable operating system for the company.
 
 - Initial structure created
 - First audit-driven operating cycle is now active for 2026-04-14 to 2026-04-21
+- Delivery role and repo-relative prompts are now part of the operating model
 
-## Current Cycle Snapshot
+## Current Cycle Local Context
 
-- Objective: close the HQ audit follow-through cycle by 2026-04-21
-- Status: in progress
+- Weekly summary lives in `02 Planning/Weekly Plan.md`.
+- Task movement lives in `02 Planning/Task Board.md`.
+- This page should hold only project-local context for the current cycle.
+- Local watchpoint: Documentation closeout may still queue if one accepted result requires too many shared file updates.
 
-### Completed In This Cycle
-
-- 7-day operating objective aligned across root, planning, and project files
-- Lean weekly review format locked
-- Project page expanded to hold support-role inputs
-- Root clutter moved into `99 Archive/` and ignored by git
-
-### Still Active
-
-- Close the first operating cycle by 2026-04-21
-- Keep `Task Board.md` as the only live task board
-- Confirm whether cycle-close documentation work stays lightweight
-
-### Blockers
-
-- No confirmed blocker yet
-- Watchpoint: Documentation may become the closeout bottleneck if end-of-cycle updates require too much manual syncing across shared files
-
-### Next 3 Priorities
-
-1. Finish the first cycle close with one final lean review and carry-forward items.
-2. Validate from real usage whether Documentation needs a lighter closeout path.
-3. Keep the project page focused on project-local context so it does not mirror `projects.md`.
-
-## Risks
+## Local Risks
 
 - `Task Board.md` drifts from the real task state
 - Documentation closeout becomes heavy because too many shared files need hand-syncing at once
-- Root and project layers start repeating the same information
+- This page starts mirroring `Weekly Plan.md` instead of holding project-local context
+- Delivery stays defined on paper but unused in real execution
 
 ## Dependencies
 
 - CEO keeps the operating objective stable for the full week
 - COO keeps routing and completion criteria explicit
+- Delivery owns bounded implementation work when the task is more than documentation
 - Documentation lands durable updates in the correct shared files
 
 ## Support Inputs
+
+### Delivery
+
+- Use this role for automation specs, implementation plans, and other bounded project execution work that should not collapse back into COO or Documentation.
 
 ### Finance
 

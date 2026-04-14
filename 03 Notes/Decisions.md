@@ -34,5 +34,25 @@
 
 ### Project Page Scope
 
-- Decision: keep `projects.md` as the project registry and keep `04 Projects/HQ Bootstrap.md` limited to project-local context, cycle snapshot, dependencies, and support-role inputs.
+- Decision: keep `projects.md` as the project registry and keep `04 Projects/HQ Bootstrap.md` limited to project-local context, dependencies, support-role inputs, and implementation detail.
 - Reason: this preserves one clear registry at the root while preventing the project page from turning into a second copy of company-level status or weekly commitments.
+
+### Portable Role Prompts
+
+- Decision: use repo-relative file paths in `agents/*/AGENTS.md`.
+- Reason: the HQ repo is shared across Codex and future runners, so prompts must not depend on one local machine path.
+
+### Primary Update File Rule
+
+- Decision: each active task card should name one primary update file; other shared files align only after the result is accepted.
+- Reason: live cards already touched several files, so the contract needed one explicit first-write rule to reduce drift and closeout load.
+
+### Delivery Role
+
+- Decision: add a Delivery role for bounded implementation and project execution work that is more than documentation.
+- Reason: the company had routing, support, and record-keeping roles, but no default execution owner between COO and Documentation.
+
+### Audit Review File Status
+
+- Decision: treat `01 Operating System/HQ Audit Roadmap.md` as a dated review snapshot, not a live tracker.
+- Reason: live state already belongs in `Task Board.md`, `Weekly Plan.md`, `Decisions.md`, and the active project page.

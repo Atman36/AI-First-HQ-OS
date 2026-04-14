@@ -9,11 +9,11 @@
 ## This Week
 
 - Use the HQ audit follow-through as the first operating objective
-- Route the work through CEO -> COO -> execution -> Documentation without file drift
+- Route the work through CEO -> COO -> role owner -> Documentation without file drift
 - Finish the week with one lean weekly review and the next 3 priorities
 
 ## Success Criteria
 
 - One 7-day operating objective is visible in `now.md`, `Weekly Plan.md`, `Task Board.md`, and the active project page
-- At least one operating task moves from decision to execution to documentation without ambiguity about owner or update file
+- At least one operating task moves from decision to execution to documentation without ambiguity about owner or primary update file
 - The weekly review closes the cycle with shipped work, blockers, money signal, and next 3 priorities
