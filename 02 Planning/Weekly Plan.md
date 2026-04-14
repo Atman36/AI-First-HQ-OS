@@ -19,12 +19,17 @@ Close the HQ audit follow-through cycle by 2026-04-21 without file drift between
 - Active cards still have one owner and one primary update file.
 - The weekly summary stays in this file instead of splitting into a second reporting note.
 - Project-local notes still belong on the project page instead of new root files or a mirrored weekly snapshot.
+- The cycle close should answer three checks only:
+  - whether Documentation became a real bottleneck
+  - whether Delivery proved useful on at least one bounded execution task
+  - whether one live board plus one primary update file held without drift
 
 ### Risks
 
 - Drift returns if `Weekly Plan` becomes a second board.
 - Project pages will still create confusion if they mirror the weekly summary instead of staying local.
 - Documentation could become the close-the-cycle bottleneck if too many shared files still need manual syncing at once.
+- Delivery could remain theoretical if no bounded execution task runs through it before 2026-04-21.
 
 ### Rule
 
@@ -45,6 +50,7 @@ Live task movement belongs in [[Task Board]]. This file should summarize the wee
   - Finish the first operating cycle close by 2026-04-21
   - Confirm whether Documentation closeout stays lightweight under real usage
   - Validate that project pages stay local and do not turn into weekly mirrors
+  - Run one bounded execution task through Delivery and check whether the primary-file rule still holds without drift
 - Blockers:
   - No hard blocker is active
   - Soft risk: cycle close still depends on Documentation aligning several shared files in one pass
@@ -63,3 +69,4 @@ Live task movement belongs in [[Task Board]]. This file should summarize the wee
 - Blockers or waiting items
 - Money signal
 - Next 3 priorities
+- Explicit answers to the three cycle checks: Documentation bottleneck, Delivery usefulness, and primary-file drift

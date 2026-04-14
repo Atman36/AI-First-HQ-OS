@@ -41,6 +41,8 @@ Build the first usable operating system for the company.
 - Task movement lives in `02 Planning/Task Board.md`.
 - This page should hold only project-local context for the current cycle.
 - Local watchpoint: Documentation closeout may still queue if one accepted result requires too many shared file updates.
+- Local proof still needed: Delivery should carry at least one bounded execution task before the cycle closes.
+- Cycle close should capture only three checks: Documentation bottleneck, Delivery usefulness, and whether the primary update file rule held without drift.
 
 ## Local Risks
 
@@ -48,6 +50,7 @@ Build the first usable operating system for the company.
 - Documentation closeout becomes heavy because too many shared files need hand-syncing at once
 - This page starts mirroring `Weekly Plan.md` instead of holding project-local context
 - Delivery stays defined on paper but unused in real execution
+- The team reacts to watchpoints by adding new automation layers before one concrete failure is visible
 
 ## Dependencies
 

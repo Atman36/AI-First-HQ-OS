@@ -12,17 +12,17 @@ kanban-plugin: board
   - Owner: COO
   - Project: HQ Bootstrap
   - Support: Documentation and Finance, with Growth or Research only if the cycle exposes a real need
-  - Next step: Hold the single active operating card steady, then close the cycle with one lean weekly review and next 3 priorities.
-  - Done when: The cycle ends with a weekly review, next 3 priorities, and explicit notes about what still broke.
+  - Next step: Hold the single active operating card steady, then close the cycle with one lean weekly review that answers the three review checks: Documentation bottleneck, Delivery usefulness, and primary-file drift.
+  - Done when: The cycle ends with a weekly review, next 3 priorities, and explicit answers to the three review checks.
   - Primary update file: `02 Planning/Weekly Plan.md`
   - Then align: `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
   - Accepts result: CEO
-- [ ] Watch for real routing bottlenecks before changing roles or routines
+- [ ] Watch for real operating friction before changing roles, routines, or automation
   - Owner: COO
   - Project: HQ Bootstrap
   - Support: Documentation
-  - Next step: Treat Documentation load at cycle close as a watchpoint, not a confirmed bottleneck, unless updates start queueing behind one owner.
-  - Done when: The cycle closes with explicit proof of either "no bottleneck" or one concrete routing failure.
+  - Next step: Treat Documentation load, Delivery usefulness, and the cheap probe as watchpoints, not missing systems, unless the cycle shows a concrete failure.
+  - Done when: The cycle closes with explicit proof of either "no operating issue" or one concrete failure that justifies a targeted follow-on change.
   - Primary update file: `03 Notes/Decisions.md`
   - Then align: `04 Projects/HQ Bootstrap.md`
   - Accepts result: CEO

@@ -76,3 +76,18 @@
 
 - Decision: keep handoff files short, task-scoped, and private under `.hq/handoffs/<task>/`, with only done, next, continue-from, important files, and blockers or risks.
 - Reason: this preserves enough continuity between sessions without turning HQ into an unbounded memory store or mixing shared company state with agent runtime notes.
+
+### First Cycle Review Guardrails
+
+- Decision: keep the HQ architecture in its current lean shape until the first live cycle closes on 2026-04-21.
+- Reason: the system already has a working entry point, inbox, handoff template, archive rule, Delivery role, and cheap capability probe, so the next step is to validate them in live use instead of adding more layers early.
+
+### First Cycle Review Checks
+
+- Decision: evaluate the 2026-04-14 to 2026-04-21 cycle against only three checks at closeout: whether Documentation became a real bottleneck, whether Delivery proved useful on at least one bounded execution task, and whether one live board plus one primary update file held without drift.
+- Reason: these are the narrowest questions that can confirm whether the current operating model is good enough or where it actually breaks.
+
+### Conditional Follow-Ons Only
+
+- Decision: defer `validate`, `sync`, `metrics`, `dashboard`, dependency tracking, time tracking, extended git automation, and heavier probe logic until the cycle exposes a concrete operating failure.
+- Reason: adding those systems before a confirmed failure would optimize for anticipated complexity instead of observed friction.
