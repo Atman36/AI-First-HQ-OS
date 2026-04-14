@@ -4,39 +4,35 @@
 
 - Week of:
 - Review date:
+- Operating objective:
 
-## Outcomes
+## Snapshot
 
-- What shipped:
-- What was decided:
-- What moved forward:
-
-## Execution Review
-
-- Completed:
+- Shipped:
 - Still active:
-- Waiting or blocked:
+- Blocked or waiting:
 
-## Financial Signal
+## Money Signal
 
 - Revenue movement:
 - Cost movement:
-- Biggest money opportunity next week:
+- Biggest money opportunity or risk next week:
 
-## Operating Friction
+## System Signal
 
 - What created confusion:
 - Where routing broke:
 - Which file drifted from reality:
-
-## System Improvements
-
-- Process change to keep:
-- Process change to remove:
-- Template or workflow to add:
 
 ## Next Week
 
 - Priority 1:
 - Priority 2:
 - Priority 3:
+
+## Shared Files Updated
+
+- `now.md`:
+- `projects.md`:
+- `02 Planning/Task Board.md`:
+- `03 Notes/Decisions.md`:

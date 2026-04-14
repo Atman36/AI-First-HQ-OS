@@ -6,35 +6,48 @@ kanban-plugin: board
 
 ## Inbox
 
-- [ ] Define one 7-day operating objective worth running through HQ
-  - Owner: CEO
-  - Project: HQ Bootstrap
-  - Next step: Choose one revenue-linked or operating objective that is important enough to route through the system.
-  - Done when: The objective is written in `now.md` and reflected in `Weekly Plan.md`.
-  - Update file: `now.md`, `02 Planning/Weekly Plan.md`
-  - Accepts result: CEO
-
 ## This Week
 
-- [ ] Route one real company task end-to-end through CEO -> COO -> execution -> Documentation
+- [ ] Close the first HQ operating cycle by 2026-04-21
   - Owner: COO
   - Project: HQ Bootstrap
-  - Support: Documentation, Finance, Growth, or Research as needed
-  - Next step: Break the chosen objective into 2-4 owned cards and move them through the board.
-  - Done when: One real task is routed, executed, and documented without ambiguity about ownership or update file.
-  - Update file: `02 Planning/Task Board.md`, `03 Notes/Decisions.md`, relevant root or project file
-  - Accepts result: CEO
-- [ ] Decide the minimum weekly review format
-  - Owner: COO
-  - Project: HQ Bootstrap
-  - Support: Documentation, Finance
-  - Next step: Use the weekly review template only if the lean format is not enough.
-  - Done when: There is one repeatable weekly review structure with shipped work, blockers, money signal, and next 3 priorities.
-  - Update file: `routines.md`, `90 Templates/Weekly Review Template.md` if needed
+  - Support: Documentation and Finance, with Growth or Research only if the cycle exposes a real need
+  - Next step: Keep the three completed setup actions below aligned and finish the week with one lean weekly review.
+  - Done when: The cycle ends with a weekly review, next 3 priorities, and explicit notes about what still broke.
+  - Update file: `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
   - Accepts result: CEO
 
 ## Today
 
+- [x] 2026-04-14: Defined the 7-day operating objective for 2026-04-14 to 2026-04-21
+  - Owner: CEO
+  - Project: HQ Bootstrap
+  - Next step: Keep the objective aligned across root, planning, and project files.
+  - Done when: `now.md`, `projects.md`, and `02 Planning/Weekly Plan.md` all point to the same cycle.
+  - Update file: `now.md`, `projects.md`, `02 Planning/Weekly Plan.md`
+  - Accepts result: CEO
+- [x] 2026-04-14: Locked the minimum weekly review format
+  - Owner: COO
+  - Project: HQ Bootstrap
+  - Support: Documentation, Finance
+  - Next step: Use the lean review first and expand only if real usage proves it insufficient.
+  - Done when: `routines.md` and `90 Templates/Weekly Review Template.md` describe the same lean review output.
+  - Update file: `routines.md`, `90 Templates/Weekly Review Template.md`
+  - Accepts result: CEO
+- [x] 2026-04-14: Added project-level support-note sections for HQ Bootstrap
+  - Owner: Documentation
+  - Project: HQ Bootstrap
+  - Next step: Keep Finance, Growth, and Research inputs on the project page instead of in standalone root notes.
+  - Done when: The active project page has clear sections for risks, dependencies, and support-role inputs.
+  - Update file: `04 Projects/HQ Bootstrap.md`
+  - Accepts result: COO
+- [x] 2026-04-14: Moved root clutter into a local archive outside git tracking
+  - Owner: CEO
+  - Project: HQ Bootstrap
+  - Next step: Keep long-form drafts and archived notes in `99 Archive/`, not in the root.
+  - Done when: The two root draft files are renamed, moved into `99 Archive/`, and the archive is ignored by git.
+  - Update file: `.gitignore`, `01 Operating System/HQ Audit Roadmap.md`
+  - Accepts result: CEO
 - [ ] Keep only one live truth for active tasks
   - Owner: Documentation
   - Project: HQ Bootstrap

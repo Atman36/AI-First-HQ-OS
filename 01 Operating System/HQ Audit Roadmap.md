@@ -10,19 +10,20 @@ This file tracks which audit findings are still relevant after the 2026-04-14 cl
 - The minimum dispatch schema now exists on the board itself: owner, project, next step, done when, update file, accepts result.
 - Private absolute CEO paths were removed from the shared home page.
 - Template placement is clearer, and a lean `Daily Ops Template` now exists.
+- One 7-day operating objective now exists for 2026-04-14 to 2026-04-21 and is reflected in `now.md`, `projects.md`, `Weekly Plan.md`, `Task Board.md`, and the active project page.
+- The minimum weekly review format is now defined in `routines.md` and the weekly review template.
+- `04 Projects/HQ Bootstrap.md` now has explicit sections for risks, dependencies, and support-role inputs.
+- Root clutter was reduced by moving the two non-operating root drafts into a local ignored archive folder.
 
 ## Partially Closed
 
-- Support-role landing zones were weak. This is better now because Finance, Growth, and Research are pointed toward project pages and decision records, but dedicated sections are still not defined.
 - COO and Documentation were potential bottlenecks. This is better now because the handoff contract is explicit and fast-track routing is allowed for bounded work, but it still needs one live operating cycle to prove it.
 - `projects.md` and `04 Projects/` still describe the same project from two levels. This is acceptable for now because the contract is clearer, but it should be revisited if project pages start duplicating the registry.
-- Weekly review ambiguity is reduced because `Weekly Plan` is no longer a second task board, but the actual repeatable weekly review ritual is still not validated.
 
 ## Still Relevant
 
-- Root clutter is still real. `deep-research-report.md` and `Без названия 25.md` are still in the root and should be either moved, renamed, or intentionally integrated.
 - The project layer is still thin. That is acceptable with one active initiative, but once there are multiple active projects, each project page will need a more useful local structure.
-- The real test has not happened yet. HQ still needs one live, revenue-linked or operating task to pass through the full cycle without drift.
+- The real test is not finished yet. The first operating objective is defined and routed, but the live cycle still needs to run through the week and close with a review.
 
 ## Not A Priority Right Now
 
@@ -32,7 +33,6 @@ This file tracks which audit findings are still relevant after the 2026-04-14 cl
 
 ## Next Recommended Moves
 
-1. Choose one 7-day operating objective and route it through the board end-to-end.
-2. After that cycle, decide whether root clutter should be cleaned by moving or renaming the two long root documents.
-3. Keep `projects.md` as the registry unless real project pages start carrying enough signal to justify a simplification.
-4. Add dedicated project-page sections for support notes only if Finance, Growth, or Research start writing there regularly.
+1. Finish the first 2026-04-14 to 2026-04-21 operating cycle and close it with the lean weekly review.
+2. Keep `projects.md` as the registry unless real project pages start carrying enough signal to justify a simplification.
+3. Expand project-page support sections only if Finance, Growth, or Research start using them regularly.

@@ -2,18 +2,18 @@
 
 ## Current Focus
 
-- Build the first working HQ operating system
-- Use a minimal agent set before adding more roles
-- Keep all shared state in this repository
+- Run the first real 7-day HQ operating cycle from 2026-04-14 to 2026-04-21
+- Keep one live source of truth per layer: root, planning, notes, and project page
+- Tighten the system only where the first live cycle exposes real friction
 
 ## This Week
 
-- Finalize shared HQ structure
-- Define agent responsibilities and escalation boundaries
-- Start using the team on real operating tasks
+- Use the HQ audit follow-through as the first operating objective
+- Route the work through CEO -> COO -> execution -> Documentation without file drift
+- Finish the week with one lean weekly review and the next 3 priorities
 
 ## Success Criteria
 
-- One current priority list
-- Clear owner per task
-- Decisions and updates written to shared files
+- One 7-day operating objective is visible in `now.md`, `Weekly Plan.md`, `Task Board.md`, and the active project page
+- At least one operating task moves from decision to execution to documentation without ambiguity about owner or update file
+- The weekly review closes the cycle with shipped work, blockers, money signal, and next 3 priorities

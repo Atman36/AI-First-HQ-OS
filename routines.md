@@ -24,7 +24,17 @@
 
 ## Weekly
 
+### Lean Weekly Review
+
+- Owner: COO
+- Support: Documentation and Finance, with CEO approving the next priorities
+- Inputs: `02 Planning/Task Board.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, and active project pages
+- Output: one short review with shipped work, still active work, blockers, money signal, and next 3 priorities
+- Rule: if this lean format is enough, do not create a second task board or extra reporting layer
+
+### Review Checks
+
 - Review active projects
-- Review revenue opportunities
+- Review revenue opportunities or cost signals
 - Review blockers and operating debt
-- Remove roles or routines that do not improve execution
+- Remove roles, files, or routines that do not improve execution

@@ -9,4 +9,4 @@
 - Value: creates a reliable control layer for planning, execution, and documentation
 - Owner: CEO
 - Supporting agents: COO, Documentation, Assistant, Finance, Growth, Research
-- Next step: start routing real work through the minimal team
+- Next step: close the first audit-driven operating cycle by 2026-04-21 and record what still breaks
