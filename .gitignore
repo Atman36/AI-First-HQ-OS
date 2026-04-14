@@ -41,6 +41,7 @@ logs/
 
 # Environment
 .env
+.env.parallel
 .env.local
 .env.*.local
 
@@ -52,4 +53,6 @@ TOOLS.md
 
 # Local long-form notes and research drafts
 deep-research-report.md
+deep-research-report*.md
+reports/deep-research/
 Без названия 25.md
