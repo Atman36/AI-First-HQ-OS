@@ -7,7 +7,15 @@ This is the practical order for filling shared HQ files during normal work.
 - Write the smallest durable update in the highest-value source-of-truth file first.
 - Use planning and notes as working surfaces, not as replacements for root state.
 - Keep private continuity outside this repository.
+- If private continuity must stay repo-local for a task, keep it only under `.hq/`.
 - Treat `reports/` and ignored research drafts as reference material until their conclusions are summarized back into a source-of-truth file.
+
+## Private Runtime vs Shared State
+
+- Shared HQ files explain company state, decisions, and accepted execution.
+- `.hq/` is private runtime only: handoffs, probe outputs, logs, journals, and local continuation state.
+- Do not use `.hq/` as a second project registry or durable company memory layer.
+- Do not use shared Markdown files as private continuation logs when `.hq/handoffs/` is the right home.
 
 ## File Contract
 
@@ -70,8 +78,10 @@ After capture:
 1. Put it in `03 Notes/Inbox.md` if it is still vague.
 2. CEO decides whether it matters now.
 3. COO converts it into a task on `02 Planning/Task Board.md` with owner, project, next step, done when, primary update file, and accepting role.
-4. Add project detail in `04 Projects/...` if the work is large enough to need a dedicated page.
-5. Documentation updates the affected shared files after the work lands.
+4. If the execution depends on a specific CLI or runner, confirm it first with `python3 scripts/hq_runtime.py probe ...`.
+5. If the work will pause or move between sessions, keep the private handoff in `.hq/handoffs/<task>/`.
+6. Add project detail in `04 Projects/...` if the work is large enough to need a dedicated page.
+7. Documentation updates the affected shared files after the work lands.
 
 ### New project starts
 
@@ -110,3 +120,8 @@ If you want the smallest possible shared workflow, keep these current:
 4. [[03 Notes/Decisions|Decisions]]
 
 Everything else should support these files, not compete with them.
+
+For private runtime continuity, the minimum working set is:
+
+1. `.hq/handoffs/<task>/LATEST.md` when a task is handed off or paused
+2. `.hq/state/capabilities.json` when routing depends on a specific local tool

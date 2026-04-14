@@ -47,6 +47,13 @@ __pycache__/
 .env.local
 .env.*.local
 
+# HQ private runtime
+.hq/
+/CONTINUITY.md
+/HANDOFF.md
+/SESSION.md
+/SESSION-*.md
+
 # Agent-specific (Paperclip private data should stay outside this repo)
 # But if accidentally created here:
 HEARTBEAT.md
@@ -56,3 +63,9 @@ TOOLS.md
 # Local long-form notes and research drafts
 reports/deep-research/
 99 Archive/
+
+# Private journals and working logs
+journals/
+03 Notes/Journals/
+03 Notes/Daily/
+03 Notes/Session Logs/

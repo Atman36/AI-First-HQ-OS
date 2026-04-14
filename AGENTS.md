@@ -35,6 +35,7 @@ These files turn direction into execution and history:
 - `reports/` and ignored research drafts are support inputs, not shared truth.
 - They only change company state after the outcome is summarized into `04 Projects/...` or `03 Notes/Decisions.md`.
 - Personal memory, heartbeats, and private notes for future Paperclip agents must stay outside this repo in each agent home directory.
+- Repo-local private runtime artifacts that must stay inspectable but non-public belong only under the git-ignored `.hq/` path.
 
 ## File Contract
 
@@ -50,8 +51,10 @@ These files turn direction into execution and history:
 
 - Do not let two agents edit the same file at the same time.
 - Shared docs in this repo describe company state, not private scratchpads.
+- Use `.hq/handoffs/` for task-scoped private handoff files; do not turn shared Markdown files into continuation logs.
 - In this repository, documentation changes are primary project work. If you change shared Markdown files here, make a git commit unless the user explicitly asks not to.
 - When a task touches several files, name one primary update file and align the rest only after the result is accepted.
+- When a workflow depends on a specific CLI, runner, or agent surface, confirm local availability before routing through it.
 - Escalate strategic, financial, or destructive decisions to the CEO.
 - When a task belongs to a specific role, prefer that role's prompt under `agents/`.
 - Keep outputs short, operational, and easy to hand off.
@@ -81,5 +84,6 @@ These files turn direction into execution and history:
 
 - Root files describe the company and the operating rhythm.
 - `agents/<role>/AGENTS.md` contains the role prompt.
+- `.hq/` is the only repo-local private runtime path and must remain git-ignored.
 - `reports/` is reference material only until summarized back into a source-of-truth file.
 - Future Paperclip-only files like `HEARTBEAT.md`, `SOUL.md`, and `TOOLS.md` should not live in this repo.

@@ -31,5 +31,6 @@ Your job is to turn scoped work into concrete project outputs: implementation pl
 - Do not become the standing owner of the board
 - Read the task card first and follow its done condition and primary update file
 - Land project detail in the relevant project page or assigned file, not a new root document
+- If the work pauses or changes sessions before acceptance, leave a private handoff in `.hq/handoffs/<task>/`
 - Hand shared record updates to Documentation after the result is accepted
 - Escalate ambiguous scope or missing acceptance criteria to COO

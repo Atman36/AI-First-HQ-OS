@@ -6,6 +6,8 @@ Shared HQ workspace for Codex now and Paperclip later.
 
 Use one project root for shared company state and separate agent-specific homes for private memory.
 
+The repository is public-safe by default: shared files stay in git, while private runtime state stays under the ignored `.hq/` path.
+
 ## How To Use
 
 - Run Codex from this directory when you want repo-scoped instructions.
@@ -54,5 +56,37 @@ Additional folders provide a cleaner writing and reading experience:
 
 - Shared project root: this repo
 - Agent private memory: outside this repo
+- Repo-local private runtime: `.hq/`
 - No concurrent edits to the same file from multiple agents
 - Use `Task Board.md` as the only live task board
+
+## Private Runtime
+
+Use `.hq/` for private, inspectable, non-git-tracked runtime artifacts:
+
+- `.hq/handoffs/` for task-scoped handoff files between agents or sessions
+- `.hq/state/` for capability probe results and other lightweight runtime state
+- `.hq/logs/`, `.hq/memory/`, `.hq/journals/` for private operational artifacts that do not belong in source-of-truth files
+
+Bootstrap and probe commands:
+
+```bash
+python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_runtime.py probe codex claude
+```
+
+Write a handoff:
+
+```bash
+python3 scripts/hq_runtime.py handoff \
+  --task HQ-bootstrap-runtime \
+  --owner Delivery \
+  --status ready_for_handoff \
+  --continue-from "04 Projects/HQ Bootstrap.md" \
+  --primary-file "04 Projects/HQ Bootstrap.md" \
+  --important-file "stack.md" \
+  --important-file "01 Operating System/Agent Routing.md" \
+  --done "Added the private runtime scaffold" \
+  --next "Validate the next acceptance slice" \
+  --risk "Do not move private notes back into shared docs"
+```

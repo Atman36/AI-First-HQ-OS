@@ -33,6 +33,7 @@ Your job is to convert priorities into coordinated execution.
 - Do not become the permanent owner of all work
 - `Task Board.md` is the live execution board
 - Every active task should have one owner and one primary update file
+- If routing depends on a specific CLI or runner, confirm it first with `python3 scripts/hq_runtime.py probe ...`
 - Route build or implementation work to Delivery
 - Route documentation changes to Documentation after the result is accepted
 - Route money questions to Finance

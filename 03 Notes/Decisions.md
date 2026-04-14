@@ -56,3 +56,23 @@
 
 - Decision: treat `01 Operating System/HQ Audit Roadmap.md` as a dated review snapshot, not a live tracker.
 - Reason: live state already belongs in `Task Board.md`, `Weekly Plan.md`, `Decisions.md`, and the active project page.
+
+### External System Imports
+
+- Decision: import only the minimal founder operating defaults and tool-context from the private vault into HQ, and keep the richer personal profile outside this repository.
+- Reason: agents need enough context to communicate and suggest tools well, but the shared company repo should not become a private memory store.
+
+### Agent Surface Check
+
+- Decision: when a workflow depends on a specific CLI or agent surface, confirm that the tool is actually available before routing work through it.
+- Reason: the current HQ system is still manual-first, so capability checks reduce routing mistakes without pulling in a heavier orchestration layer too early.
+
+### Private Runtime Root
+
+- Decision: use the git-ignored `.hq/` path as the single repo-local home for handoffs, runtime state, logs, journals, and other private operational artifacts.
+- Reason: HQ needs one inspectable private runtime layer for session continuity, but shared source-of-truth files must stay public-safe and clean.
+
+### Task-Scoped Handoff Contract
+
+- Decision: keep handoff files short, task-scoped, and private under `.hq/handoffs/<task>/`, with only done, next, continue-from, important files, and blockers or risks.
+- Reason: this preserves enough continuity between sessions without turning HQ into an unbounded memory store or mixing shared company state with agent runtime notes.

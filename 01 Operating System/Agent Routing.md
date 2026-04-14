@@ -24,6 +24,13 @@ When a founder or user sends a task without naming a role, route it like this:
 
 This is the default routing behavior. It does not require a separate standing orchestrator.
 
+## Capability Probe Before Tool-Dependent Routing
+
+- If the plan depends on a specific CLI, agent surface, or local runner, probe it before routing the work through that surface.
+- Use `python3 scripts/hq_runtime.py probe codex claude` or the smallest relevant tool set for the task.
+- Route only through tools that are both present in `PATH` and responsive to the cheap probe.
+- If the tool is missing or not responsive, fall back to the role that can execute with the currently available surface instead of assuming the preferred path.
+
 ## Why No Separate Orchestrator Yet
 
 - The current team is still small.
@@ -73,6 +80,14 @@ When one agent passes work to another, the handoff should include:
 - support roles, if any
 - accepting role
 
+Private continuation for that handoff should live in `.hq/handoffs/<task>/LATEST.md` and stay limited to:
+
+- what was done
+- what remains
+- where to continue first
+- which files matter
+- which blockers or risks exist
+
 Example:
 
 - CEO decides the task matters now and defines the outcome.
@@ -120,6 +135,8 @@ Every delegated task should answer these questions before work starts:
 - Which primary update file changes first
 - Who accepts the result
 - Which files align after acceptance, if any
+
+If the task pauses or changes sessions before completion, update the private handoff file before routing onward.
 
 ## Skills And Future Orchestration
 
