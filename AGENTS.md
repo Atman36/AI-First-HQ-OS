@@ -9,7 +9,11 @@ It is designed to work in two modes:
 
 ## Source Of Truth
 
-Shared company artifacts live in this root:
+Shared company artifacts are split into a current-state layer and a working layer.
+
+### Current-State Layer
+
+These files define the current company truth:
 
 1. `now.md`
 2. `projects.md`
@@ -17,7 +21,25 @@ Shared company artifacts live in this root:
 4. `stack.md`
 5. `agents/`
 
+### Working Layer
+
+These files turn direction into execution and history:
+
+1. `02 Planning/Task Board.md` - single live execution board
+2. `02 Planning/Weekly Plan.md` - weekly commitments and checkpoints
+3. `03 Notes/Decisions.md` - durable decision log
+4. `04 Projects/` - project-specific detail and support notes
+
 Personal memory, heartbeats, and private notes for future Paperclip agents must stay outside this repo in each agent home directory.
+
+## File Contract
+
+- `now.md` holds company focus, not a second task list.
+- `projects.md` is the registry of active projects and owners.
+- `02 Planning/Task Board.md` is the single live board for active tasks.
+- `02 Planning/Weekly Plan.md` holds weekly commitments, not duplicate task cards.
+- `03 Notes/Decisions.md` records durable why after a decision is made.
+- `04 Projects/` holds local context that would clutter the root.
 
 ## Coordination Rules
 

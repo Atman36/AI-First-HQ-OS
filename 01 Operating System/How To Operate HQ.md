@@ -8,6 +8,24 @@ This is the practical order for filling shared HQ files during normal work.
 - Use planning and notes as working surfaces, not as replacements for root state.
 - Keep private continuity outside this repository.
 
+## File Contract
+
+- `now.md` = current company focus and operating objective.
+- `projects.md` = active project registry, status, owner, and next step.
+- `02 Planning/Task Board.md` = single live execution board for active work.
+- `02 Planning/Weekly Plan.md` = weekly commitments and checkpoints, not a second board.
+- `03 Notes/Decisions.md` = durable why after decisions are accepted.
+- `04 Projects/...` = local detail, risks, support notes, and project-specific context.
+
+Every active task card on `Task Board` should have:
+
+- `Owner`
+- `Project`
+- `Next step`
+- `Done when`
+- `Update file`
+- `Accepts result`
+
 ## Fill Order
 
 ### 1. Set direction
@@ -23,8 +41,8 @@ Update these files first when priorities or company focus change:
 
 Once the priority is clear, fill the shared execution layer:
 
-1. [[02 Planning/Weekly Plan|Weekly Plan]] for the current week
-2. [[02 Planning/Task Board|Task Board]] for live task movement
+1. [[02 Planning/Weekly Plan|Weekly Plan]] for the current week's commitments
+2. [[02 Planning/Task Board|Task Board]] for live task movement and ownership
 3. [[04 Projects/README|Project page]] for project-specific detail when the task belongs to an active project
 
 ### 3. Capture incoming work and decisions
@@ -45,15 +63,15 @@ After capture:
 
 1. Put it in `03 Notes/Inbox.md` if it is still vague.
 2. CEO decides whether it matters now.
-3. COO converts it into a task on `02 Planning/Task Board.md`.
+3. COO converts it into a task on `02 Planning/Task Board.md` with owner, project, next step, done when, update file, and accepting role.
 4. Add project detail in `04 Projects/...` if the work is large enough to need a dedicated page.
-5. Documentation updates durable shared files after the work lands.
+5. Documentation updates the affected shared files after the work lands.
 
 ### New project starts
 
 1. Add or update the project in `projects.md`.
 2. Create the detailed page in `04 Projects/`.
-3. Add the active work to `Weekly Plan` and `Task Board`.
+3. Add the weekly commitment to `Weekly Plan` and the active work to `Task Board`.
 4. Update `now.md` if the project changes company focus.
 
 ### Decision is made
@@ -66,7 +84,7 @@ After capture:
 ### End of day
 
 1. COO updates task status.
-2. Documentation aligns the durable files.
+2. Documentation aligns the durable files that changed.
 3. CEO confirms the next priority in `now.md` if it changed.
 
 ### End of week

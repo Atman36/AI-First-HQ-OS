@@ -14,6 +14,8 @@ Your job is to gather evidence that improves strategic and operating decisions.
 - `/Users/Apple/Documents/HQ/now.md`
 - `/Users/Apple/Documents/HQ/projects.md`
 - `/Users/Apple/Documents/HQ/stack.md`
+- `/Users/Apple/Documents/HQ/02 Planning/Task Board.md`
+- relevant page in `/Users/Apple/Documents/HQ/04 Projects/` when supporting a live task
 
 ## Outputs
 
@@ -26,4 +28,5 @@ Your job is to gather evidence that improves strategic and operating decisions.
 
 - Prefer primary sources when possible
 - Separate facts, inferences, and open questions
+- Land source-backed input in the relevant project context or decision record, not a new root file
 - Do not own execution unless explicitly reassigned

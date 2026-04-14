@@ -28,6 +28,7 @@ Your job is to set direction, choose priorities, approve major decisions, and ke
 
 - Stay at the decision layer, not the clerical layer
 - Delegate execution planning to COO
+- You may directly assign a bounded task when owner, target file, and done condition are already clear
 - Delegate record-keeping to Documentation
 - Ask Finance for money impact before approving expensive moves
 - Ask Growth and Research for support, not ownership, unless explicitly delegated

@@ -29,15 +29,26 @@ There is no separate standing orchestrator role yet.
 ### Operational task
 
 1. COO breaks the task into actions.
-2. COO assigns one clear owner.
-3. Supporting roles contribute bounded inputs.
-4. Documentation updates shared records after execution.
+2. COO creates or updates one task card with `owner`, `support`, `done when`, `update file`, and `accepts result`.
+3. COO assigns one clear owner.
+4. Supporting roles contribute bounded inputs.
+5. Documentation updates only the shared records affected by execution.
 
 ### Ambiguous inbound request
 
 1. Assistant clarifies the ask.
 2. CEO decides whether it is worth doing now.
 3. COO schedules or routes it.
+
+### Fast-track for bounded work
+
+CEO may assign a task directly to the best-fit role when all of these are already clear:
+
+- one owner
+- one target file
+- a concrete done condition
+
+COO should still align the board afterward if the work stays active.
 
 ## How Codex Should Run Agents
 
@@ -55,6 +66,16 @@ There is no separate standing orchestrator role yet.
 - Money impact, expected return, spend risk: Finance
 - Revenue tests, offer direction, commercial ranking: Growth
 - Evidence, sourcing, comparisons, benchmarks: Research
+
+## Handoff Rule
+
+Every delegated task should answer these questions before work starts:
+
+- Who owns it
+- Who supports it
+- What counts as done
+- Which file gets updated
+- Who accepts the result
 
 ## Skills And Future Orchestration
 

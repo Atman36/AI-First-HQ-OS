@@ -16,13 +16,20 @@ Use one project root for shared company state and separate agent-specific homes 
 
 ## Source Of Truth
 
-These files stay in the repository root and should not be moved:
+Current company truth stays in the repository root:
 
 - `now.md` - current focus
 - `projects.md` - active projects
 - `routines.md` - daily and weekly rhythms
 - `stack.md` - tool rules
 - `agents/` - role prompts
+
+Execution and history live in the working layer:
+
+- `02 Planning/Task Board.md` - single live execution board
+- `02 Planning/Weekly Plan.md` - weekly commitments and checkpoints
+- `03 Notes/Decisions.md` - durable decision log
+- `04 Projects/` - detailed project context
 
 ## Obsidian Layer
 
@@ -40,3 +47,4 @@ Additional folders provide a cleaner writing and reading experience:
 - Shared project root: this repo
 - Agent private memory: outside this repo
 - No concurrent edits to the same file from multiple agents
+- Use `Task Board.md` as the only live task board

@@ -23,16 +23,12 @@ This is the main entry point for the HQ vault in Obsidian.
 ## Current Focus
 
 - Keep the root files as the canonical company layer.
-- Use Planning for shared task tracking.
+- Use `Task Board` as the live shared task board.
 - Use Notes for fast capture and durable decisions.
 - Keep private agent memory outside this repository.
 
 ## Private CEO Memory
 
-Private CEO continuity lives outside the repo in:
+Private CEO continuity lives outside this repository.
 
-`/Users/Apple/.Codex/agents/ceo-hq/`
-
-Project dossier for auto-load lives in:
-
-`/Users/Apple/.Codex/memory/projects/hq.md`
+Do not hardcode private local paths into shared HQ files.
