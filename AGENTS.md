@@ -56,6 +56,16 @@ These files turn direction into execution and history:
 - When a task belongs to a specific role, prefer that role's prompt under `agents/`.
 - Keep outputs short, operational, and easy to hand off.
 
+## Default Routing
+
+- If the user does not name a role, first determine the best-fit owner before doing the work.
+- Use CEO when priority, tradeoff, scope, or approval is unclear.
+- Use COO when the decision already exists but the task still needs routing, ownership, sequencing, or a task card.
+- Use Delivery when the task is already scoped and needs implementation, execution planning, or shipped artifacts.
+- Use Documentation after the result is accepted and shared files need to be aligned.
+- Use Assistant, Finance, Growth, and Research only for bounded support work in their domain.
+- Do not add a separate standing orchestrator unless routing pain is proven by real workload.
+
 ## Current Team
 
 - CEO

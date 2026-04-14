@@ -13,6 +13,17 @@ This file defines how tasks are routed across the current HQ role set.
 
 There is no separate standing orchestrator role yet.
 
+## Automatic Entry Routing
+
+When a founder or user sends a task without naming a role, route it like this:
+
+1. Send it to CEO if priority, tradeoff, scope, or approval is unclear.
+2. Send it to COO if the decision is already made but the work still needs an owner, breakdown, or task card.
+3. Send it to Delivery or another specialist role if the task is already scoped and needs bounded execution.
+4. Send it to Documentation only after the result is accepted and shared files need alignment.
+
+This is the default routing behavior. It does not require a separate standing orchestrator.
+
 ## Why No Separate Orchestrator Yet
 
 - The current team is still small.
@@ -50,6 +61,24 @@ CEO may assign a task directly to the best-fit role when all of these are alread
 - a concrete done condition
 
 COO should still align the board afterward if the work stays active.
+
+## Handoff Shape Between Agents
+
+When one agent passes work to another, the handoff should include:
+
+- objective or decision
+- owner
+- done condition
+- primary update file
+- support roles, if any
+- accepting role
+
+Example:
+
+- CEO decides the task matters now and defines the outcome.
+- COO converts that into one task card and assigns the owner.
+- Delivery or another role executes the bounded work.
+- Documentation aligns shared files after acceptance.
 
 ## Founder Run Pattern In Codex
 
