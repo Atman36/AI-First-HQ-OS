@@ -4,6 +4,7 @@ Reusable templates for shared HQ work.
 
 ## Core Templates
 
+- [[Project Intake Template]]
 - [[Task Template]]
 - [[Daily Ops Template]]
 - [[Session Template]]
