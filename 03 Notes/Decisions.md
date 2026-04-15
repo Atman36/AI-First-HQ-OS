@@ -83,3 +83,8 @@
 
 - Decision: telemetry, handoffs, reflections, evals, and other runtime continuity stay under `.hq/`; only accepted conclusions move into tracked truth.
 - Reason: the first live governed loop confirmed that this split keeps shared state clean without adding a second memory layer.
+
+### Autonomous Spend Envelope Stays At EUR 0 In Stage 2 Foundation
+
+- Decision: keep the autonomous spend envelope at `EUR 0` for the whole Stage 2 foundation; any company spend or money movement still needs fresh CEO approval.
+- Reason: the first telemetry-backed weekly review did not justify non-zero autonomous spend, and there is still no connector-specific audit or rollback path that would make autonomous spend safe.

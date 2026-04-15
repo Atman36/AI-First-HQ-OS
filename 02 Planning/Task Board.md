@@ -13,22 +13,12 @@
 - weekly metrics can be generated from telemetry and active-work state
 - telemetry captures routing, execution, acceptance, sync, and lightweight eval signals
 
-## Review
-- [ ] Lock the remaining autonomous spend envelope after the first live weekly review
-  - ID: calibrate-approval-thresholds | Owner: governor | Accepts: ceo | Risk: high | Autonomy: A1
-  - Project: HQ Bootstrap
-  - Support: ceo, finance, ai_operations_lead
-  - Next: Decide whether to keep the autonomous spend envelope at EUR 0 or approve one bounded exception after another governed loop with finance signal.
-  - Done when: The spend envelope is explicitly approved or intentionally held at zero in policies and Notes.
-  - Primary update file: `03 Notes/Open Decisions.md`
-  - Align: `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`
-
 ## Waiting
 - [ ] Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors
   - ID: connect-external-systems-under-governance | Owner: delivery | Accepts: ceo | Risk: high | Autonomy: A3
   - Project: HQ Bootstrap
   - Support: ai_operations_lead, governor, assistant, finance, growth
-  - Next: Keep external write surfaces blocked until the spend envelope decision is explicit and at least one more weekly review shows stable telemetry coverage.
+  - Next: Keep external write surfaces blocked while the autonomous spend envelope stays at EUR 0, then revisit one narrow connector only after another stable weekly review and connector-specific rollback notes.
   - Done when: At least one external connector is enabled with audit logging, review, and rollback notes.
   - Primary update file: `stack.md`
   - Align: `05 AI Control Plane/operating-policies.json`, `04 Projects/HQ Bootstrap.md`
@@ -78,4 +68,13 @@
   - Done when: A weekly telemetry review is generated and used as the metric layer of the weekly operating review.
   - Primary update file: `05 AI Control Plane/metrics-registry.json`
   - Align: `routines.md`, `02 Planning/Weekly Plan.md`, `scripts/hq_telemetry.py`
+  - Completed at: 2026-04-15
+- [x] Lock the remaining autonomous spend envelope after the first live weekly review
+  - ID: calibrate-approval-thresholds | Owner: governor | Accepts: ceo | Risk: high | Autonomy: A1
+  - Project: HQ Bootstrap
+  - Support: ceo, finance, ai_operations_lead
+  - Next: Re-open only if a specific connector or operating need justifies non-zero spend and another stable telemetry-backed review supports it.
+  - Done when: The spend envelope is explicitly approved or intentionally held at zero in policies and Notes.
+  - Primary update file: `03 Notes/Open Decisions.md`
+  - Align: `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`
   - Completed at: 2026-04-15

@@ -37,7 +37,7 @@ Build the first usable AI-first operating system for the company.
 - AI Operations Lead replaces the stage-1 AI COO role as the standing operating owner
 - Weekly metric review and runtime-discipline contracts are live
 - First governed operating loop has live proof on a founder request
-- Remaining approval calibration is now down to the autonomous spend envelope
+- Autonomous spend envelope is now explicitly held at `EUR 0` for the Stage 2 foundation
 
 ## Current Workstreams
 
@@ -49,6 +49,7 @@ Build the first usable AI-first operating system for the company.
 ### Governance
 
 - Keep the autonomous spend envelope explicit instead of implied.
+- Keep autonomous spend at `EUR 0` until a concrete use case, another stable review, and bounded rollback notes justify reopening it.
 - Keep external writes blocked until another stable weekly review supports a narrower connector approval.
 
 ### Observability
@@ -84,7 +85,7 @@ Build the first usable AI-first operating system for the company.
 
 ## Open Decisions
 
-- See `03 Notes/Open Decisions.md` for the remaining spend-envelope decision
+- No blocking open decisions in the current Stage 2 foundation slice.
 
 ## Roadmap
 

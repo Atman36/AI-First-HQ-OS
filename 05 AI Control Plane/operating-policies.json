@@ -50,7 +50,7 @@
     "human_only_actions": [
       "any legal or contractual commitment",
       "any public statement or publication on behalf of the company",
-      "any unbudgeted spend or money movement",
+      "any spend or money movement",
       "any destructive delete of tracked source-of-truth files",
       "any production deployment affecting customers",
       "any grant of new external system write access"
@@ -64,6 +64,18 @@
     ],
     "default_spend_without_budget_eur": 0,
     "max_external_send_without_review": 0
+  },
+  "autonomous_spend_envelope": {
+    "status": "closed_for_stage_2_foundation",
+    "currency": "EUR",
+    "max_preapproved_commitment": 0,
+    "rule": "No agent may commit company spend or move money without fresh CEO approval.",
+    "reason": "The first telemetry-backed weekly review showed no need for non-zero autonomous spend, and no connector-specific rollback or audit path is ready yet.",
+    "revisit_when": [
+      "another stable weekly review confirms telemetry coverage on live work",
+      "a specific connector or operating use case needs spend to unlock value",
+      "finance and CEO approve a bounded amount with rollback notes"
+    ]
   },
   "stage_2_write_boundaries": {
     "internal_allowed_without_extra_review": [

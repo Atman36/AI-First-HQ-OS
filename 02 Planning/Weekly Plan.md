@@ -48,19 +48,20 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - First real governed loop completed on a live founder request through AI Operations Lead -> Governor -> Delivery -> Documentation
   - First weekly metric review generated from live telemetry instead of chat reconstruction
   - Stage 2 write boundaries narrowed to HQ-internal writes only; customer-facing sends and deploys remain human-reviewed
+  - Autonomous spend envelope closed at `EUR 0` for the Stage 2 foundation
 - Still active work:
-  - Decide whether the autonomous spend envelope should remain at EUR 0 or become a bounded approved amount
   - Keep telemetry coverage reliable on non-done active tasks as the next founder requests enter the queue
   - Repeat the governed loop on the next founder request without bypassing the queue
+  - Keep external connector expansion blocked until another stable weekly review and a connector-specific policy slice exist
 - Blockers:
-  - The spend envelope is still provisional
-  - External connector policy is intentionally blocked pending another stable weekly review
+  - No blocking open decision remains inside Stage 2 foundation
+  - External connector policy is intentionally blocked pending another stable weekly review and a concrete use case
 - Money signal:
-  - The current gain is founder leverage and lower coordination cost; no non-zero autonomous spend is justified yet
+  - The current gain is founder leverage and lower coordination cost; autonomous spend remains fixed at `EUR 0`
 - Next 3 priorities:
-  1. Close the remaining spend-envelope decision with CEO and Finance.
-  2. Keep telemetry coverage explicit on each non-done active task as new work enters the queue.
-  3. Run the next founder request through the same governed loop.
+  1. Keep telemetry coverage explicit on each non-done active task as new work enters the queue.
+  2. Run the next founder request through the same governed loop.
+  3. Revisit connector policy only when there is one narrow use case with rollback notes.
 
 ### Threshold Interpretation From Live Telemetry
 

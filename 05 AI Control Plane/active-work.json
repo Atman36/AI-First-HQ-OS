@@ -146,7 +146,8 @@
     {
       "id": "calibrate-approval-thresholds",
       "title": "Lock the remaining autonomous spend envelope after the first live weekly review",
-      "column": "review",
+      "column": "done",
+      "completed_at": "2026-04-15",
       "owner": "governor",
       "project": "HQ Bootstrap",
       "support": [
@@ -154,7 +155,7 @@
         "finance",
         "ai_operations_lead"
       ],
-      "next_step": "Decide whether to keep the autonomous spend envelope at EUR 0 or approve one bounded exception after another governed loop with finance signal.",
+      "next_step": "Re-open only if a specific connector or operating need justifies non-zero spend and another stable telemetry-backed review supports it.",
       "done_when": "The spend envelope is explicitly approved or intentionally held at zero in policies and Notes.",
       "primary_update_file": "03 Notes/Open Decisions.md",
       "align_files": [
@@ -179,7 +180,7 @@
         "finance",
         "growth"
       ],
-      "next_step": "Keep external write surfaces blocked until the spend envelope decision is explicit and at least one more weekly review shows stable telemetry coverage.",
+      "next_step": "Keep external write surfaces blocked while the autonomous spend envelope stays at EUR 0, then revisit one narrow connector only after another stable weekly review and connector-specific rollback notes.",
       "done_when": "At least one external connector is enabled with audit logging, review, and rollback notes.",
       "primary_update_file": "stack.md",
       "align_files": [
