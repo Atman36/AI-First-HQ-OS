@@ -1,17 +1,18 @@
 # Planning
 
-Shared planning lives here so the founder and future agents can work from one visible queue.
+Shared planning lives here so the founder and AI agents can work from one visible queue.
 
 ## Files
 
-- [[Task Board]] - single live execution board in Obsidian kanban format
-- [[Weekly Plan]] - this week's commitments and checkpoints
-- [[Backlog]] - important work that is not active yet
+- [[../05 AI Control Plane/README|AI Control Plane]] - machine-readable queue and authority model
+- [[Task Board]] - rendered human-readable board
+- [[Weekly Plan]] - this week's commitments and review
+- [[Backlog]] - work worth doing later
 
 ## Planning Rules
 
-- Keep `Task Board` short, owned, and operational.
-- Give each active card one owner and one primary update file.
-- Use `Weekly Plan` for focus and checkpoints, not as a duplicate board.
-- Move ideas that are not active into `Backlog`. Backlog is not a live queue.
-- Reflect any major priority change back into `now.md` and `projects.md`.
+- Update `05 AI Control Plane/active-work.json` first for delegated task-state changes.
+- Render `Task Board.md` from the control plane; do not maintain it as an independent board.
+- Use `Weekly Plan` for focus, review, and carry-forward decisions.
+- Move inactive work into `Backlog`; backlog is not a live queue.
+- Reflect major priority changes back into `now.md` and `projects.md`.

@@ -4,39 +4,45 @@
 
 ### Morning
 
-- CEO reviews priorities
-- COO converts priorities into work items
-- Assistant prepares the agenda and captures inbound requests
-- Finance flags cash or risk constraints
+- Assistant captures inbound requests and clarifies missing context.
+- COO updates `05 AI Control Plane/active-work.json` for new or changed delegated work.
+- Governor checks high-risk or policy-sensitive items before execution starts.
+- CEO reviews only exceptions, strategic choices, or blocked high-risk work.
 
 ### During The Day
 
-- Work is routed to the best-fit role
-- Delivery executes bounded build work when the task is more than documentation
-- Documentation records durable outputs
-- Growth and Research support revenue and decision quality
+- AI roles execute low- and medium-risk work inside the control plane.
+- Delivery, Research, Finance, Growth, and Assistant do bounded specialist work.
+- Documentation syncs accepted outputs back into shared truth.
+- Governor watches for policy gaps, missing approvals, rollback triggers, and repeated rework.
 
 ### End Of Day
 
-- COO summarizes execution status
-- The functional owner hands off completed outputs
-- Finance summarizes money impact
-- Documentation updates shared files
-- CEO decides the next priority
+- COO reviews blocked tasks, queue health, and cycle time.
+- Documentation re-renders `Task Board.md` if task state changed.
+- Governor reviews escalations, override events, and telemetry gaps.
+- CEO reviews only the exceptions that still need a human decision.
 
 ## Weekly
 
 ### Lean Weekly Review
 
 - Owner: COO
-- Support: Documentation and Finance, with CEO approving the next priorities
-- Inputs: `02 Planning/Task Board.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, and active project pages
-- Output: one short review with shipped work, still active work, blockers, money signal, and next 3 priorities
-- Rule: if this lean format is enough, do not create a second task board or extra reporting layer
+- Control and safety support: Governor
+- Business support: Finance
+- Shared truth support: Documentation
+- Approver of next priorities: CEO
+- Inputs: `05 AI Control Plane/`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `03 Notes/Open Decisions.md`, active project pages, and `.hq/telemetry/`
+- Output: one weekly review with shipped work, still active work, blockers, money signal, and the five primary AI-first metrics
 
 ### Review Checks
 
-- Review active projects
-- Review revenue opportunities or cost signals
-- Review blockers and operating debt
-- Remove roles, files, or routines that do not improve execution
+- Autonomous completion rate
+- Human escalation rate
+- Decision latency
+- Documentation lag
+- Rework or rollback rate
+
+### Guardrail Rule
+
+Do not add a second reporting layer. Weekly review should interpret the control plane and telemetry, not duplicate them.

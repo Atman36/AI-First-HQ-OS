@@ -1,6 +1,6 @@
 # HQ Home
 
-This is the main entry point for the HQ vault in Obsidian.
+This is the main entry point for the HQ vault.
 
 ## Start Here
 
@@ -9,21 +9,24 @@ This is the main entry point for the HQ vault in Obsidian.
 - [[routines]]
 - [[stack]]
 - [[agents/README|Agents]]
+- [[05 AI Control Plane/README|AI Control Plane]]
 
 ## Quick Routing
 
 - Need current focus or weekly direction: [[now]]
 - Need project owner or status: [[projects]]
-- Need the live queue: [[02 Planning/Task Board|Task Board]]
-- Need the weekly summary or closeout: [[02 Planning/Weekly Plan|Weekly Plan]]
+- Need the machine-readable queue: [[05 AI Control Plane/README|AI Control Plane]]
+- Need the human-readable board: [[02 Planning/Task Board|Task Board]]
+- Need the weekly review: [[02 Planning/Weekly Plan|Weekly Plan]]
 - Need the durable why: [[03 Notes/Decisions|Decisions]]
+- Need unresolved strategic choices: [[03 Notes/Open Decisions|Open Decisions]]
 - Need project-local context: [[04 Projects/README|Projects]]
 
 ## Work Areas
 
 - [[01 Operating System/README|Operating System]]
 - [[01 Operating System/How To Operate HQ|How To Operate HQ]]
-- [[01 Operating System/Agent Routing|Agent Routing]]
+- [[01 Operating System/AI-First Operating Model|AI-First Operating Model]]
 - [[02 Planning/README|Planning]]
 - [[03 Notes/README|Notes]]
 - [[04 Projects/README|Projects]]
@@ -31,24 +34,7 @@ This is the main entry point for the HQ vault in Obsidian.
 
 ## Current Focus
 
-- Keep the root files as the canonical company layer.
-- Use `Task Board` as the live shared task board.
-- Use Notes for fast capture and durable decisions.
-- Keep private agent memory outside this repository.
-
-## Role Model
-
-Each role works through the same four objects:
-
-- task card
-- rules
-- skills
-- one shared queue
-
-The queue is shared in `Task Board`, while rules live in `AGENTS.md` and `agents/*/AGENTS.md`.
-
-## Private CEO Memory
-
-Private CEO continuity lives outside this repository.
-
-Do not hardcode private local paths into shared HQ files.
+- Strategic truth stays in the root and Notes layer.
+- The machine-readable control plane governs delegated work.
+- `Task Board.md` is the readable mirror for humans.
+- Private agent runtime stays under `.hq/`.

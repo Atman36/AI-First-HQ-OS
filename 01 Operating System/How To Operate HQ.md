@@ -1,127 +1,62 @@
 # How To Operate HQ
 
-This is the practical order for filling shared HQ files during normal work.
+This is the practical order for updating HQ in the AI-first version.
 
 ## Core Principle
 
-- Write the smallest durable update in the highest-value source-of-truth file first.
-- Use planning and notes as working surfaces, not as replacements for root state.
-- Keep private continuity outside this repository.
-- If private continuity must stay repo-local for a task, keep it only under `.hq/`.
-- Treat `reports/` and ignored research drafts as reference material until their conclusions are summarized back into a source-of-truth file.
+- Write the smallest durable update in the highest-value source first.
+- Update machine-readable task state before updating human-readable mirrors.
+- Keep private runtime outside tracked company truth.
+- Treat `reports/` and research drafts as support input until their conclusions are summarized into tracked truth.
 
 ## Private Runtime vs Shared State
 
-- Shared HQ files explain company state, decisions, and accepted execution.
-- `.hq/` is private runtime only: handoffs, probe outputs, logs, journals, and local continuation state.
+- Shared HQ files explain company state, decisions, accepted execution, and the control plane.
+- `.hq/` is private runtime only: handoffs, probe outputs, telemetry, reflections, evals, releases, and local continuation state.
+- `.hq/reflections/` stores raw structured reflections after work; `.hq/improvements/` stores weekly synthesis and manual candidate improvements.
 - Do not use `.hq/` as a second project registry or durable company memory layer.
 - Do not use shared Markdown files as private continuation logs when `.hq/handoffs/` is the right home.
-
-## File Contract
-
-- `now.md` = current company focus and operating objective.
-- `projects.md` = active project registry, status, owner, and next step.
-- `02 Planning/Task Board.md` = single live execution board for active work.
-- `02 Planning/Weekly Plan.md` = weekly commitments and weekly summary, not a second board.
-- `03 Notes/Decisions.md` = durable why after decisions are accepted.
-- `04 Projects/...` = local detail, risks, dependencies, support inputs, and implementation context. It should not mirror the full weekly summary.
-
-Every active task card on `Task Board` should have:
-
-- `Owner`
-- `Project`
-- `Next step`
-- `Done when`
-- `Primary update file`
-- `Accepts result`
-
-Optional fields when needed:
-
-- `Support`
-- `Then align`
 
 ## Fill Order
 
 ### 1. Set direction
 
-Update these files first when priorities or company focus change:
+1. `now.md`
+2. `projects.md`
+3. `routines.md` if the operating cadence changed
+4. `stack.md` if tooling or control boundaries changed
+5. `03 Notes/Decisions.md` and `03 Notes/Open Decisions.md` for durable why and unresolved choices
 
-1. [[now]]
-2. [[projects]]
-3. [[routines]] if the operating rhythm changed
-4. [[stack]] if tool boundaries or orchestration changed
+### 2. Update the control plane
 
-### 2. Turn direction into executable work
+1. `05 AI Control Plane/active-work.json`
+2. `05 AI Control Plane/operating-policies.json` when authority or risk policy changes
+3. `05 AI Control Plane/workflow-registry.json` when workflow states or handoffs change
+4. `05 AI Control Plane/metrics-registry.json` when review metrics change
 
-Once the priority is clear, fill the shared execution layer:
+### 3. Render the human mirror
 
-1. [[02 Planning/Weekly Plan|Weekly Plan]] for the current week's commitments and summary
-2. [[02 Planning/Task Board|Task Board]] for live task movement and ownership
-3. [[04 Projects/README|Project page]] for project-specific detail when the task belongs to an active project
+- Run `python3 scripts/hq_control_plane.py sync`
+- This validates the control plane and re-renders `02 Planning/Task Board.md`
 
-### 3. Capture incoming work and decisions
+### 4. Execute the work
 
-Use notes only for the right kind of information:
+- Route through COO
+- Check through Governor when policy or risk requires it
+- Let the specialist owner execute
+- Let Documentation sync accepted results back into shared truth
 
-1. [[03 Notes/Inbox|Inbox]] for raw incoming requests, loose ideas, and unclear asks
-2. [[03 Notes/Decisions|Decisions]] for durable decisions after they are made
+### 5. Write runtime artifacts
 
-After capture:
+- `.hq/handoffs/` for continuity
+- `.hq/state/` for capability probes
+- `.hq/telemetry/` for events
+- `.hq/reflections/` for lessons
+- `.hq/evals/` and `.hq/releases/` for controlled rollout work
 
-- Move actionable work into `Task Board` or a project page.
-- Reflect strategic outcomes back into `now.md` or `projects.md`.
+## Private Runtime Minimum Working Set
 
-## Event-Based Workflow
-
-### New task arrives
-
-1. Put it in `03 Notes/Inbox.md` if it is still vague.
-2. CEO decides whether it matters now.
-3. COO converts it into a task on `02 Planning/Task Board.md` with owner, project, next step, done when, primary update file, and accepting role.
-4. If the execution depends on a specific CLI or runner, confirm it first with `python3 scripts/hq_runtime.py probe ...`.
-5. If the work will pause or move between sessions, keep the private handoff in `.hq/handoffs/<task>/`.
-6. Add project detail in `04 Projects/...` if the work is large enough to need a dedicated page.
-7. Documentation updates the affected shared files after the work lands.
-
-### New project starts
-
-1. Add or update the project in `projects.md`.
-2. Create the detailed page in `04 Projects/`.
-3. Add the weekly commitment to `Weekly Plan` and the active work to `Task Board`.
-4. Update `now.md` if the project changes company focus.
-
-### Decision is made
-
-1. Record the decision in `03 Notes/Decisions.md`.
-2. Update the affected source-of-truth file:
-   `now.md`, `projects.md`, `routines.md`, or `stack.md`.
-3. Update the project page if the decision is project-specific.
-
-### End of day
-
-1. COO updates task status.
-2. Documentation aligns the durable files that changed.
-3. CEO confirms the next priority in `now.md` if it changed.
-
-### End of week
-
-1. Complete `Weekly Plan`.
-2. Clean `Task Board`.
-3. Log durable decisions.
-4. Roll project state back into `projects.md` and keep the project page local.
-
-## Minimal Working Set
-
-If you want the smallest possible shared workflow, keep these current:
-
-1. [[now]]
-2. [[projects]]
-3. [[02 Planning/Task Board|Task Board]]
-4. [[03 Notes/Decisions|Decisions]]
-
-Everything else should support these files, not compete with them.
-
-For private runtime continuity, the minimum working set is:
-
-1. `.hq/handoffs/<task>/LATEST.md` when a task is handed off or paused
+1. `.hq/handoffs/<task>/LATEST.md` when work is handed off or paused
 2. `.hq/state/capabilities.json` when routing depends on a specific local tool
+3. `.hq/reflections/YYYY-MM/YYYY-MM-DD.jsonl` when agents log task-level reflections
+4. `.hq/improvements/LATEST.md` when weekly review produces candidate improvements for manual review

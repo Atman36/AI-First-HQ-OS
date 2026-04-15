@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "id",
+    "created_at",
+    "event_type",
+    "agent",
+    "task_id",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "risk_tier": {
+      "type": "string"
+    },
+    "autonomy_tier": {
+      "type": "string"
+    },
+    "touched_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

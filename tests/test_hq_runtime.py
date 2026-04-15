@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT_PATH = Path("/Users/Apple/Documents/HQ/scripts/hq_runtime.py")
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_runtime.py"
 
 
 def load_runtime_module(temp_root: Path):

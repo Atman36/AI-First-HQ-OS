@@ -2,92 +2,54 @@
 
 ## 2026-04-14
 
-### Shared vs Private Memory Split
+### Lean HQ Structure
 
-- Decision: keep shared company state in the HQ repository and keep CEO continuity outside the repository.
-- Reason: shared files need to stay clean and team-visible, while session memory and private operating context should remain separate.
+- Decision: keep shared company state in the HQ repository and keep private runtime under `.hq/`.
+- Reason: the company needs one inspectable shared truth and one private runtime, not mixed memory.
 
-### Obsidian Layer
+### Single Primary Update File
 
-- Decision: keep the existing root source-of-truth files untouched and add a navigation layer with numbered folders.
-- Reason: this preserves current HQ rules while making the vault easier to browse and extend.
-
-### First 7-Day Operating Objective
-
-- Decision: use the HQ audit follow-through as the first 7-day operating objective for 2026-04-14 to 2026-04-21.
-- Reason: it turns the audit into real operating work and tests whether the file contract survives one bounded live cycle.
-
-### Weekly Review Format
-
-- Decision: keep the weekly review lean with shipped work, still active work, blockers, money signal, and next 3 priorities.
-- Reason: HQ needs one repeatable close-the-week ritual, but it should not become a second task board or a reporting burden.
-
-### Root Clutter Handling
-
-- Decision: move archived drafts and long-form notes out of the root into a local `99 Archive/` folder that is ignored by git.
-- Reason: the root should stay reserved for active source-of-truth files and navigation, not for old drafts or large reference notes.
-
-### First Bottleneck Check
-
-- Decision: do not treat COO or Documentation as a confirmed bottleneck yet; keep it as a live watchpoint through the rest of the 2026-04-14 to 2026-04-21 cycle.
-- Reason: the current cycle shows real setup progress, but only one part of the workflow looks fragile so far: Documentation may become overloaded at cycle close if several shared files must be updated manually in one pass.
-
-### Project Page Scope
-
-- Decision: keep `projects.md` as the project registry and keep `04 Projects/HQ Bootstrap.md` limited to project-local context, dependencies, support-role inputs, and implementation detail.
-- Reason: this preserves one clear registry at the root while preventing the project page from turning into a second copy of company-level status or weekly commitments.
-
-### Portable Role Prompts
-
-- Decision: use repo-relative file paths in `agents/*/AGENTS.md`.
-- Reason: the HQ repo is shared across Codex and future runners, so prompts must not depend on one local machine path.
-
-### Primary Update File Rule
-
-- Decision: each active task card should name one primary update file; other shared files align only after the result is accepted.
-- Reason: live cards already touched several files, so the contract needed one explicit first-write rule to reduce drift and closeout load.
+- Decision: every active task must name one primary update file.
+- Reason: this reduces drift and makes delegated work easier to accept and document.
 
 ### Delivery Role
 
-- Decision: add a Delivery role for bounded implementation and project execution work that is more than documentation.
-- Reason: the company had routing, support, and record-keeping roles, but no default execution owner between COO and Documentation.
+- Decision: keep a dedicated Delivery role for bounded implementation work.
+- Reason: the system needs a default execution owner between routing and documentation.
 
-### Audit Review File Status
+## 2026-04-15
 
-- Decision: treat `01 Operating System/HQ Audit Roadmap.md` as a dated review snapshot, not a live tracker.
-- Reason: live state already belongs in `Task Board.md`, `Weekly Plan.md`, `Decisions.md`, and the active project page.
+### HQ Must Become AI-First, Not AI-Themed
 
-### External System Imports
+- Decision: treat HQ as the future operating system of the company, not as a note vault with AI around it.
+- Reason: the current structure is good for clarity but not yet strong enough for delegated authority, AI routing, or scalable operations.
 
-- Decision: import only the minimal founder operating defaults and tool-context from the private vault into HQ, and keep the richer personal profile outside this repository.
-- Reason: agents need enough context to communicate and suggest tools well, but the shared company repo should not become a private memory store.
+### Install A Machine-Readable Control Plane
 
-### Agent Surface Check
+- Decision: add `05 AI Control Plane/` as the tracked machine-readable layer for active work, authority, workflows, policies, and metrics.
+- Reason: AI cannot operate reliably from free-form Markdown alone.
 
-- Decision: when a workflow depends on a specific CLI or agent surface, confirm that the tool is actually available before routing work through it.
-- Reason: the current HQ system is still manual-first, so capability checks reduce routing mistakes without pulling in a heavier orchestration layer too early.
+### Machine-Readable Queue Becomes Primary For Delegated Work
 
-### Private Runtime Root
+- Decision: use `05 AI Control Plane/active-work.json` as the primary queue for delegated work and render `02 Planning/Task Board.md` from it.
+- Reason: the old board was readable but not executable.
 
-- Decision: use the git-ignored `.hq/` path as the single repo-local home for handoffs, runtime state, logs, journals, and other private operational artifacts.
-- Reason: HQ needs one inspectable private runtime layer for session continuity, but shared source-of-truth files must stay public-safe and clean.
+### Add Governor As A Standing Role
 
-### Task-Scoped Handoff Contract
+- Decision: add Governor as the role responsible for policy enforcement, approval gates, kill switches, and rollback triggers.
+- Reason: without a control role, the system would have routing but no governed autonomy.
 
-- Decision: keep handoff files short, task-scoped, and private under `.hq/handoffs/<task>/`, with only done, next, continue-from, important files, and blockers or risks.
-- Reason: this preserves enough continuity between sessions without turning HQ into an unbounded memory store or mixing shared company state with agent runtime notes.
+### Introduce Autonomy And Risk Tiers
 
-### First Cycle Review Guardrails
+- Decision: every delegated task must carry both a risk tier and an autonomy tier.
+- Reason: AI-first execution needs explicit boundaries, not implied trust.
 
-- Decision: keep the HQ architecture in its current lean shape until the first live cycle closes on 2026-04-21.
-- Reason: the system already has a working entry point, inbox, handoff template, archive rule, Delivery role, and cheap capability probe, so the next step is to validate them in live use instead of adding more layers early.
+### Humans Stay In Strategy And Risk-Sensitive Control
 
-### First Cycle Review Checks
+- Decision: keep CEO and human reviewers in strategy, budget, legal/public commitments, destructive actions, hiring, and overrides.
+- Reason: the project is early; full autonomy here would be reckless and unnecessary.
 
-- Decision: evaluate the 2026-04-14 to 2026-04-21 cycle against only three checks at closeout: whether Documentation became a real bottleneck, whether Delivery proved useful on at least one bounded execution task, and whether one live board plus one primary update file held without drift.
-- Reason: these are the narrowest questions that can confirm whether the current operating model is good enough or where it actually breaks.
+### Add Telemetry Before External Connectors
 
-### Conditional Follow-Ons Only
-
-- Decision: defer `validate`, `sync`, `metrics`, `dashboard`, dependency tracking, time tracking, extended git automation, and heavier probe logic until the cycle exposes a concrete operating failure.
-- Reason: adding those systems before a confirmed failure would optimize for anticipated complexity instead of observed friction.
+- Decision: do not connect external write surfaces until telemetry, approval policy, and rollback rules exist.
+- Reason: external autonomy without logging and intervention paths would create hidden operational risk.

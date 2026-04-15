@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "version",
+    "updated_at",
+    "operating_mode",
+    "objective",
+    "tasks"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "operating_mode": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "object"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "column",
+          "owner",
+          "project",
+          "next_step",
+          "done_when",
+          "primary_update_file",
+          "accepts_result",
+          "risk_tier",
+          "autonomy_tier",
+          "workflow"
+        ]
+      }
+    }
+  }
+}

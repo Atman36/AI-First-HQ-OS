@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-15",
+  "primary_metrics": [
+    {
+      "id": "autonomous_completion_rate",
+      "definition": "Share of eligible low- and medium-risk tasks completed without human rework after acceptance.",
+      "source": [
+        ".hq/telemetry/",
+        "05 AI Control Plane/active-work.json"
+      ],
+      "review_cadence": "weekly"
+    },
+    {
+      "id": "human_escalation_rate",
+      "definition": "Share of tasks that required CEO or human reviewer intervention beyond the planned accepting role.",
+      "source": [
+        ".hq/telemetry/"
+      ],
+      "review_cadence": "weekly"
+    },
+    {
+      "id": "decision_latency_hours",
+      "definition": "Median hours from intake to owner+policy-ready task state.",
+      "source": [
+        ".hq/telemetry/"
+      ],
+      "review_cadence": "weekly"
+    },
+    {
+      "id": "documentation_lag_hours",
+      "definition": "Median hours from acceptance to shared-truth sync.",
+      "source": [
+        ".hq/telemetry/"
+      ],
+      "review_cadence": "weekly"
+    },
+    {
+      "id": "rework_or_rollback_rate",
+      "definition": "Share of completed tasks that needed rollback, re-open, or material rework.",
+      "source": [
+        ".hq/telemetry/",
+        ".hq/releases/"
+      ],
+      "review_cadence": "weekly"
+    }
+  ],
+  "secondary_metrics": [
+    {
+      "id": "founder_hours_recovered",
+      "definition": "Estimated founder hours freed by AI-handled work compared with the previous manual loop.",
+      "source": [
+        ".hq/telemetry/"
+      ],
+      "review_cadence": "weekly"
+    },
+    {
+      "id": "ai_handled_task_share",
+      "definition": "Share of total active tasks where the specialist owner is an AI role rather than a human.",
+      "source": [
+        "05 AI Control Plane/active-work.json"
+      ],
+      "review_cadence": "weekly"
+    }
+  ]
+}

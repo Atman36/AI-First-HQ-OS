@@ -2,11 +2,15 @@
 
 ## Task
 
+- ID:
 - Title:
 - Objective:
 - Owner:
 - Support:
-- Status:
+- Column:
+- Risk tier:
+- Autonomy tier:
+- Workflow:
 - Due:
 
 ## Context
@@ -30,4 +34,4 @@
 - Primary update file:
 - Then align:
 - Accepts result:
-- Next owner:
+- Policy notes:

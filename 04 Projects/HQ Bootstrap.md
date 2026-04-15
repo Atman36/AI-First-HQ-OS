@@ -6,7 +6,7 @@
 
 ## Goal
 
-Build the first usable operating system for the company.
+Build the first usable AI-first operating system for the company.
 
 ## Owner
 
@@ -15,6 +15,7 @@ Build the first usable operating system for the company.
 ## Supporting Roles
 
 - COO
+- Governor
 - Delivery
 - Documentation
 - Assistant
@@ -24,55 +25,59 @@ Build the first usable operating system for the company.
 
 ## Outcomes
 
-- One visible company workspace
-- One visible planning system
-- Clear role boundaries
-- Shared state separated from private memory
+- One strategic truth layer for humans
+- One machine-readable control plane for delegated work
+- One governed operating loop with explicit authority boundaries
+- One private runtime for telemetry, reflections, evals, and releases
 
 ## Current Stage
 
-- Initial structure created
-- First audit-driven operating cycle is now active for 2026-04-14 to 2026-04-21
-- Delivery role and repo-relative prompts are now part of the operating model
+- Stage 1: machine-readable control plane installed
+- Governor role added
+- Board rendering and telemetry scaffolding added
+- First governed operating loop still needs live proof
 
-## Current Cycle Local Context
+## Current Workstreams
 
-- Weekly summary lives in `02 Planning/Weekly Plan.md`.
-- Task movement lives in `02 Planning/Task Board.md`.
-- This page should hold only project-local context for the current cycle.
-- Local watchpoint: Documentation closeout may still queue if one accepted result requires too many shared file updates.
-- Local proof still needed: Delivery should carry at least one bounded execution task before the cycle closes.
-- Cycle close should capture only three checks: Documentation bottleneck, Delivery usefulness, and whether the primary update file rule held without drift.
+### Control Plane
+
+- Keep `05 AI Control Plane/` current and valid.
+- Use the queue as the first write for delegated work.
+
+### Governance
+
+- Calibrate approval thresholds.
+- Keep external writes blocked until policy and rollback are explicit.
+
+### Observability
+
+- Log routing, execution, acceptance, escalation, and sync events.
+- Use weekly metrics to decide what to automate next.
+
+### Adoption
+
+- Route one real founder task through the new loop.
+- Remove bypasses that reintroduce chat-only coordination.
 
 ## Local Risks
 
-- `Task Board.md` drifts from the real task state
-- Documentation closeout becomes heavy because too many shared files need hand-syncing at once
-- This page starts mirroring `Weekly Plan.md` instead of holding project-local context
-- Delivery stays defined on paper but unused in real execution
-- The team reacts to watchpoints by adding new automation layers before one concrete failure is visible
+- Decorative AI-first language without real delegated authority
+- Duplicate state between Markdown and JSON
+- Missing telemetry on real work
+- Governor becoming theoretical instead of operational
+- Premature expansion into external connectors
 
 ## Dependencies
 
-- CEO keeps the operating objective stable for the full week
-- COO keeps routing and completion criteria explicit
-- Delivery owns bounded implementation work when the task is more than documentation
-- Documentation lands durable updates in the correct shared files
+- CEO keeps authority boundaries explicit
+- COO keeps task state current in the control plane
+- Governor blocks unsafe autonomy instead of only commenting on it
+- Documentation syncs accepted outcomes back into shared truth
 
-## Support Inputs
+## Open Decisions
 
-### Delivery
+- See `03 Notes/Open Decisions.md` for the blocking choices on external writes, budget envelope, deployment authority, and memory retention
 
-- Use this role for automation specs, implementation plans, and other bounded project execution work that should not collapse back into COO or Documentation.
+## Roadmap
 
-### Finance
-
-- Record any cost avoided, spend risk reduced, or money signal that appears during the cycle.
-
-### Growth
-
-- Note whether the current HQ structure makes commercial follow-through faster or clearer.
-
-### Research
-
-- Add evidence only when it changes the operating design or decision quality.
+- See `04 Projects/HQ AI-First Roadmap.md` for the 30/90/180-day operating roadmap after the stage-1 baseline

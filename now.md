@@ -2,18 +2,25 @@
 
 ## Current Focus
 
-- Run the first real 7-day HQ operating cycle from 2026-04-14 to 2026-04-21
-- Keep one live source of truth per layer: root, planning, notes, and project page
-- Tighten the system only where the first live cycle exposes real friction
+- Move HQ from a documentation-first operating system to an AI-first control plane.
+- Use `05 AI Control Plane/active-work.json` as the machine-readable queue for delegated work.
+- Prove one full governed operating loop before adding external connectors or more automation.
+
+## This Month
+
+- Run Stage 1 from 2026-04-15 to 2026-05-15.
+- Keep humans in strategy, budget, public/legal, and override roles.
+- Keep AI as the default operator for low- and medium-risk internal work.
 
 ## This Week
 
-- Use the HQ audit follow-through as the first operating objective
-- Route the work through CEO -> COO -> role owner -> Documentation without file drift
-- Finish the week with one lean weekly review and the next 3 priorities
+- Validate the new control plane on one real founder request.
+- Start logging telemetry and use it in the weekly review.
+- Resolve the first blocking open decisions on approval thresholds and external writes.
 
 ## Success Criteria
 
-- One 7-day operating objective is visible in `now.md`, `Weekly Plan.md`, `Task Board.md`, and the active project page
-- At least one operating task moves from decision to execution to documentation without ambiguity about owner or primary update file
-- The weekly review closes the cycle with shipped work, blockers, money signal, and next 3 priorities
+- One real task moves through COO -> Governor -> specialist -> Documentation without bypassing the control plane.
+- `Task Board.md` is rendered from `active-work.json`, not manually drifted.
+- Telemetry captures at least routing, execution, acceptance, and sync events for the first governed loop.
+- Weekly review reports autonomy, escalation, latency, and documentation freshness metrics.

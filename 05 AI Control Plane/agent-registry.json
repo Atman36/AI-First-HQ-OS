@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-15",
+  "roles": [
+    {
+      "id": "ceo",
+      "display_name": "CEO",
+      "role_type": "human",
+      "default_autonomy_tier": "A4",
+      "mission": "Set direction and approve high-risk changes.",
+      "owns": [
+        "strategy",
+        "budget",
+        "legal",
+        "public_commitments",
+        "hiring",
+        "policy_override"
+      ],
+      "escalates_to": null
+    },
+    {
+      "id": "coo",
+      "display_name": "COO",
+      "role_type": "ai",
+      "default_autonomy_tier": "A2",
+      "mission": "Maintain the delegated-work queue and route execution.",
+      "owns": [
+        "intake",
+        "routing",
+        "sequencing",
+        "queue_state"
+      ],
+      "escalates_to": "governor"
+    },
+    {
+      "id": "governor",
+      "display_name": "Governor",
+      "role_type": "ai",
+      "default_autonomy_tier": "A3",
+      "mission": "Enforce policy, approvals, and kill switches.",
+      "owns": [
+        "policy_enforcement",
+        "approval_gates",
+        "rollback_triggers",
+        "risk_review"
+      ],
+      "escalates_to": "ceo"
+    },
+    {
+      "id": "delivery",
+      "display_name": "Delivery",
+      "role_type": "ai",
+      "default_autonomy_tier": "A2",
+      "mission": "Execute bounded implementation work.",
+      "owns": [
+        "implementation",
+        "execution",
+        "artifacts"
+      ],
+      "escalates_to": "coo"
+    },
+    {
+      "id": "documentation",
+      "display_name": "Documentation",
+      "role_type": "ai",
+      "default_autonomy_tier": "A2",
+      "mission": "Sync accepted work into shared truth.",
+      "owns": [
+        "shared_truth_sync",
+        "board_rendering",
+        "decision_log_alignment"
+      ],
+      "escalates_to": "coo"
+    },
+    {
+      "id": "assistant",
+      "display_name": "Assistant",
+      "role_type": "ai",
+      "default_autonomy_tier": "A1",
+      "mission": "Clarify inbound requests and shape them into task contracts.",
+      "owns": [
+        "intake_cleanup",
+        "agenda_shaping",
+        "follow_ups"
+      ],
+      "escalates_to": "coo"
+    },
+    {
+      "id": "finance",
+      "display_name": "Finance",
+      "role_type": "ai",
+      "default_autonomy_tier": "A1",
+      "mission": "Expose money impact and approval thresholds.",
+      "owns": [
+        "budget_notes",
+        "cost_visibility",
+        "roi_estimates"
+      ],
+      "escalates_to": "ceo"
+    },
+    {
+      "id": "growth",
+      "display_name": "Growth",
+      "role_type": "ai",
+      "default_autonomy_tier": "A1",
+      "mission": "Translate the operating system into revenue leverage.",
+      "owns": [
+        "revenue_tests",
+        "offer_hypotheses",
+        "channel_logic"
+      ],
+      "escalates_to": "ceo"
+    },
+    {
+      "id": "research",
+      "display_name": "Research",
+      "role_type": "ai",
+      "default_autonomy_tier": "A1",
+      "mission": "Provide evidence and separate fact from hypothesis.",
+      "owns": [
+        "evidence",
+        "benchmarks",
+        "market_checks"
+      ],
+      "escalates_to": "ceo"
+    }
+  ]
+}

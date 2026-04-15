@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-15",
+  "operating_mode": "ai-first-stage-1",
+  "objective": {
+    "id": "hq-ai-first-stage-1",
+    "title": "Install an AI-first control plane and run the first governed operating loop",
+    "window": {
+      "start": "2026-04-15",
+      "target_end": "2026-05-15"
+    },
+    "success_criteria": [
+      "one real task runs through COO -> Governor -> specialist -> Documentation",
+      "the queue stays current in active-work.json",
+      "Task Board.md is rendered from the queue",
+      "telemetry captures routing, execution, acceptance, and sync events"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "install-control-plane",
+      "title": "Install the machine-readable AI control plane and generated board",
+      "column": "done",
+      "completed_at": "2026-04-15",
+      "owner": "delivery",
+      "project": "HQ Bootstrap",
+      "support": [
+        "coo",
+        "documentation"
+      ],
+      "next_step": "Use the control plane on live work instead of treating it as architecture-only.",
+      "done_when": "`05 AI Control Plane/` exists, validates, and `Task Board.md` is rendered from it.",
+      "primary_update_file": "05 AI Control Plane/active-work.json",
+      "align_files": [
+        "02 Planning/Task Board.md",
+        "AGENTS.md",
+        "01 Operating System/AI-First Operating Model.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "install-telemetry-and-validation",
+      "title": "Add telemetry, validation, and tests for the HQ runtime",
+      "column": "done",
+      "completed_at": "2026-04-15",
+      "owner": "delivery",
+      "project": "HQ Bootstrap",
+      "support": [
+        "governor",
+        "documentation"
+      ],
+      "next_step": "Start writing real events from live work into `.hq/telemetry/`.",
+      "done_when": "Validation passes, telemetry events can be written, and tests cover the new runtime surfaces.",
+      "primary_update_file": "scripts/hq_control_plane.py",
+      "align_files": [
+        "scripts/hq_telemetry.py",
+        "tests/test_hq_control_plane.py",
+        "tests/test_hq_telemetry.py"
+      ],
+      "accepts_result": "governor",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "run-first-governed-loop",
+      "title": "Run one real company task through COO -> Governor -> specialist -> Documentation",
+      "column": "this_week",
+      "owner": "coo",
+      "project": "HQ Bootstrap",
+      "support": [
+        "governor",
+        "delivery",
+        "documentation"
+      ],
+      "next_step": "Pick a real founder request and execute it through the new control plane without bypasses.",
+      "done_when": "One task completes with queue state, acceptance, board sync, and telemetry events.",
+      "primary_update_file": "05 AI Control Plane/active-work.json",
+      "align_files": [
+        "02 Planning/Weekly Plan.md",
+        "03 Notes/Decisions.md",
+        "04 Projects/HQ Bootstrap.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "calibrate-approval-thresholds",
+      "title": "Calibrate Governor approval thresholds and external action policy",
+      "column": "this_week",
+      "owner": "governor",
+      "project": "HQ Bootstrap",
+      "support": [
+        "ceo",
+        "finance"
+      ],
+      "next_step": "Resolve open decisions about budget, external sends, deploy authority, and connector write access.",
+      "done_when": "`03 Notes/Open Decisions.md` is reduced and `operating-policies.json` reflects approved thresholds.",
+      "primary_update_file": "03 Notes/Open Decisions.md",
+      "align_files": [
+        "05 AI Control Plane/operating-policies.json",
+        "03 Notes/Decisions.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "high",
+      "autonomy_tier": "A1",
+      "workflow": "decision-lifecycle"
+    },
+    {
+      "id": "connect-external-systems-under-governance",
+      "title": "Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors",
+      "column": "waiting",
+      "owner": "delivery",
+      "project": "HQ Bootstrap",
+      "support": [
+        "governor",
+        "assistant",
+        "finance",
+        "growth"
+      ],
+      "next_step": "Do not connect external write surfaces until thresholds, logging, and rollback rules are agreed.",
+      "done_when": "At least one external connector is enabled with audit logging, review, and rollback notes.",
+      "primary_update_file": "stack.md",
+      "align_files": [
+        "05 AI Control Plane/operating-policies.json",
+        "04 Projects/HQ Bootstrap.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "high",
+      "autonomy_tier": "A3",
+      "workflow": "intake-to-execution"
+    }
+  ]
+}

@@ -27,6 +27,9 @@ RUNTIME_DIRS = {
     "journals": PRIVATE_ROOT / "journals",
     "reflections": PRIVATE_ROOT / "reflections",
     "improvements": PRIVATE_ROOT / "improvements",
+    "telemetry": PRIVATE_ROOT / "telemetry",
+    "evals": PRIVATE_ROOT / "evals",
+    "releases": PRIVATE_ROOT / "releases",
 }
 CAPABILITIES_FILE = RUNTIME_DIRS["state"] / "capabilities.json"
 RESTRICTED_CHANGE_SCOPES = {"tool_access", "safety_policy", "production_logic", "access"}

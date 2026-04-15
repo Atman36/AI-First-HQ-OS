@@ -1,133 +1,61 @@
----
-kanban-plugin: board
----
-
 # Task Board
 
-## Inbox
+> Generated from `05 AI Control Plane/active-work.json`. Do not edit this board by hand; run `python3 scripts/hq_control_plane.py sync` after queue changes.
+
+- Updated At: 2026-04-15
+- Operating Mode: ai-first-stage-1
+- Objective: Install an AI-first control plane and run the first governed operating loop
+
+## Success Criteria
+- one real task runs through COO -> Governor -> specialist -> Documentation
+- the queue stays current in active-work.json
+- Task Board.md is rendered from the queue
+- telemetry captures routing, execution, acceptance, and sync events
 
 ## This Week
-
-- [ ] Close the first HQ operating cycle by 2026-04-21
-  - Owner: COO
+- [ ] Run one real company task through COO -> Governor -> specialist -> Documentation
+  - ID: run-first-governed-loop | Owner: coo | Accepts: ceo | Risk: medium | Autonomy: A2
   - Project: HQ Bootstrap
-  - Support: Documentation and Finance, with Growth or Research only if the cycle exposes a real need
-  - Next step: Hold the single active operating card steady, then close the cycle with one lean weekly review that answers the three review checks: Documentation bottleneck, Delivery usefulness, and primary-file drift.
-  - Done when: The cycle ends with a weekly review, next 3 priorities, and explicit answers to the three review checks.
-  - Primary update file: `02 Planning/Weekly Plan.md`
-  - Then align: `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
-  - Accepts result: CEO
-- [ ] Watch for real operating friction before changing roles, routines, or automation
-  - Owner: COO
+  - Support: governor, delivery, documentation
+  - Next: Pick a real founder request and execute it through the new control plane without bypasses.
+  - Done when: One task completes with queue state, acceptance, board sync, and telemetry events.
+  - Primary update file: `05 AI Control Plane/active-work.json`
+  - Align: `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
+- [ ] Calibrate Governor approval thresholds and external action policy
+  - ID: calibrate-approval-thresholds | Owner: governor | Accepts: ceo | Risk: high | Autonomy: A1
   - Project: HQ Bootstrap
-  - Support: Documentation
-  - Next step: Treat Documentation load, Delivery usefulness, and the cheap probe as watchpoints, not missing systems, unless the cycle shows a concrete failure.
-  - Done when: The cycle closes with explicit proof of either "no operating issue" or one concrete failure that justifies a targeted follow-on change.
-  - Primary update file: `03 Notes/Decisions.md`
-  - Then align: `04 Projects/HQ Bootstrap.md`
-  - Accepts result: CEO
-
-## Today
-
-- [x] 2026-04-14: Defined the 7-day operating objective for 2026-04-14 to 2026-04-21
-  - Owner: CEO
-  - Project: HQ Bootstrap
-  - Next step: Keep the objective aligned across root, planning, and project files.
-  - Done when: `now.md`, `projects.md`, and `02 Planning/Weekly Plan.md` all point to the same cycle.
-  - Primary update file: `now.md`
-  - Then align: `projects.md`, `02 Planning/Weekly Plan.md`
-  - Accepts result: CEO
-- [x] 2026-04-14: Locked the minimum weekly review format
-  - Owner: COO
-  - Project: HQ Bootstrap
-  - Support: Documentation, Finance
-  - Next step: Use the lean review first and expand only if real usage proves it insufficient.
-  - Done when: `routines.md` and `90 Templates/Weekly Review Template.md` describe the same lean review output.
-  - Primary update file: `routines.md`
-  - Then align: `90 Templates/Weekly Review Template.md`
-  - Accepts result: CEO
-- [x] 2026-04-14: Added project-level support-note sections for HQ Bootstrap
-  - Owner: Documentation
-  - Project: HQ Bootstrap
-  - Next step: Keep Finance, Growth, and Research inputs on the project page instead of in standalone root notes.
-  - Done when: The active project page has clear sections for risks, dependencies, and support-role inputs.
-  - Primary update file: `04 Projects/HQ Bootstrap.md`
-  - Accepts result: COO
-- [x] 2026-04-14: Moved root clutter into a local archive outside git tracking
-  - Owner: CEO
-  - Project: HQ Bootstrap
-  - Next step: Keep long-form drafts and archived notes in `99 Archive/`, not in the root.
-  - Done when: The two root draft files are renamed, moved into `99 Archive/`, and the archive is ignored by git.
-  - Primary update file: `.gitignore`
-  - Then align: `01 Operating System/HQ Audit Roadmap.md`
-  - Accepts result: CEO
-- [x] 2026-04-14: Filled the first lean weekly review snapshot inside the current cycle files
-  - Owner: Documentation
-  - Project: HQ Bootstrap
-  - Support: COO, Finance
-  - Next step: Keep the review embedded in the weekly summary until real usage proves a separate note is necessary.
-  - Done when: `Weekly Plan.md` carries the weekly summary while `Decisions.md` and `HQ Bootstrap.md` hold only durable why and project-local context without creating a new file.
-  - Primary update file: `02 Planning/Weekly Plan.md`
-  - Then align: `03 Notes/Decisions.md`, `04 Projects/HQ Bootstrap.md`
-  - Accepts result: COO
-- [x] 2026-04-14: Confirmed `Task Board.md` remains the only live task board
-  - Owner: Documentation
-  - Project: HQ Bootstrap
-  - Next step: If a task moves, update this board first and keep `Weekly Plan.md` as a summary only.
-  - Done when: `Task Board.md` remains the only live task board for active work.
-  - Primary update file: `02 Planning/Task Board.md`
-  - Accepts result: COO
-- [x] 2026-04-14: Made role prompts repo-relative for Codex and portable runners
-  - Owner: Documentation
-  - Project: HQ Bootstrap
-  - Next step: Keep shared role prompts path-agnostic so Codex and future runners can read the same repo without local machine assumptions.
-  - Done when: role prompts read shared files by repo-relative path instead of one local `/Users/...` path.
-  - Primary update file: `agents/README.md`
-  - Then align: `agents/*/AGENTS.md`
-  - Accepts result: COO
-- [x] 2026-04-14: Added Delivery as the default bounded execution role
-  - Owner: CEO
-  - Project: HQ Bootstrap
-  - Support: COO, Documentation
-  - Next step: Use Delivery for automation specs, implementation plans, and project execution work that is more than documentation.
-  - Done when: `agents/delivery/AGENTS.md`, `AGENTS.md`, and routing docs describe one clear execution role between COO and Documentation.
-  - Primary update file: `agents/delivery/AGENTS.md`
-  - Then align: `AGENTS.md`, `01 Operating System/Agent Routing.md`, `projects.md`
-  - Accepts result: CEO
-- [x] 2026-04-14: Tightened the task contract around one primary update file
-  - Owner: COO
-  - Project: HQ Bootstrap
-  - Support: Documentation
-  - Next step: Keep one primary update file on each active card and align secondary files only after result acceptance.
-  - Done when: shared operating rules, task template, and active cards use the same primary-file contract.
-  - Primary update file: `AGENTS.md`
-  - Then align: `01 Operating System/How To Operate HQ.md`, `90 Templates/Task Template.md`, `02 Planning/Task Board.md`
-  - Accepts result: CEO
+  - Support: ceo, finance
+  - Next: Resolve open decisions about budget, external sends, deploy authority, and connector write access.
+  - Done when: `03 Notes/Open Decisions.md` is reduced and `operating-policies.json` reflects approved thresholds.
+  - Primary update file: `03 Notes/Open Decisions.md`
+  - Align: `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`
 
 ## Waiting
-
-- [ ] Introduce Paperclip orchestration after manual routing is stable
-  - Owner: CEO
+- [ ] Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors
+  - ID: connect-external-systems-under-governance | Owner: delivery | Accepts: ceo | Risk: high | Autonomy: A3
   - Project: HQ Bootstrap
-  - Next step: Revisit only after 1-2 successful manual operating cycles.
-  - Done when: Manual routing no longer feels like the bottleneck.
+  - Support: governor, assistant, finance, growth
+  - Next: Do not connect external write surfaces until thresholds, logging, and rollback rules are agreed.
+  - Done when: At least one external connector is enabled with audit logging, review, and rollback notes.
   - Primary update file: `stack.md`
-  - Then align: `agents/`
-  - Accepts result: CEO
+  - Align: `05 AI Control Plane/operating-policies.json`, `04 Projects/HQ Bootstrap.md`
 
 ## Done
-
-- [x] 2026-04-14: Created the initial HQ folder structure for Obsidian
-- [x] 2026-04-14: Split shared company workspace from private CEO memory
-- [x] 2026-04-14: Rewrote role prompts against the real working files
-- [x] 2026-04-14: Locked the file contract between root files, planning, notes, and project pages
-- [x] 2026-04-14: Converted the task board to an Obsidian kanban-compatible format
-
-## Archive
-
-
-%% kanban:settings
-```
-{"kanban-plugin":"board"}
-```
-%%
+- [x] Install the machine-readable AI control plane and generated board
+  - ID: install-control-plane | Owner: delivery | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: HQ Bootstrap
+  - Support: coo, documentation
+  - Next: Use the control plane on live work instead of treating it as architecture-only.
+  - Done when: `05 AI Control Plane/` exists, validates, and `Task Board.md` is rendered from it.
+  - Primary update file: `05 AI Control Plane/active-work.json`
+  - Align: `02 Planning/Task Board.md`, `AGENTS.md`, `01 Operating System/AI-First Operating Model.md`
+  - Completed at: 2026-04-15
+- [x] Add telemetry, validation, and tests for the HQ runtime
+  - ID: install-telemetry-and-validation | Owner: delivery | Accepts: governor | Risk: medium | Autonomy: A2
+  - Project: HQ Bootstrap
+  - Support: governor, documentation
+  - Next: Start writing real events from live work into `.hq/telemetry/`.
+  - Done when: Validation passes, telemetry events can be written, and tests cover the new runtime surfaces.
+  - Primary update file: `scripts/hq_control_plane.py`
+  - Align: `scripts/hq_telemetry.py`, `tests/test_hq_control_plane.py`, `tests/test_hq_telemetry.py`
+  - Completed at: 2026-04-15

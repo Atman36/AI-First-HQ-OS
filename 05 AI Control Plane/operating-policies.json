@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-15",
+  "autonomy_tiers": [
+    {
+      "id": "A0",
+      "name": "advisory_only",
+      "description": "AI may analyze or propose, but may not change tracked or external state."
+    },
+    {
+      "id": "A1",
+      "name": "draft_and_prepare",
+      "description": "AI may prepare drafts or task records, but not finalize sensitive outcomes without acceptance."
+    },
+    {
+      "id": "A2",
+      "name": "internal_execution",
+      "description": "AI may change tracked repo files and private runtime within an approved task."
+    },
+    {
+      "id": "A3",
+      "name": "external_action_with_review",
+      "description": "AI may prepare external actions, but execution requires review or approval."
+    },
+    {
+      "id": "A4",
+      "name": "human_only",
+      "description": "Only a human may approve or perform this action."
+    }
+  ],
+  "risk_tiers": [
+    {
+      "id": "low",
+      "description": "Internal documentation, research, analysis, and low-cost reversible work.",
+      "default_approval": "owner_or_accepting_role"
+    },
+    {
+      "id": "medium",
+      "description": "Changes to shared truth, workflows, scripts, or multi-file coordination with reversible impact.",
+      "default_approval": "governor_or_accepting_role"
+    },
+    {
+      "id": "high",
+      "description": "External writes, spend, deployments, legal/public commitments, destructive or irreversible actions.",
+      "default_approval": "ceo_human_required"
+    }
+  ],
+  "approvals": {
+    "human_only_actions": [
+      "any legal or contractual commitment",
+      "any public statement or publication on behalf of the company",
+      "any unbudgeted spend or money movement",
+      "any destructive delete of tracked source-of-truth files",
+      "any production deployment affecting customers",
+      "any grant of new external system write access"
+    ],
+    "governor_review_required_for": [
+      "all high-risk tasks",
+      "all changes to control-plane policy or workflow files",
+      "all tasks with autonomy tier A3",
+      "all tasks that touch more than one system of record"
+    ],
+    "default_spend_without_budget_eur": 0,
+    "max_external_send_without_review": 0
+  },
+  "kill_switches": [
+    "repeated policy violations",
+    "missing telemetry for a high-risk action",
+    "contradictory source-of-truth update",
+    "rework_or_rollback_rate exceeds the accepted weekly threshold"
+  ],
+  "documentation_rule": "Documentation may sync shared truth only after acceptance or explicit CEO override.",
+  "board_rule": "Render `02 Planning/Task Board.md` from `05 AI Control Plane/active-work.json` after material queue changes."
+}

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-15",
+  "workflows": [
+    {
+      "id": "intake-to-execution",
+      "states": [
+        "intake",
+        "triage",
+        "policy_check",
+        "scheduled",
+        "executing",
+        "review",
+        "accepted",
+        "synced",
+        "done",
+        "blocked",
+        "waiting"
+      ],
+      "required_task_fields": [
+        "id",
+        "title",
+        "column",
+        "owner",
+        "project",
+        "next_step",
+        "done_when",
+        "primary_update_file",
+        "accepts_result",
+        "risk_tier",
+        "autonomy_tier",
+        "workflow"
+      ],
+      "transition_owners": {
+        "intake->triage": "assistant",
+        "triage->policy_check": "coo",
+        "policy_check->scheduled": "governor",
+        "scheduled->executing": "coo",
+        "executing->review": "task_owner",
+        "review->accepted": "accepting_role",
+        "accepted->synced": "documentation",
+        "synced->done": "documentation"
+      }
+    },
+    {
+      "id": "decision-lifecycle",
+      "states": [
+        "open",
+        "researched",
+        "proposal_ready",
+        "approved",
+        "parked",
+        "resolved"
+      ],
+      "required_task_fields": [
+        "id",
+        "title",
+        "owner",
+        "accepts_result",
+        "risk_tier",
+        "autonomy_tier",
+        "workflow",
+        "primary_update_file"
+      ],
+      "transition_owners": {
+        "open->researched": "research",
+        "researched->proposal_ready": "coo",
+        "proposal_ready->approved": "ceo",
+        "approved->resolved": "documentation"
+      }
+    },
+    {
+      "id": "weekly-review",
+      "states": [
+        "collect",
+        "analyze",
+        "decide",
+        "publish",
+        "carry_forward"
+      ],
+      "required_task_fields": [
+        "id",
+        "title",
+        "owner",
+        "accepts_result",
+        "workflow",
+        "primary_update_file"
+      ],
+      "transition_owners": {
+        "collect->analyze": "coo",
+        "analyze->decide": "governor",
+        "decide->publish": "documentation",
+        "publish->carry_forward": "ceo"
+      }
+    }
+  ]
+}

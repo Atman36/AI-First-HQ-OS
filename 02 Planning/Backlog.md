@@ -2,19 +2,15 @@
 
 Items worth doing, but not active right now.
 
-## Company Operating System
+## AI-First Infrastructure
 
-- Revisit the CEO -> COO handoff only if it breaks under more than one active project.
-- Add project pages for every active initiative after HQ Bootstrap.
-- Add a separate weekly review note only if the embedded review in `Weekly Plan.md` becomes insufficient.
+- Add external connectors only after Governor thresholds and audit logging are calibrated.
+- Add semantic memory consolidation only after episodic telemetry and reflections are working reliably.
+- Add eval automation only after the first governed operating loop produces real failure cases.
+- Add rollout automation only after there is a real external action surface to govern.
 
-## Execution Support
+## Business Operating System
 
-- Create a standard meeting note format when meetings create repeated follow-up loss.
-- Create an approval log for major strategic decisions only if `Decisions.md` becomes too thin.
-- Add a revenue tracking page once the first pipeline exists.
-
-## Future Infrastructure
-
-- Connect Paperclip only after the manual workflow is working.
-- Add role-specific task queues only if the shared board becomes too broad.
+- Create a founder dashboard when the first five primary metrics have 2-3 weeks of data.
+- Add a compute-cost view once AI spend is material enough to steer decisions.
+- Add revenue-operating loops after the first commercial workflow exists.

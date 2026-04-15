@@ -1,72 +1,66 @@
 # Weekly Plan
 
-## Week Of 2026-04-14
+## Week Of 2026-04-15
 
 ### Operating Objective
 
-Close the HQ audit follow-through cycle by 2026-04-21 without file drift between root, planning, notes, and the active project page.
+Move HQ from a documentation-first operating system to an AI-first control plane without breaking source-of-truth discipline.
 
 ### Weekly Commitments
 
-1. Use `Task Board.md` as the only live task board.
-2. Keep the same 7-day objective aligned in `now.md`, `projects.md`, and `04 Projects/HQ Bootstrap.md`.
-3. Route this operating objective through CEO -> COO -> role owner -> Documentation.
-4. Keep one primary update file per active card and align secondary files only after acceptance.
-5. Capture durable decisions in `03 Notes/Decisions.md`.
+1. Keep strategic truth in root files and Notes.
+2. Keep delegated work in `05 AI Control Plane/active-work.json`.
+3. Render `Task Board.md` from the control plane.
+4. Route work through COO -> Governor -> specialist -> Documentation.
+5. Start telemetry before adding external connectors.
 
 ### Checkpoints
 
-- Active cards still have one owner and one primary update file.
-- The weekly summary stays in this file instead of splitting into a second reporting note.
-- Project-local notes still belong on the project page instead of new root files or a mirrored weekly snapshot.
-- The cycle close should answer three checks only:
-  - whether Documentation became a real bottleneck
-  - whether Delivery proved useful on at least one bounded execution task
-  - whether one live board plus one primary update file held without drift
+- The machine-readable queue is current.
+- The human-readable board reflects the queue.
+- Governor reviews medium- and high-risk work before execution.
+- At least one real task completes through the new control plane.
+- Weekly review includes the five primary AI-first metrics.
 
 ### Risks
 
-- Drift returns if `Weekly Plan` becomes a second board.
-- Project pages will still create confusion if they mirror the weekly summary instead of staying local.
-- Documentation could become the close-the-cycle bottleneck if too many shared files still need manual syncing at once.
-- Delivery could remain theoretical if no bounded execution task runs through it before 2026-04-21.
+- Decorative AI-first language without real delegated authority
+- Duplicate state between Markdown and control-plane JSON
+- Governance too weak for real autonomy
+- Governance too heavy for the current stage
+- External writes added before logging and rollback exist
 
 ### Rule
 
-Live task movement belongs in [[Task Board]]. This file should summarize the week, not replace the board.
+Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. This file summarizes the week; it does not replace the control plane.
 
 ### Lean Weekly Review
 
-- Review date: 2026-04-14
-- Review type: in-cycle snapshot for the 2026-04-14 to 2026-04-21 operating cycle
-- Cycle status: in progress
+- Review date: 2026-04-15
+- Cycle status: stage 1 in progress
 - Shipped work:
-  - Operating objective is aligned across root, planning, and project layers
-  - Lean review format is defined and usable
-  - Role prompts are repo-relative and portable for Codex and future runners
-  - Delivery role now exists for bounded execution work that is more than documentation
-  - Task contract now uses one primary update file before secondary alignment
+  - Machine-readable control plane installed
+  - Governor role added
+  - Task board can be rendered from the queue
+  - Telemetry script and validation path added
 - Still active work:
-  - Finish the first operating cycle close by 2026-04-21
-  - Confirm whether Documentation closeout stays lightweight under real usage
-  - Validate that project pages stay local and do not turn into weekly mirrors
-  - Run one bounded execution task through Delivery and check whether the primary-file rule still holds without drift
+  - Run the first real governed operating loop
+  - Resolve approval thresholds and external-write policy
+  - Start collecting metrics from live work
 - Blockers:
-  - No hard blocker is active
-  - Soft risk: cycle close still depends on Documentation aligning several shared files in one pass
+  - Approval thresholds are still provisional
+  - External connector policy is intentionally blocked
 - Money signal:
-  - Positive operational signal: less routing ambiguity should reduce coordination overhead
-  - No direct revenue or spend change is confirmed yet
+  - The expected gain is founder leverage and lower coordination cost, not immediate revenue yet
 - Next 3 priorities:
-  1. Close the current cycle with one final review and explicit carry-forward items by 2026-04-21.
-  2. Prove the new primary-file contract on a real multi-file update without reverting to duplicate notes.
-  3. Use Delivery on the first bounded execution task that is more than documentation.
+  1. Run one real task through the new control plane.
+  2. Calibrate Governor approval thresholds with the founder.
+  3. Start weekly metric collection from telemetry.
 
-### End-Of-Week Output
+### Primary Metrics This Review Must Cover
 
-- Shipped work
-- Still active work
-- Blockers or waiting items
-- Money signal
-- Next 3 priorities
-- Explicit answers to the three cycle checks: Documentation bottleneck, Delivery usefulness, and primary-file drift
+- Autonomous completion rate
+- Human escalation rate
+- Decision latency hours
+- Documentation lag hours
+- Rework or rollback rate

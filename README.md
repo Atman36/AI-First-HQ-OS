@@ -1,36 +1,41 @@
 # HQ
 
-Shared HQ workspace for Codex now and Paperclip later.
+Shared HQ workspace for the company. It now operates as a hybrid of:
+
+- human-readable company truth in Markdown
+- a machine-readable AI control plane for delegated work
+- a private runtime for telemetry, handoffs, reflections, evals, and releases
 
 ## Goal
 
-Use one project root for shared company state and separate agent-specific homes for private memory.
-
-The repository is public-safe by default: shared files stay in git, while private runtime state stays under the ignored `.hq/` path.
+Turn HQ into an AI-first company operating system where AI is the default operator for low- and medium-risk work, and humans stay in strategic, financial, legal, public, and escalation roles.
 
 ## Quick Routing
 
 Start with the file that matches the question:
 
-- What we are doing this week and what matters now: `now.md`
-- Which project is active and who owns it: `projects.md`
-- What repeats every day or week: `routines.md`
-- Which tools, runners, and agent surfaces are allowed: `stack.md`
-- What is actively moving right now: `02 Planning/Task Board.md`
-- What the current week commits to and how it closes: `02 Planning/Weekly Plan.md`
-- Why a durable decision was made: `03 Notes/Decisions.md`
-- Local context, risks, and implementation detail for one project: `04 Projects/`
+- Current company focus: `now.md`
+- Active projects and owners: `projects.md`
+- Operating cadence: `routines.md`
+- Tooling and execution boundaries: `stack.md`
+- Machine-readable queue and agent authority: `05 AI Control Plane/`
+- Human-readable live board: `02 Planning/Task Board.md`
+- Weekly commitments and review: `02 Planning/Weekly Plan.md`
+- Durable decisions: `03 Notes/Decisions.md`
+- Explicit unresolved choices: `03 Notes/Open Decisions.md`
+- Project-local detail: `04 Projects/`
 
-## Operating Model In One Screen
+## AI-First Operating Model In One Screen
 
-Each role in HQ works through four shared operating objects:
+Each role now works through five operating objects:
 
-- Task: one active card on `02 Planning/Task Board.md` with owner, done condition, and primary update file
-- Rules: the repo policy in `AGENTS.md` plus the role prompt in `agents/*/AGENTS.md`
-- Skills: repeatable procedures, prompts, and tool patterns used by Codex or future Paperclip agents
-- Queue: one shared execution queue on `02 Planning/Task Board.md`, not separate role-specific boards
+- Task state: `05 AI Control Plane/active-work.json`
+- Rules: `AGENTS.md` plus `agents/*/AGENTS.md`
+- Policies: `05 AI Control Plane/operating-policies.json`
+- Workflow: `05 AI Control Plane/workflow-registry.json`
+- Telemetry: `.hq/telemetry/`
 
-This keeps the current HQ model close to the audit screenshots without reintroducing old root files or parallel status ledgers.
+`02 Planning/Task Board.md` is the human-readable mirror of the machine-readable queue.
 
 ## How To Use
 
@@ -38,59 +43,59 @@ This keeps the current HQ model close to the audit screenshots without reintrodu
 - Open this folder in Obsidian if you want a readable company vault.
 - Use the root `AGENTS.md` as the common policy layer.
 - Use `agents/*/AGENTS.md` as role prompts for specialized runs.
-- When Paperclip is connected, point each agent to the matching file in `agents/`.
+- Use `python3 scripts/hq_control_plane.py sync` after changing `05 AI Control Plane/active-work.json`.
+- Use `python3 scripts/hq_control_plane.py validate` before accepting structural changes to the control plane.
+- Use `python3 scripts/hq_telemetry.py event ...` to log task, approval, escalation, or sync events into `.hq/telemetry/`.
+- Use `python3 scripts/hq_runtime.py bootstrap` to create the local runtime scaffold and `python3 scripts/hq_runtime.py probe ...` before routing work through a local CLI.
+- Keep private runtime state under `.hq/`; keep durable company truth in tracked files.
 
-## Suggested Founder Path
+## Founder Path
 
-- Use CEO when priority, tradeoff, or scope is unclear.
-- Hand the result to COO to create or update one active task card with owner, done condition, and primary update file.
-- Use Delivery, Research, Finance, Growth, or Assistant only for bounded subwork.
-- Use Documentation last to align shared records after the result is accepted.
+- CEO sets direction and approves high-risk changes.
+- COO converts work into machine-readable tasks.
+- Governor checks risk, approvals, and guardrails.
+- Delivery or a specialist role executes.
+- Documentation syncs accepted outcomes back into shared truth.
 
 ## Source Of Truth
 
-Current company truth stays in the repository root:
+### Strategic truth
 
-- `now.md` - current focus
-- `projects.md` - active projects
-- `routines.md` - daily and weekly rhythms
-- `stack.md` - tool rules
-- `agents/` - role prompts
+- `now.md`
+- `projects.md`
+- `routines.md`
+- `stack.md`
+- `agents/`
+- `03 Notes/Decisions.md`
+- `03 Notes/Open Decisions.md`
 
-Execution and history live in the working layer:
+### AI control plane
 
-- `02 Planning/Task Board.md` - single live execution board
-- `02 Planning/Weekly Plan.md` - weekly commitments and weekly summary
-- `03 Notes/Decisions.md` - durable decision log
-- `04 Projects/` - detailed project context
+- `05 AI Control Plane/active-work.json`
+- `05 AI Control Plane/agent-registry.json`
+- `05 AI Control Plane/operating-policies.json`
+- `05 AI Control Plane/workflow-registry.json`
+- `05 AI Control Plane/metrics-registry.json`
 
-## Obsidian Layer
+### Working layer
 
-Additional folders provide a cleaner writing and reading experience:
-
-- `00 Home.md` - vault entry point
-- `01 Operating System/` - navigation and operating rules
-- `02 Planning/` - shared task board, weekly plan, backlog
-- `03 Notes/` - inbox and decision log
-- `04 Projects/` - project pages
-- `90 Templates/` - reusable note templates
-- `reports/` - support material and research drafts
-
-## Recommended Split
-
-- Shared project root: this repo
-- Agent private memory: outside this repo
-- Repo-local private runtime: `.hq/`
-- No concurrent edits to the same file from multiple agents
-- Use `Task Board.md` as the only live task board
+- `02 Planning/Task Board.md`
+- `02 Planning/Weekly Plan.md`
+- `04 Projects/`
 
 ## Private Runtime
 
 Use `.hq/` for private, inspectable, non-git-tracked runtime artifacts:
 
-- `.hq/handoffs/` for task-scoped handoff files between agents or sessions
-- `.hq/state/` for capability probe results and other lightweight runtime state
-- `.hq/logs/`, `.hq/memory/`, `.hq/journals/` for private operational artifacts that do not belong in source-of-truth files
+- `.hq/handoffs/` for task-scoped continuity
+- `.hq/state/` for capability probe results and lightweight runtime state
+- `.hq/telemetry/` for structured event logs
+- `.hq/reflections/` for per-task lessons
+- `.hq/improvements/` for weekly synthesis
+- `.hq/evals/` for eval runs and artifacts
+- `.hq/releases/` for rollout and rollback notes
+
+## Runtime Commands
 
 Bootstrap and probe commands:
 
@@ -114,3 +119,29 @@ python3 scripts/hq_runtime.py handoff \
   --next "Validate the next acceptance slice" \
   --risk "Do not move private notes back into shared docs"
 ```
+
+Write a reflection and run a weekly review:
+
+```bash
+python3 scripts/hq_runtime.py reflection \
+  --agent Delivery \
+  --task "weekly-agent-self-improvement" \
+  --session "2026-04-14-delivery-1" \
+  --summary "Missed a repo-specific instruction" \
+  --observation "Started coding before reading AGENTS.md in full" \
+  --issue "Instruction loading happened too late" \
+  --lesson "Read repo instructions before editing code" \
+  --proposed-rule "Add a startup checklist for repo instructions" \
+  --issue-key instruction-loading \
+  --tag instructions
+
+python3 scripts/hq_runtime.py weekly-review \
+  --since 2026-04-07 \
+  --until 2026-04-14
+```
+
+The review output is a safe artifact only:
+
+- `.hq/improvements/LATEST.json` for machine-readable grouped observations
+- `.hq/improvements/LATEST.md` for a human review note with candidate improvements
+- No shared Markdown files or `AGENTS.md` files are edited automatically by this flow
