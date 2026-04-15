@@ -4,7 +4,7 @@
 
 - Move HQ from a stage-1 baseline to a stage-2 operating discipline.
 - Use `05 AI Control Plane/active-work.json` as the machine-readable queue for delegated work.
-- Hold the autonomous spend envelope at `EUR 0` and keep external connectors blocked until telemetry stays stable on more live work.
+- Hold the autonomous spend envelope at `EUR 0` and keep external connectors blocked until telemetry stays stable across at least two live governed items and a justified next slice is accepted.
 
 ## This Month
 
@@ -15,7 +15,7 @@
 ## This Week
 
 - Keep `AI Operations Lead` as the real operating role in live routing, not just in docs.
-- Carry the first live governed loop into repeatable queue discipline on the next founder request.
+- Keep the governed route stable after the second live governed loop completed with local full-cycle verification on a founder request.
 - Use live telemetry threshold breaches to guide follow-through instead of adding another reporting layer.
 - Keep the spend boundary explicit at `EUR 0` and avoid inventing a new connector policy before there is a concrete use case.
 

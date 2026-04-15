@@ -4,11 +4,11 @@
 
 - Updated At: 2026-04-15
 - Operating Mode: ai-first-stage-2-foundation
-- Objective: Install the Stage 2 operating discipline and prove the first governed loop on live work
+- Objective: Install the Stage 2 operating discipline and prove the governed loop is repeatable on live work
 
 ## Success Criteria
 - AI Operations Lead replaces the stage-1 AI COO role across docs and control-plane contracts
-- one real task runs through AI Operations Lead -> Governor -> specialist -> Documentation
+- two real tasks run through AI Operations Lead -> Governor -> specialist -> Documentation
 - the queue stays current in active-work.json and Task Board.md is rendered from it
 - weekly metrics can be generated from telemetry and active-work state
 - telemetry captures routing, execution, acceptance, sync, and lightweight eval signals
@@ -77,4 +77,13 @@
   - Done when: The spend envelope is explicitly approved or intentionally held at zero in policies and Notes.
   - Primary update file: `03 Notes/Open Decisions.md`
   - Align: `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`
+  - Completed at: 2026-04-15
+- [x] Run a second live governed loop and verify the full task cycle locally
+  - ID: verify-second-governed-loop | Owner: ai_operations_lead | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: HQ Bootstrap
+  - Support: governor, delivery, documentation
+  - Next: Use this second live proof to choose one smallest practical repeated-work verification slice without changing spend or connector policy.
+  - Done when: The second live item completes with queue state, Governor review, execution, acceptance, documentation sync, telemetry coverage, and a local task-cycle verification result.
+  - Primary update file: `05 AI Control Plane/active-work.json`
+  - Align: `scripts/hq_telemetry.py`, `tests/test_hq_telemetry.py`, `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
   - Completed at: 2026-04-15

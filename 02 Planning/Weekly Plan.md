@@ -49,9 +49,10 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - First weekly metric review generated from live telemetry instead of chat reconstruction
   - Stage 2 write boundaries narrowed to HQ-internal writes only; customer-facing sends and deploys remain human-reviewed
   - Autonomous spend envelope closed at `EUR 0` for the Stage 2 foundation
+  - Second real governed loop completed on a new founder request with a local task-cycle verification check covering queue state, policy gate, execution, acceptance, documentation sync, and telemetry coverage
 - Still active work:
   - Keep telemetry coverage reliable on non-done active tasks as the next founder requests enter the queue
-  - Repeat the governed loop on the next founder request without bypassing the queue
+  - Take only one smallest practical follow-on slice now that the second live governed loop has local full-cycle proof
   - Keep external connector expansion blocked until another stable weekly review and a connector-specific policy slice exist
 - Blockers:
   - No blocking open decision remains inside Stage 2 foundation
@@ -60,13 +61,13 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - The current gain is founder leverage and lower coordination cost; autonomous spend remains fixed at `EUR 0`
 - Next 3 priorities:
   1. Keep telemetry coverage explicit on each non-done active task as new work enters the queue.
-  2. Run the next founder request through the same governed loop.
+  2. Tighten one repeated-work verification slice instead of opening a connector or autonomy expansion.
   3. Revisit connector policy only when there is one narrow use case with rollback notes.
 
 ### Threshold Interpretation From Live Telemetry
 
-- No metric thresholds were breached on the first live slice.
-- Interpretation: this proves the operating loop is viable, but one fast internal sample is not enough evidence to expand autonomy beyond the current Stage 2 boundaries.
+- No metric thresholds were breached on the first two live slices.
+- Interpretation: this proves the operating loop is repeatable on internal work, but it is still not evidence for connector expansion, non-zero spend, or broader autonomy.
 
 ### Primary Metrics This Review Must Cover
 

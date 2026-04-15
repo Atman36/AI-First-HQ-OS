@@ -20,6 +20,7 @@ CONTROL_PLANE_DIR = REPO_ROOT / "05 AI Control Plane"
 ACTIVE_WORK_PATH = CONTROL_PLANE_DIR / "active-work.json"
 AGENT_REGISTRY_PATH = CONTROL_PLANE_DIR / "agent-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
+WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
 
 ALLOWED_EVENT_TYPES = {
     "intake",
@@ -157,6 +158,37 @@ def load_events(since: date, until: date) -> list[dict[str, Any]]:
     return events
 
 
+def load_task_events(
+    task_id: str,
+    since: date | None = None,
+    until: date | None = None,
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    if not TELEMETRY_ROOT.exists():
+        return events
+    for path in sorted(TELEMETRY_ROOT.glob("**/*.jsonl")):
+        if "reviews" in path.parts:
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            payload = json.loads(line)
+            if str(payload.get("task_id") or "").strip() != task_id:
+                continue
+            created_at = str(payload.get("created_at") or "").strip()
+            if not created_at:
+                continue
+            created_date = parse_timestamp(created_at).date()
+            if since and created_date < since:
+                continue
+            if until and created_date > until:
+                continue
+            events.append(payload)
+    events.sort(key=lambda item: str(item.get("created_at") or ""))
+    return events
+
+
 def build_role_types() -> dict[str, str]:
     registry = load_json(AGENT_REGISTRY_PATH)
     return {
@@ -188,6 +220,18 @@ def build_metric_registry() -> list[dict[str, Any]]:
             if isinstance(item, dict):
                 items.append(item)
     return items
+
+
+def build_workflow_registry() -> dict[str, dict[str, Any]]:
+    registry = load_json(WORKFLOW_REGISTRY_PATH)
+    workflows: dict[str, dict[str, Any]] = {}
+    for item in registry.get("workflows", []) or []:
+        if not isinstance(item, dict):
+            continue
+        workflow_id = str(item.get("id") or "").strip()
+        if workflow_id:
+            workflows[workflow_id] = item
+    return workflows
 
 
 def bool_from_metadata(metadata: dict[str, Any], *keys: str) -> bool:
@@ -527,6 +571,111 @@ def write_review_artifacts(review: dict[str, Any]) -> tuple[Path, Path]:
     return json_path, md_path
 
 
+def event_actor(event: dict[str, Any] | None) -> str:
+    if not isinstance(event, dict):
+        return ""
+    return str(event.get("agent") or "").strip()
+
+
+def build_task_cycle_report(
+    task_id: str,
+    since: date | None = None,
+    until: date | None = None,
+) -> dict[str, Any]:
+    active_tasks = build_active_tasks()
+    task = active_tasks.get(task_id)
+    if not task:
+        raise ValueError(f"unknown task_id: {task_id}")
+
+    workflow_id = str(task.get("workflow") or "").strip()
+    workflow = build_workflow_registry().get(workflow_id)
+    if not workflow:
+        raise ValueError(f"unknown workflow for task {task_id}: {workflow_id or '<empty>'}")
+
+    events = load_task_events(task_id, since=since, until=until)
+    first_by_type: dict[str, dict[str, Any]] = {}
+    seen_event_types: list[str] = []
+    for event in events:
+        event_type = str(event.get("event_type") or "").strip()
+        if not event_type:
+            continue
+        if event_type not in first_by_type:
+            first_by_type[event_type] = event
+        if event_type not in seen_event_types:
+            seen_event_types.append(event_type)
+
+    required_events = [
+        str(item).strip()
+        for item in workflow.get("required_telemetry_events", []) or []
+        if str(item).strip()
+    ]
+    missing_required_events = [item for item in required_events if item not in first_by_type]
+
+    expected_actor_map = {
+        "route": ["ai_operations_lead"],
+        "policy_check": ["governor"],
+        "start": normalize_list(
+            [
+                str(task.get("owner") or "").strip(),
+                *[str(item) for item in task.get("support", []) or []],
+            ]
+        ),
+        "acceptance": [str(task.get("accepts_result") or "").strip()],
+        "sync": ["documentation"],
+    }
+    actor_checks: list[dict[str, Any]] = []
+    actor_failures: list[str] = []
+    for event_type, expected_actors in expected_actor_map.items():
+        if not expected_actors:
+            continue
+        event = first_by_type.get(event_type)
+        actual_actor = event_actor(event)
+        passed = bool(event) and actual_actor in expected_actors
+        actor_checks.append(
+            {
+                "event_type": event_type,
+                "expected_actors": expected_actors,
+                "actual_actor": actual_actor,
+                "ok": passed,
+            }
+        )
+        if not passed:
+            actor_failures.append(
+                f"{event_type}:{actual_actor or '<missing>'} expected {'/'.join(expected_actors)}"
+            )
+
+    queue_state_ok = str(task.get("column") or "").strip() == "done" and bool(
+        str(task.get("completed_at") or "").strip()
+    )
+    if not queue_state_ok:
+        actor_failures.append(
+            "queue_state:{column} expected done with completed_at".format(
+                column=str(task.get("column") or "").strip() or "<empty>"
+            )
+        )
+
+    status = "ok" if not missing_required_events and not actor_failures else "failed"
+    return {
+        "task_id": task_id,
+        "task_title": str(task.get("title") or "").strip(),
+        "workflow": workflow_id,
+        "column": str(task.get("column") or "").strip(),
+        "completed_at": str(task.get("completed_at") or "").strip(),
+        "queue_state_ok": queue_state_ok,
+        "required_events": required_events,
+        "seen_event_types": seen_event_types,
+        "missing_required_events": missing_required_events,
+        "actor_checks": actor_checks,
+        "actor_failures": actor_failures,
+        "events_seen": len(events),
+        "status": status,
+        "window": {
+            "since": since.isoformat() if since else "",
+            "until": until.isoformat() if until else "",
+        },
+    }
+
+
 def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
     event_type = str(args.event_type or "").strip()
     status = str(args.status or "").strip()
@@ -601,6 +750,34 @@ def weekly_metrics_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def task_cycle_command(args: argparse.Namespace) -> int:
+    if args.since and args.until and args.since > args.until:
+        print("error=since must be earlier than or equal to until")
+        return 2
+    try:
+        report = build_task_cycle_report(args.task_id, since=args.since, until=args.until)
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"task_id={report['task_id']}")
+    print(f"workflow={report['workflow']}")
+    print(f"column={report['column']}")
+    print(f"queue_state_ok={str(report['queue_state_ok']).lower()}")
+    print(f"required_events={','.join(report['required_events'])}")
+    print(f"seen_event_types={','.join(report['seen_event_types'])}")
+    print(
+        "missing_required_events="
+        + (",".join(report["missing_required_events"]) if report["missing_required_events"] else "none")
+    )
+    print(f"events_seen={report['events_seen']}")
+    print(
+        "actor_failures="
+        + ("; ".join(report["actor_failures"]) if report["actor_failures"] else "none")
+    )
+    print(f"status={report['status']}")
+    return 0 if report["status"] == "ok" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Write structured telemetry events for HQ.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -649,6 +826,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="If --since is omitted, review this many trailing days. Defaults to 7.",
     )
     weekly_metrics.set_defaults(func=weekly_metrics_command)
+
+    task_cycle = subparsers.add_parser(
+        "task-cycle",
+        help="Verify one live task completed the full governed telemetry cycle locally.",
+    )
+    task_cycle.add_argument("--task-id", required=True, help="Task identifier from active-work.json.")
+    task_cycle.add_argument(
+        "--since",
+        type=parse_date,
+        help="Optional inclusive start date in ISO format.",
+    )
+    task_cycle.add_argument(
+        "--until",
+        type=parse_date,
+        help="Optional inclusive end date in ISO format.",
+    )
+    task_cycle.set_defaults(func=task_cycle_command)
     return parser
 
 

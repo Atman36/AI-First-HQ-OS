@@ -254,6 +254,224 @@ class HqTelemetryTests(unittest.TestCase):
         self.assertEqual(metrics["human_escalation_rate"]["threshold_status"], "breached")
         self.assertEqual(metrics["telemetry_coverage_rate"]["threshold_status"], "ok")
 
+    def test_task_cycle_verifies_full_governed_loop(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        (control_plane_dir / "workflow-registry.json").write_text(
+            json.dumps(
+                {
+                    "workflows": [
+                        {
+                            "id": "intake-to-execution",
+                            "required_telemetry_events": [
+                                "intake",
+                                "route",
+                                "policy_check",
+                                "start",
+                                "acceptance",
+                                "sync",
+                            ],
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (control_plane_dir / "active-work.json").write_text(
+            json.dumps(
+                {
+                    "tasks": [
+                        {
+                            "id": "verify-second-governed-loop",
+                            "title": "Verify second governed loop",
+                            "column": "done",
+                            "completed_at": "2026-04-15",
+                            "owner": "ai_operations_lead",
+                            "support": ["governor", "delivery", "documentation"],
+                            "accepts_result": "ceo",
+                            "workflow": "intake-to-execution",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        telemetry_path = self.temp_root / ".hq" / "telemetry" / "2026-04" / "2026-04-15.jsonl"
+        telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+        telemetry_path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:00:00Z",
+                            "event_type": "intake",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "assistant",
+                            "status": "queued",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:05:00Z",
+                            "event_type": "route",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "ai_operations_lead",
+                            "status": "ready",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:10:00Z",
+                            "event_type": "policy_check",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "governor",
+                            "status": "approved",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:15:00Z",
+                            "event_type": "start",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "delivery",
+                            "status": "running",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:20:00Z",
+                            "event_type": "acceptance",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "ceo",
+                            "status": "accepted",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:25:00Z",
+                            "event_type": "sync",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "documentation",
+                            "status": "synced",
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["task-cycle", "--task-id", "verify-second-governed-loop"])
+
+        exit_code = args.func(args)
+        report = self.module.build_task_cycle_report("verify-second-governed-loop")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["missing_required_events"], [])
+        self.assertTrue(report["queue_state_ok"])
+
+    def test_task_cycle_fails_when_policy_gate_or_done_state_is_missing(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        (control_plane_dir / "workflow-registry.json").write_text(
+            json.dumps(
+                {
+                    "workflows": [
+                        {
+                            "id": "intake-to-execution",
+                            "required_telemetry_events": [
+                                "intake",
+                                "route",
+                                "policy_check",
+                                "start",
+                                "acceptance",
+                                "sync",
+                            ],
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (control_plane_dir / "active-work.json").write_text(
+            json.dumps(
+                {
+                    "tasks": [
+                        {
+                            "id": "verify-second-governed-loop",
+                            "title": "Verify second governed loop",
+                            "column": "executing",
+                            "owner": "ai_operations_lead",
+                            "support": ["governor", "delivery", "documentation"],
+                            "accepts_result": "ceo",
+                            "workflow": "intake-to-execution",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        telemetry_path = self.temp_root / ".hq" / "telemetry" / "2026-04" / "2026-04-15.jsonl"
+        telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+        telemetry_path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:00:00Z",
+                            "event_type": "intake",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "assistant",
+                            "status": "queued",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:05:00Z",
+                            "event_type": "route",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "ai_operations_lead",
+                            "status": "ready",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "created_at": "2026-04-15T09:15:00Z",
+                            "event_type": "start",
+                            "task_id": "verify-second-governed-loop",
+                            "agent": "delivery",
+                            "status": "running",
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["task-cycle", "--task-id", "verify-second-governed-loop"])
+
+        exit_code = args.func(args)
+        report = self.module.build_task_cycle_report("verify-second-governed-loop")
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("policy_check", report["missing_required_events"])
+        self.assertFalse(report["queue_state_ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

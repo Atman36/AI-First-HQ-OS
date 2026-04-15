@@ -37,6 +37,7 @@ Build the first usable AI-first operating system for the company.
 - AI Operations Lead replaces the stage-1 AI COO role as the standing operating owner
 - Weekly metric review and runtime-discipline contracts are live
 - First governed operating loop has live proof on a founder request
+- Second governed operating loop has now been verified locally on a new founder request with full cycle evidence
 - Autonomous spend envelope is now explicitly held at `EUR 0` for the Stage 2 foundation
 
 ## Current Workstreams
@@ -55,6 +56,7 @@ Build the first usable AI-first operating system for the company.
 ### Observability
 
 - Log routing, execution, acceptance, escalation, and sync events.
+- Use local task-cycle verification when a live Stage 2 slice needs explicit full-cycle proof.
 - Use weekly metrics and threshold breaches from live telemetry to decide what to automate next.
 
 ### Operating Discipline
@@ -65,7 +67,8 @@ Build the first usable AI-first operating system for the company.
 
 ### Adoption
 
-- Repeat the new loop on the next founder task without bypassing the queue.
+- Keep the new loop as the default path after the second live founder task completed with local verification.
+- Choose only one smallest practical next slice from the stable evidence now on hand.
 - Remove bypasses that reintroduce chat-only coordination.
 
 ## Local Risks

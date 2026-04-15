@@ -4,14 +4,14 @@
   "operating_mode": "ai-first-stage-2-foundation",
   "objective": {
     "id": "hq-ai-first-stage-2-foundation",
-    "title": "Install the Stage 2 operating discipline and prove the first governed loop on live work",
+    "title": "Install the Stage 2 operating discipline and prove the governed loop is repeatable on live work",
     "window": {
       "start": "2026-04-15",
       "target_end": "2026-05-31"
     },
     "success_criteria": [
       "AI Operations Lead replaces the stage-1 AI COO role across docs and control-plane contracts",
-      "one real task runs through AI Operations Lead -> Governor -> specialist -> Documentation",
+      "two real tasks run through AI Operations Lead -> Governor -> specialist -> Documentation",
       "the queue stays current in active-work.json and Task Board.md is rendered from it",
       "weekly metrics can be generated from telemetry and active-work state",
       "telemetry captures routing, execution, acceptance, sync, and lightweight eval signals"
@@ -190,6 +190,32 @@
       "accepts_result": "ceo",
       "risk_tier": "high",
       "autonomy_tier": "A3",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "verify-second-governed-loop",
+      "title": "Run a second live governed loop and verify the full task cycle locally",
+      "column": "done",
+      "completed_at": "2026-04-15",
+      "owner": "ai_operations_lead",
+      "project": "HQ Bootstrap",
+      "support": [
+        "governor",
+        "delivery",
+        "documentation"
+      ],
+      "next_step": "Use this second live proof to choose one smallest practical repeated-work verification slice without changing spend or connector policy.",
+      "done_when": "The second live item completes with queue state, Governor review, execution, acceptance, documentation sync, telemetry coverage, and a local task-cycle verification result.",
+      "primary_update_file": "05 AI Control Plane/active-work.json",
+      "align_files": [
+        "scripts/hq_telemetry.py",
+        "tests/test_hq_telemetry.py",
+        "02 Planning/Weekly Plan.md",
+        "04 Projects/HQ Bootstrap.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
       "workflow": "intake-to-execution"
     }
   ]
