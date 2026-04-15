@@ -62,6 +62,7 @@ These files make the control plane legible for humans:
 - AI is the default operator for low- and medium-risk work only when the task has an owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
 - Humans retain strategy, budget, legal, public, destructive, hiring, and override authority.
 - Governor can block or pause work that lacks policy coverage, telemetry, or approval.
+- AI Operations Lead owns orchestration quality: queue health, telemetry discipline, weekly metric review, eval follow-through, memory hygiene, and runtime-quality escalation.
 - Do not let two agents edit the same file at the same time.
 - Shared docs describe company state, not private scratchpads.
 - Use `.hq/handoffs/` for task-scoped private continuity.
@@ -72,6 +73,7 @@ These files make the control plane legible for humans:
 - Change `05 AI Control Plane/active-work.json` first when delegated task state changes.
 - Re-render `02 Planning/Task Board.md` with `python3 scripts/hq_control_plane.py sync` after material task-state changes.
 - Confirm local tool availability before routing a workflow through a specific CLI or runner.
+- Route orchestration, weekly metric review, telemetry coverage, eval discipline, memory hygiene, and runtime-quality issues through AI Operations Lead.
 - Escalate strategic, financial, legal, public, destructive, or policy-changing work to CEO.
 - Route policy, risk, and approval work through Governor.
 - Keep outputs short, operational, and easy to hand off.
@@ -87,7 +89,7 @@ These files make the control plane legible for humans:
 ## Default Routing
 
 - CEO: strategy, approvals, high-risk decisions, overrides.
-- COO: intake, decomposition, routing, sequencing, active task state.
+- AI Operations Lead: intake, decomposition, routing, sequencing, queue state, observability, weekly metric review, eval discipline, memory hygiene, runtime quality.
 - Governor: risk review, guardrails, approvals, rollback triggers, policy exceptions.
 - Delivery: bounded implementation and execution.
 - Documentation: shared truth sync after acceptance.
@@ -96,7 +98,7 @@ These files make the control plane legible for humans:
 ## Current Team
 
 - CEO
-- COO
+- AI Operations Lead
 - Governor
 - Delivery
 - Documentation

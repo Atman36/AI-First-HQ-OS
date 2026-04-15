@@ -9,7 +9,14 @@
         ".hq/telemetry/",
         "05 AI Control Plane/active-work.json"
       ],
-      "review_cadence": "weekly"
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead",
+      "threshold": {
+        "comparison": ">=",
+        "value": 0.6
+      },
+      "action_if_breached": "Tighten task contracts and acceptance checks before expanding autonomy."
     },
     {
       "id": "human_escalation_rate",
@@ -17,7 +24,14 @@
       "source": [
         ".hq/telemetry/"
       ],
-      "review_cadence": "weekly"
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead",
+      "threshold": {
+        "comparison": "<=",
+        "value": 0.35
+      },
+      "action_if_breached": "Review routing and escalation thresholds with Governor before expanding autonomy."
     },
     {
       "id": "decision_latency_hours",
@@ -25,7 +39,14 @@
       "source": [
         ".hq/telemetry/"
       ],
-      "review_cadence": "weekly"
+      "unit": "hours",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead",
+      "threshold": {
+        "comparison": "<=",
+        "value": 24
+      },
+      "action_if_breached": "Reduce queue ambiguity or policy bottlenecks before adding more parallel work."
     },
     {
       "id": "documentation_lag_hours",
@@ -33,7 +54,14 @@
       "source": [
         ".hq/telemetry/"
       ],
-      "review_cadence": "weekly"
+      "unit": "hours",
+      "review_cadence": "weekly",
+      "review_owner": "documentation",
+      "threshold": {
+        "comparison": "<=",
+        "value": 24
+      },
+      "action_if_breached": "Reduce closeout scope and fix sync bottlenecks before increasing task throughput."
     },
     {
       "id": "rework_or_rollback_rate",
@@ -42,7 +70,14 @@
         ".hq/telemetry/",
         ".hq/releases/"
       ],
-      "review_cadence": "weekly"
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "governor",
+      "threshold": {
+        "comparison": "<=",
+        "value": 0.2
+      },
+      "action_if_breached": "Governor reviews whether policy, acceptance checks, or rollout notes are too weak."
     }
   ],
   "secondary_metrics": [
@@ -52,7 +87,9 @@
       "source": [
         ".hq/telemetry/"
       ],
-      "review_cadence": "weekly"
+      "unit": "hours",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead"
     },
     {
       "id": "ai_handled_task_share",
@@ -60,7 +97,40 @@
       "source": [
         "05 AI Control Plane/active-work.json"
       ],
-      "review_cadence": "weekly"
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead"
+    },
+    {
+      "id": "telemetry_coverage_rate",
+      "definition": "Share of active tasks that have at least one telemetry event in the review window.",
+      "source": [
+        ".hq/telemetry/",
+        "05 AI Control Plane/active-work.json"
+      ],
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead",
+      "threshold": {
+        "comparison": ">=",
+        "value": 0.9
+      },
+      "action_if_breached": "Backfill missing telemetry or lower autonomy until coverage is reliable."
+    },
+    {
+      "id": "eval_coverage_rate",
+      "definition": "Share of completed tasks with at least one lightweight review or eval signal in telemetry metadata.",
+      "source": [
+        ".hq/telemetry/"
+      ],
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead",
+      "threshold": {
+        "comparison": ">=",
+        "value": 0.5
+      },
+      "action_if_breached": "Add lightweight acceptance or eval checks before repeating the same workflow more autonomously."
     }
   ]
 }

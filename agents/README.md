@@ -5,7 +5,7 @@ These prompts are shared role definitions for the AI-first HQ.
 ## Start Order
 
 1. CEO
-2. COO
+2. AI Operations Lead
 3. Governor
 4. Delivery
 5. Documentation
@@ -31,7 +31,7 @@ Do not add more standing agents unless a repeated execution gap appears.
 ## Routing Rule
 
 - CEO decides and approves high risk.
-- COO routes and maintains the queue.
+- AI Operations Lead routes and maintains the queue, observability, and weekly metric review.
 - Governor enforces policy and approval gates.
 - Delivery owns bounded execution.
 - Documentation updates tracked truth after acceptance.

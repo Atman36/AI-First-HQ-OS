@@ -14,7 +14,7 @@ Build the first usable AI-first operating system for the company.
 
 ## Supporting Roles
 
-- COO
+- AI Operations Lead
 - Governor
 - Delivery
 - Documentation
@@ -32,9 +32,10 @@ Build the first usable AI-first operating system for the company.
 
 ## Current Stage
 
-- Stage 1: machine-readable control plane installed
-- Governor role added
-- Board rendering and telemetry scaffolding added
+- Stage 1 baseline is installed
+- Stage 2 foundation is now the active move
+- AI Operations Lead replaces the stage-1 AI COO role as the standing operating owner
+- Weekly metric review and runtime-discipline contracts are being installed
 - First governed operating loop still needs live proof
 
 ## Current Workstreams
@@ -52,7 +53,13 @@ Build the first usable AI-first operating system for the company.
 ### Observability
 
 - Log routing, execution, acceptance, escalation, and sync events.
-- Use weekly metrics to decide what to automate next.
+- Use weekly metrics and threshold breaches to decide what to automate next.
+
+### Operating Discipline
+
+- Keep `AI Operations Lead` responsible for queue health, observability, eval follow-through, memory hygiene, and runtime quality.
+- Keep Governor independent as the control and approval layer.
+- Keep repeated work lightweight: explicit acceptance checks first, heavier automation later.
 
 ### Adoption
 
@@ -70,7 +77,7 @@ Build the first usable AI-first operating system for the company.
 ## Dependencies
 
 - CEO keeps authority boundaries explicit
-- COO keeps task state current in the control plane
+- AI Operations Lead keeps task state, telemetry coverage, weekly metric review, and memory hygiene current
 - Governor blocks unsafe autonomy instead of only commenting on it
 - Documentation syncs accepted outcomes back into shared truth
 

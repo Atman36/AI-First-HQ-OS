@@ -27,12 +27,14 @@
 - `python3 scripts/hq_runtime.py bootstrap`
 - `python3 scripts/hq_runtime.py probe ...`
 - `python3 scripts/hq_telemetry.py event ...`
+- `python3 scripts/hq_telemetry.py weekly-metrics ...`
 
 ## Rule Of Use
 
 - Update `active-work.json` first for delegated task-state changes.
 - Render `Task Board.md` from the control plane instead of editing it manually.
 - Use AI as the default operator only within autonomy tiers and risk policy.
+- Use AI Operations Lead for orchestration, observability, weekly metric review, eval follow-through, memory hygiene, and runtime-quality escalation.
 - Use Governor for policy checks, approval gates, and rollback triggers.
 - Escalate strategy, budget, legal/public, destructive, hiring, or policy overrides to CEO.
 - Confirm local tool availability before routing through a specific CLI or runner.

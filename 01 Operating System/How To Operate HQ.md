@@ -41,12 +41,18 @@ This is the practical order for updating HQ in the AI-first version.
 
 ### 4. Execute the work
 
-- Route through COO
+- Route through AI Operations Lead
 - Check through Governor when policy or risk requires it
 - Let the specialist owner execute
 - Let Documentation sync accepted results back into shared truth
 
-### 5. Write runtime artifacts
+### 5. Run the weekly metric review
+
+- Run `python3 scripts/hq_telemetry.py weekly-metrics --since YYYY-MM-DD --until YYYY-MM-DD`
+- Use the telemetry review as the weekly metric layer instead of reconstructing the week from chat history
+- Escalate threshold breaches through AI Operations Lead and Governor before increasing autonomy
+
+### 6. Write runtime artifacts
 
 - `.hq/handoffs/` for continuity
 - `.hq/state/` for capability probes
@@ -59,4 +65,5 @@ This is the practical order for updating HQ in the AI-first version.
 1. `.hq/handoffs/<task>/LATEST.md` when work is handed off or paused
 2. `.hq/state/capabilities.json` when routing depends on a specific local tool
 3. `.hq/reflections/YYYY-MM/YYYY-MM-DD.jsonl` when agents log task-level reflections
-4. `.hq/improvements/LATEST.md` when weekly review produces candidate improvements for manual review
+4. `.hq/telemetry/reviews/LATEST.md` when the weekly metric review is generated from live telemetry
+5. `.hq/improvements/LATEST.md` when the reflection review produces candidate improvements for manual review

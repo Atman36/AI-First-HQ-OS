@@ -4,6 +4,7 @@
   "workflows": [
     {
       "id": "intake-to-execution",
+      "purpose": "Default routed execution loop for low- and medium-risk internal work.",
       "states": [
         "intake",
         "triage",
@@ -31,11 +32,24 @@
         "autonomy_tier",
         "workflow"
       ],
+      "required_telemetry_events": [
+        "intake",
+        "route",
+        "policy_check",
+        "start",
+        "acceptance",
+        "sync"
+      ],
+      "acceptance_evidence": [
+        "done_when is specific and reviewable",
+        "accepting role confirms the outcome before shared-truth sync",
+        "completed work has route, start, acceptance, and sync telemetry coverage"
+      ],
       "transition_owners": {
         "intake->triage": "assistant",
-        "triage->policy_check": "coo",
+        "triage->policy_check": "ai_operations_lead",
         "policy_check->scheduled": "governor",
-        "scheduled->executing": "coo",
+        "scheduled->executing": "ai_operations_lead",
         "executing->review": "task_owner",
         "review->accepted": "accepting_role",
         "accepted->synced": "documentation",
@@ -44,6 +58,7 @@
     },
     {
       "id": "decision-lifecycle",
+      "purpose": "Route policy, threshold, and unresolved decision work into explicit approval and documentation steps.",
       "states": [
         "open",
         "researched",
@@ -60,17 +75,31 @@
         "risk_tier",
         "autonomy_tier",
         "workflow",
-        "primary_update_file"
+        "primary_update_file",
+        "project",
+        "next_step",
+        "done_when"
+      ],
+      "required_telemetry_events": [
+        "review",
+        "approval",
+        "sync"
+      ],
+      "acceptance_evidence": [
+        "the decision owner prepares a concrete proposal",
+        "CEO or required human approver resolves the decision explicitly",
+        "approved decisions are synced into tracked truth or kept open with a named blocker"
       ],
       "transition_owners": {
         "open->researched": "research",
-        "researched->proposal_ready": "coo",
+        "researched->proposal_ready": "ai_operations_lead",
         "proposal_ready->approved": "ceo",
         "approved->resolved": "documentation"
       }
     },
     {
       "id": "weekly-review",
+      "purpose": "Turn telemetry and active-work state into one weekly operating review with explicit owners for breaches and carry-forward.",
       "states": [
         "collect",
         "analyze",
@@ -81,13 +110,27 @@
       "required_task_fields": [
         "id",
         "title",
+        "column",
         "owner",
+        "project",
         "accepts_result",
+        "risk_tier",
+        "autonomy_tier",
         "workflow",
-        "primary_update_file"
+        "primary_update_file",
+        "next_step",
+        "done_when"
+      ],
+      "required_telemetry_events": [
+        "review"
+      ],
+      "acceptance_evidence": [
+        "weekly metrics are generated from telemetry rather than chat reconstruction",
+        "every breached threshold has a named owner or an explicit decision to defer",
+        "carry-forward items are reflected in the control plane or weekly plan"
       ],
       "transition_owners": {
-        "collect->analyze": "coo",
+        "collect->analyze": "ai_operations_lead",
         "analyze->decide": "governor",
         "decide->publish": "documentation",
         "publish->carry_forward": "ceo"

@@ -1,6 +1,7 @@
 {
   "version": 1,
   "updated_at": "2026-04-15",
+  "stage": "stage-2-foundation",
   "autonomy_tiers": [
     {
       "id": "A0",
@@ -58,16 +59,163 @@
       "all high-risk tasks",
       "all changes to control-plane policy or workflow files",
       "all tasks with autonomy tier A3",
-      "all tasks that touch more than one system of record"
+      "all tasks that touch more than one system of record",
+      "all weekly metric threshold breaches that could change autonomy or approvals"
     ],
     "default_spend_without_budget_eur": 0,
     "max_external_send_without_review": 0
   },
+  "weekly_metric_review": {
+    "cadence": "weekly",
+    "owner": "ai_operations_lead",
+    "support": [
+      "governor",
+      "documentation",
+      "finance"
+    ],
+    "approver": "ceo",
+    "required_metrics": [
+      "autonomous_completion_rate",
+      "human_escalation_rate",
+      "decision_latency_hours",
+      "documentation_lag_hours",
+      "rework_or_rollback_rate"
+    ],
+    "required_artifacts": [
+      ".hq/telemetry/reviews/LATEST.json",
+      ".hq/telemetry/reviews/LATEST.md"
+    ],
+    "required_actions": [
+      "assign an owner to every breached threshold or explicitly defer it",
+      "carry forward policy or workflow changes through tracked source-of-truth files",
+      "do not increase autonomy from anecdote alone"
+    ]
+  },
+  "eval_policy": {
+    "minimum_checks_for_repeated_work": [
+      "named done_when and accepting role",
+      "workflow-defined telemetry events",
+      "at least one lightweight review or eval signal before expanding autonomy"
+    ],
+    "control_plane_change_requires": [
+      "python3 scripts/hq_control_plane.py validate",
+      "relevant local tests when scripts or contracts change",
+      "python3 scripts/hq_control_plane.py sync after queue changes"
+    ]
+  },
+  "memory_hygiene": {
+    "shared_truth_rule": "Shared Markdown holds accepted company truth; private runtime holds continuity and operating exhaust.",
+    "runtime_only_paths": [
+      ".hq/handoffs/",
+      ".hq/state/",
+      ".hq/telemetry/",
+      ".hq/reflections/",
+      ".hq/improvements/",
+      ".hq/evals/",
+      ".hq/releases/"
+    ],
+    "rules": [
+      "Do not copy raw runtime notes into shared truth without acceptance.",
+      "Do not let `.hq/` become a second project registry.",
+      "Use weekly review to identify stale runtime habits before adding more memory infrastructure."
+    ]
+  },
+  "runtime_quality": {
+    "required_preflight": [
+      "validate the control plane before accepting schema or policy changes",
+      "probe a local CLI before routing a workflow through it",
+      "generate weekly metrics from telemetry, not chat reconstruction"
+    ],
+    "drift_signals": [
+      "missing telemetry on active work",
+      "repeated policy exceptions without a decision update",
+      "documentation lag remaining above threshold for more than one review",
+      "eval coverage staying below threshold on repeated work"
+    ]
+  },
+  "metric_thresholds": [
+    {
+      "metric_id": "autonomous_completion_rate",
+      "comparison": ">=",
+      "target": 0.6,
+      "owner": "ai_operations_lead",
+      "escalate_to": [
+        "ai_operations_lead",
+        "governor"
+      ],
+      "action": "Tighten task contracts and acceptance checks before expanding autonomy."
+    },
+    {
+      "metric_id": "human_escalation_rate",
+      "comparison": "<=",
+      "target": 0.35,
+      "owner": "ai_operations_lead",
+      "escalate_to": [
+        "ai_operations_lead",
+        "governor"
+      ],
+      "action": "Review routing, task shaping, and approval thresholds."
+    },
+    {
+      "metric_id": "decision_latency_hours",
+      "comparison": "<=",
+      "target": 24,
+      "owner": "ai_operations_lead",
+      "escalate_to": [
+        "ai_operations_lead"
+      ],
+      "action": "Reduce queue ambiguity or policy bottlenecks before increasing workload."
+    },
+    {
+      "metric_id": "documentation_lag_hours",
+      "comparison": "<=",
+      "target": 24,
+      "owner": "documentation",
+      "escalate_to": [
+        "documentation",
+        "ai_operations_lead"
+      ],
+      "action": "Reduce closeout scope or rebalance documentation capacity."
+    },
+    {
+      "metric_id": "rework_or_rollback_rate",
+      "comparison": "<=",
+      "target": 0.2,
+      "owner": "governor",
+      "escalate_to": [
+        "governor",
+        "ceo"
+      ],
+      "action": "Review whether policy, acceptance checks, or rollback notes are too weak."
+    },
+    {
+      "metric_id": "telemetry_coverage_rate",
+      "comparison": ">=",
+      "target": 0.9,
+      "owner": "ai_operations_lead",
+      "escalate_to": [
+        "ai_operations_lead",
+        "governor"
+      ],
+      "action": "Backfill missing telemetry or lower autonomy until coverage is reliable."
+    },
+    {
+      "metric_id": "eval_coverage_rate",
+      "comparison": ">=",
+      "target": 0.5,
+      "owner": "ai_operations_lead",
+      "escalate_to": [
+        "ai_operations_lead"
+      ],
+      "action": "Add lightweight review or eval signals before repeating the same workflow more autonomously."
+    }
+  ],
   "kill_switches": [
     "repeated policy violations",
     "missing telemetry for a high-risk action",
     "contradictory source-of-truth update",
-    "rework_or_rollback_rate exceeds the accepted weekly threshold"
+    "rework_or_rollback_rate exceeds the accepted weekly threshold",
+    "telemetry_coverage_rate stays below threshold for two weekly reviews in a row"
   ],
   "documentation_rule": "Documentation may sync shared truth only after acceptance or explicit CEO override.",
   "board_rule": "Render `02 Planning/Task Board.md` from `05 AI Control Plane/active-work.json` after material queue changes."

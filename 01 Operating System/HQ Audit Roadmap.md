@@ -4,6 +4,8 @@ This is a dated review snapshot, not a live status board.
 
 Live state belongs in `now.md`, `projects.md`, `02 Planning/Task Board.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, and `04 Projects/...`.
 
+Historical note: this audit snapshot refers to the stage-1 `COO` role. The live operating role is now `AI Operations Lead`.
+
 ## Executive Summary
 
 ### Facts

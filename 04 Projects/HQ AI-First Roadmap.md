@@ -4,6 +4,14 @@
 
 Turn the current stage-1 control-plane baseline into the real operating engine of the company without adding premature complexity.
 
+## Nearest Stage 2 Foundation Now
+
+- Replace the stage-1 AI COO role with `AI Operations Lead` as the single operating role for orchestration, observability, eval discipline, memory hygiene, escalation thresholds, and runtime quality.
+- Keep the existing three workflows, but make their acceptance and telemetry contracts explicit.
+- Make weekly metric review run from telemetry and control-plane state instead of chat reconstruction.
+- Add lightweight eval discipline for repeated work and control-plane changes without building a heavy QA platform.
+- Keep external writes blocked until one narrow connector can be approved with policy, audit logging, and rollback notes.
+
 ## 0-30 Days
 
 ### Goal
@@ -12,7 +20,7 @@ Prove one governed loop on real founder work.
 
 ### Deliverables
 
-- Run 1-3 real founder tasks through `COO -> Governor -> specialist -> Documentation`
+- Run 1-3 real founder tasks through `AI Operations Lead -> Governor -> specialist -> Documentation`
 - Keep `05 AI Control Plane/active-work.json` as the live queue for delegated work
 - Log routing, execution, approval, acceptance, and sync events into `.hq/telemetry/`
 - Finalize the first approval thresholds for external writes, deploys, spend, and human-only boundaries
@@ -33,6 +41,7 @@ Turn the baseline into a reliable operating discipline.
 ### Deliverables
 
 - Formalize 2-3 stable machine-readable workflows for recurring work classes
+- Embed `AI Operations Lead` as the operating owner instead of keeping a generic AI COO label
 - Add lightweight acceptance and eval checks for repeated task types
 - Start a mandatory weekly metric review from telemetry instead of chat memory
 - Enable one limited external write surface only behind Governor-reviewed policy and rollback rules
@@ -41,6 +50,7 @@ Turn the baseline into a reliable operating discipline.
 ### Exit Criteria
 
 - Weekly review uses real telemetry rather than manual reconstruction
+- AI Operations Lead owns queue health, observability, and runtime discipline without duplicating Governor
 - One external action surface is governed end to end
 - Recurring work has explicit acceptance checks instead of ad hoc review
 

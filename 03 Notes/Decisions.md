@@ -53,3 +53,13 @@
 
 - Decision: do not connect external write surfaces until telemetry, approval policy, and rollback rules exist.
 - Reason: external autonomy without logging and intervention paths would create hidden operational risk.
+
+### Replace Stage-1 AI COO With AI Operations Lead
+
+- Decision: replace the stage-1 AI COO role with `AI Operations Lead` as the one standing operating role for orchestration, observability, eval discipline, memory hygiene, escalation thresholds, and runtime quality.
+- Reason: the system needs one explicit operating owner for Stage 2, not duplicated routing authority between a generic COO label and a new operations role.
+
+### Weekly Metric Review Must Come From Telemetry
+
+- Decision: run the weekly metric review from `.hq/telemetry/` and control-plane state instead of reconstructing the week from chat memory.
+- Reason: Stage 2 discipline requires inspectable evidence, threshold breaches, and carry-forward actions grounded in runtime data.

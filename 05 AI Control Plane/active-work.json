@@ -1,19 +1,20 @@
 {
   "version": 1,
   "updated_at": "2026-04-15",
-  "operating_mode": "ai-first-stage-1",
+  "operating_mode": "ai-first-stage-2-foundation",
   "objective": {
-    "id": "hq-ai-first-stage-1",
-    "title": "Install an AI-first control plane and run the first governed operating loop",
+    "id": "hq-ai-first-stage-2-foundation",
+    "title": "Install the Stage 2 operating discipline and prove the first governed loop on live work",
     "window": {
       "start": "2026-04-15",
-      "target_end": "2026-05-15"
+      "target_end": "2026-05-31"
     },
     "success_criteria": [
-      "one real task runs through COO -> Governor -> specialist -> Documentation",
-      "the queue stays current in active-work.json",
-      "Task Board.md is rendered from the queue",
-      "telemetry captures routing, execution, acceptance, and sync events"
+      "AI Operations Lead replaces the stage-1 AI COO role across docs and control-plane contracts",
+      "one real task runs through AI Operations Lead -> Governor -> specialist -> Documentation",
+      "the queue stays current in active-work.json and Task Board.md is rendered from it",
+      "weekly metrics can be generated from telemetry and active-work state",
+      "telemetry captures routing, execution, acceptance, sync, and lightweight eval signals"
     ]
   },
   "tasks": [
@@ -25,7 +26,7 @@
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
-        "coo",
+        "ai_operations_lead",
         "documentation"
       ],
       "next_step": "Use the control plane on live work instead of treating it as architecture-only.",
@@ -49,6 +50,7 @@
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
+        "ai_operations_lead",
         "governor",
         "documentation"
       ],
@@ -66,28 +68,78 @@
       "workflow": "intake-to-execution"
     },
     {
+      "id": "embed-ai-operations-lead-and-stage-2-foundation",
+      "title": "Replace the stage-1 AI COO role with AI Operations Lead and tighten Stage 2 operating contracts",
+      "column": "done",
+      "completed_at": "2026-04-15",
+      "owner": "delivery",
+      "project": "HQ Bootstrap",
+      "support": [
+        "ai_operations_lead",
+        "governor",
+        "documentation"
+      ],
+      "next_step": "Run a real work item through the updated routing and weekly-review discipline.",
+      "done_when": "Operating docs, role prompts, control-plane contracts, and runtime review contracts all reference AI Operations Lead consistently.",
+      "primary_update_file": "05 AI Control Plane/agent-registry.json",
+      "align_files": [
+        "01 Operating System/AI-First Operating Model.md",
+        "01 Operating System/Agent Routing.md",
+        "05 AI Control Plane/workflow-registry.json",
+        "05 AI Control Plane/metrics-registry.json",
+        "05 AI Control Plane/operating-policies.json"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
       "id": "run-first-governed-loop",
-      "title": "Run one real company task through COO -> Governor -> specialist -> Documentation",
+      "title": "Run one real company task through AI Operations Lead -> Governor -> specialist -> Documentation",
       "column": "this_week",
-      "owner": "coo",
+      "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [
         "governor",
         "delivery",
         "documentation"
       ],
-      "next_step": "Pick a real founder request and execute it through the new control plane without bypasses.",
-      "done_when": "One task completes with queue state, acceptance, board sync, and telemetry events.",
+      "next_step": "Pick a real founder request and execute it through the updated control plane without bypasses.",
+      "done_when": "One task completes with queue state, acceptance, board sync, telemetry coverage, and a weekly metric-review entry.",
       "primary_update_file": "05 AI Control Plane/active-work.json",
       "align_files": [
         "02 Planning/Weekly Plan.md",
-        "03 Notes/Decisions.md",
         "04 Projects/HQ Bootstrap.md"
       ],
       "accepts_result": "ceo",
       "risk_tier": "medium",
       "autonomy_tier": "A2",
       "workflow": "intake-to-execution"
+    },
+    {
+      "id": "start-weekly-metric-review-from-telemetry",
+      "title": "Run the first weekly metric review from telemetry and threshold rules",
+      "column": "this_week",
+      "owner": "ai_operations_lead",
+      "project": "HQ Bootstrap",
+      "support": [
+        "governor",
+        "documentation",
+        "finance"
+      ],
+      "next_step": "Generate the first weekly metrics report from live telemetry and assign owners to any threshold breaches.",
+      "done_when": "A weekly telemetry review is generated and used as the metric layer of the weekly operating review.",
+      "primary_update_file": "05 AI Control Plane/metrics-registry.json",
+      "align_files": [
+        "routines.md",
+        "02 Planning/Weekly Plan.md",
+        "scripts/hq_telemetry.py"
+      ],
+      "accepts_result": "governor",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "weekly-review"
     },
     {
       "id": "calibrate-approval-thresholds",
@@ -97,10 +149,11 @@
       "project": "HQ Bootstrap",
       "support": [
         "ceo",
-        "finance"
+        "finance",
+        "ai_operations_lead"
       ],
-      "next_step": "Resolve open decisions about budget, external sends, deploy authority, and connector write access.",
-      "done_when": "`03 Notes/Open Decisions.md` is reduced and `operating-policies.json` reflects approved thresholds.",
+      "next_step": "Resolve open decisions about budget, external sends, deploy authority, and connector write access using real weekly review evidence.",
+      "done_when": "`03 Notes/Open Decisions.md` is reduced and `operating-policies.json` reflects approved thresholds and escalation logic.",
       "primary_update_file": "03 Notes/Open Decisions.md",
       "align_files": [
         "05 AI Control Plane/operating-policies.json",
@@ -118,12 +171,13 @@
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
+        "ai_operations_lead",
         "governor",
         "assistant",
         "finance",
         "growth"
       ],
-      "next_step": "Do not connect external write surfaces until thresholds, logging, and rollback rules are agreed.",
+      "next_step": "Do not connect external write surfaces until thresholds, telemetry coverage, and rollback rules are stable.",
       "done_when": "At least one external connector is enabled with audit logging, review, and rollback notes.",
       "primary_update_file": "stack.md",
       "align_files": [

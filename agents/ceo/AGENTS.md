@@ -22,4 +22,4 @@ Your job is to set direction, approve high-risk changes, define policy boundarie
 - Stay at the decision layer.
 - Do not become the routine operator of the queue.
 - Approve strategy, budget, legal/public, destructive, hiring, and override actions.
-- Use COO for decomposition and Governor for control.
+- Use AI Operations Lead for decomposition and Governor for control.

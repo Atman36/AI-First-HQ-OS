@@ -1,28 +1,8 @@
-You are the COO.
+This file is a legacy stage-1 alias.
 
-Your job is to convert priorities into governed execution and maintain the machine-readable queue.
+`COO` is no longer a standing operating role in HQ. Use `AI Operations Lead` instead.
 
-## Read First
+## Migration Rule
 
-- `now.md`
-- `projects.md`
-- `05 AI Control Plane/active-work.json`
-- `05 AI Control Plane/workflow-registry.json`
-- `05 AI Control Plane/operating-policies.json`
-- relevant page in `04 Projects/` when the task belongs to a project
-
-## Outputs
-
-- New or updated task records in `active-work.json`
-- Routing decisions
-- Owner/support/acceptance assignments
-- Queue health summaries
-- Blocker lists
-
-## Rules
-
-- `active-work.json` is the live delegated-work queue.
-- Every task must have owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
-- Route policy-sensitive work through Governor before execution.
-- Route implementation work to Delivery.
-- Re-render `Task Board.md` after material task-state changes.
+- Route all new orchestration, queue, observability, weekly metric review, eval-discipline, memory-hygiene, and runtime-quality work to `agents/ai-operations-lead/AGENTS.md`.
+- Keep this file only so old references fail safely instead of creating a second live operating role.

@@ -48,6 +48,8 @@ COLUMN_TITLES = {
     "synced": "Synced",
     "done": "Done",
 }
+SPECIAL_TRANSITION_OWNERS = {"task_owner", "accepting_role"}
+VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
 
 
 class ValidationError(Exception):
@@ -134,6 +136,17 @@ def get_policy_sets(policies: dict[str, Any]) -> tuple[set[str], set[str]]:
     return autonomy_tiers, risk_tiers
 
 
+def get_metric_ids(metrics: dict[str, Any]) -> set[str]:
+    metric_ids: set[str] = set()
+    for collection_name in ("primary_metrics", "secondary_metrics"):
+        for item in metrics.get(collection_name, []) or []:
+            if isinstance(item, dict):
+                metric_id = normalize_text(item.get("id"))
+                if metric_id:
+                    metric_ids.add(metric_id)
+    return metric_ids
+
+
 def validate_role_registry(agent_registry: dict[str, Any], context: ValidationContext) -> None:
     roles = agent_registry.get("roles")
     if not isinstance(roles, list) or not roles:
@@ -157,22 +170,176 @@ def validate_role_registry(agent_registry: dict[str, Any], context: ValidationCo
             context.add(path, "role_type must be 'human' or 'ai'")
         if not normalize_text(role.get("mission")):
             context.add(path, "mission is required")
+        owns = role.get("owns")
+        if owns is not None and not isinstance(owns, list):
+            context.add(path, "owns must be a list when provided")
 
-
-def validate_metrics(metrics: dict[str, Any], context: ValidationContext) -> None:
-    primary = metrics.get("primary_metrics")
-    if not isinstance(primary, list) or len(primary) < 3:
-        context.add("metrics-registry.json", "primary_metrics should contain at least 3 metrics")
-        return
-    for index, metric in enumerate(primary):
-        path = f"metrics-registry.json.primary_metrics[{index}]"
-        if not isinstance(metric, dict):
-            context.add(path, "metric must be an object")
+    for index, role in enumerate(roles):
+        if not isinstance(role, dict):
             continue
-        if not normalize_text(metric.get("id")):
-            context.add(path, "metric id is required")
-        if not normalize_text(metric.get("definition")):
-            context.add(path, "definition is required")
+        escalate_target = normalize_text(role.get("escalates_to"))
+        if escalate_target and escalate_target not in seen:
+            context.add(
+                f"agent-registry.json.roles[{index}].escalates_to",
+                f"unknown escalation role: {escalate_target}",
+            )
+
+
+def validate_metrics(
+    metrics: dict[str, Any],
+    agent_registry: dict[str, Any],
+    context: ValidationContext,
+) -> None:
+    role_ids = get_role_ids(agent_registry)
+    primary = metrics.get("primary_metrics")
+    if not isinstance(primary, list) or len(primary) < 5:
+        context.add("metrics-registry.json", "primary_metrics should contain at least 5 metrics")
+        return
+    for collection_name in ("primary_metrics", "secondary_metrics"):
+        collection = metrics.get(collection_name, []) or []
+        if not isinstance(collection, list):
+            context.add(f"metrics-registry.json.{collection_name}", "metrics collection must be a list")
+            continue
+        for index, metric in enumerate(collection):
+            path = f"metrics-registry.json.{collection_name}[{index}]"
+            if not isinstance(metric, dict):
+                context.add(path, "metric must be an object")
+                continue
+            if not normalize_text(metric.get("id")):
+                context.add(path, "metric id is required")
+            if not normalize_text(metric.get("definition")):
+                context.add(path, "definition is required")
+            sources = metric.get("source")
+            if not isinstance(sources, list) or not sources:
+                context.add(path, "source must be a non-empty list")
+            review_owner = normalize_text(metric.get("review_owner"))
+            if review_owner and review_owner not in role_ids:
+                context.add(path, f"unknown review_owner role: {review_owner}")
+            threshold = metric.get("threshold")
+            if threshold is not None:
+                if not isinstance(threshold, dict):
+                    context.add(path, "threshold must be an object when provided")
+                else:
+                    comparison = normalize_text(threshold.get("comparison"))
+                    if comparison not in VALID_THRESHOLD_COMPARISONS:
+                        context.add(
+                            f"{path}.threshold.comparison",
+                            "threshold comparison must be one of <, <=, =, >=, >",
+                        )
+                    if not isinstance(threshold.get("value"), (int, float)):
+                        context.add(f"{path}.threshold.value", "threshold value must be numeric")
+
+
+def validate_workflows(
+    workflow_registry: dict[str, Any],
+    agent_registry: dict[str, Any],
+    context: ValidationContext,
+) -> None:
+    workflows = workflow_registry.get("workflows")
+    if not isinstance(workflows, list) or not workflows:
+        context.add("workflow-registry.json", "workflows must be a non-empty list")
+        return
+
+    role_ids = get_role_ids(agent_registry)
+    seen: set[str] = set()
+    for index, workflow in enumerate(workflows):
+        path = f"workflow-registry.json.workflows[{index}]"
+        if not isinstance(workflow, dict):
+            context.add(path, "workflow must be an object")
+            continue
+        workflow_id = normalize_text(workflow.get("id"))
+        if not workflow_id:
+            context.add(path, "workflow id is required")
+        elif workflow_id in seen:
+            context.add(path, f"duplicate workflow id: {workflow_id}")
+        else:
+            seen.add(workflow_id)
+        states = workflow.get("states")
+        if not isinstance(states, list) or not states:
+            context.add(path, "states must be a non-empty list")
+        required_task_fields = workflow.get("required_task_fields")
+        if not isinstance(required_task_fields, list) or not required_task_fields:
+            context.add(path, "required_task_fields must be a non-empty list")
+        transition_owners = workflow.get("transition_owners")
+        if not isinstance(transition_owners, dict) or not transition_owners:
+            context.add(path, "transition_owners must be a non-empty object")
+        else:
+            for transition, owner in transition_owners.items():
+                owner_id = normalize_text(owner)
+                if owner_id not in role_ids and owner_id not in SPECIAL_TRANSITION_OWNERS:
+                    context.add(
+                        f"{path}.transition_owners[{transition}]",
+                        f"unknown transition owner: {owner_id}",
+                    )
+        for key in ("required_telemetry_events", "acceptance_evidence"):
+            value = workflow.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, list) or not value:
+                context.add(f"{path}.{key}", f"{key} must be a non-empty list when provided")
+
+
+def validate_policies(
+    policies: dict[str, Any],
+    agent_registry: dict[str, Any],
+    metrics: dict[str, Any],
+    context: ValidationContext,
+) -> None:
+    role_ids = get_role_ids(agent_registry)
+    metric_ids = get_metric_ids(metrics)
+
+    weekly_review = policies.get("weekly_metric_review")
+    if weekly_review is not None:
+        if not isinstance(weekly_review, dict):
+            context.add("operating-policies.json.weekly_metric_review", "weekly_metric_review must be an object")
+        else:
+            owner = normalize_text(weekly_review.get("owner"))
+            approver = normalize_text(weekly_review.get("approver"))
+            if owner and owner not in role_ids:
+                context.add("operating-policies.json.weekly_metric_review.owner", f"unknown role: {owner}")
+            if approver and approver not in role_ids:
+                context.add(
+                    "operating-policies.json.weekly_metric_review.approver",
+                    f"unknown role: {approver}",
+                )
+            for index, support_role in enumerate(weekly_review.get("support", []) or []):
+                support_id = normalize_text(support_role)
+                if support_id and support_id not in role_ids:
+                    context.add(
+                        f"operating-policies.json.weekly_metric_review.support[{index}]",
+                        f"unknown role: {support_id}",
+                    )
+            for index, metric_id in enumerate(weekly_review.get("required_metrics", []) or []):
+                metric_text = normalize_text(metric_id)
+                if metric_text and metric_text not in metric_ids:
+                    context.add(
+                        f"operating-policies.json.weekly_metric_review.required_metrics[{index}]",
+                        f"unknown metric id: {metric_text}",
+                    )
+
+    metric_thresholds = policies.get("metric_thresholds", []) or []
+    if metric_thresholds and not isinstance(metric_thresholds, list):
+        context.add("operating-policies.json.metric_thresholds", "metric_thresholds must be a list")
+    for index, threshold in enumerate(metric_thresholds if isinstance(metric_thresholds, list) else []):
+        path = f"operating-policies.json.metric_thresholds[{index}]"
+        if not isinstance(threshold, dict):
+            context.add(path, "metric threshold must be an object")
+            continue
+        metric_id = normalize_text(threshold.get("metric_id"))
+        if metric_id and metric_id not in metric_ids:
+            context.add(f"{path}.metric_id", f"unknown metric id: {metric_id}")
+        comparison = normalize_text(threshold.get("comparison"))
+        if comparison not in VALID_THRESHOLD_COMPARISONS:
+            context.add(f"{path}.comparison", "comparison must be one of <, <=, =, >=, >")
+        if not isinstance(threshold.get("target"), (int, float)):
+            context.add(f"{path}.target", "target must be numeric")
+        owner = normalize_text(threshold.get("owner"))
+        if owner and owner not in role_ids:
+            context.add(f"{path}.owner", f"unknown role: {owner}")
+        for role_index, escalate_role in enumerate(threshold.get("escalate_to", []) or []):
+            escalate_id = normalize_text(escalate_role)
+            if escalate_id and escalate_id not in role_ids:
+                context.add(f"{path}.escalate_to[{role_index}]", f"unknown role: {escalate_id}")
 
 
 def validate_active_work(
@@ -198,6 +365,17 @@ def validate_active_work(
             context.add("active-work.json.objective", "objective.id is required")
         if not normalize_text(objective.get("title")):
             context.add("active-work.json.objective", "objective.title is required")
+        window = objective.get("window")
+        if not isinstance(window, dict):
+            context.add("active-work.json.objective.window", "objective.window must be an object")
+        else:
+            if not normalize_text(window.get("start")):
+                context.add("active-work.json.objective.window.start", "objective.window.start is required")
+            if not normalize_text(window.get("target_end")):
+                context.add(
+                    "active-work.json.objective.window.target_end",
+                    "objective.window.target_end is required",
+                )
 
     seen_task_ids: set[str] = set()
     for index, task in enumerate(tasks):
@@ -293,7 +471,14 @@ def validate_control_plane() -> dict[str, Any]:
     bundle = load_control_plane()
     context = ValidationContext()
     validate_role_registry(bundle["agent_registry"], context)
-    validate_metrics(bundle["metrics_registry"], context)
+    validate_metrics(bundle["metrics_registry"], bundle["agent_registry"], context)
+    validate_workflows(bundle["workflow_registry"], bundle["agent_registry"], context)
+    validate_policies(
+        bundle["policies"],
+        bundle["agent_registry"],
+        bundle["metrics_registry"],
+        context,
+    )
     validate_active_work(
         bundle["active_work"],
         bundle["agent_registry"],

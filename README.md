@@ -46,13 +46,14 @@ Each role now works through five operating objects:
 - Use `python3 scripts/hq_control_plane.py sync` after changing `05 AI Control Plane/active-work.json`.
 - Use `python3 scripts/hq_control_plane.py validate` before accepting structural changes to the control plane.
 - Use `python3 scripts/hq_telemetry.py event ...` to log task, approval, escalation, or sync events into `.hq/telemetry/`.
+- Use `python3 scripts/hq_telemetry.py weekly-metrics ...` to generate the weekly metric review from telemetry instead of reconstructing it from chat memory.
 - Use `python3 scripts/hq_runtime.py bootstrap` to create the local runtime scaffold and `python3 scripts/hq_runtime.py probe ...` before routing work through a local CLI.
 - Keep private runtime state under `.hq/`; keep durable company truth in tracked files.
 
 ## Founder Path
 
 - CEO sets direction and approves high-risk changes.
-- COO converts work into machine-readable tasks.
+- AI Operations Lead converts work into machine-readable tasks, keeps the queue healthy, and owns weekly metric review discipline.
 - Governor checks risk, approvals, and guardrails.
 - Delivery or a specialist role executes.
 - Documentation syncs accepted outcomes back into shared truth.

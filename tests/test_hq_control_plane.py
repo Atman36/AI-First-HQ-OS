@@ -28,10 +28,12 @@ class HqControlPlaneTests(unittest.TestCase):
         (self.temp_root / "04 Projects").mkdir(parents=True, exist_ok=True)
         (self.temp_root / "scripts").mkdir(parents=True, exist_ok=True)
         (self.temp_root / "tests").mkdir(parents=True, exist_ok=True)
+        (self.temp_root / "agents" / "ai-operations-lead").mkdir(parents=True, exist_ok=True)
         (self.temp_root / "AGENTS.md").write_text("# AGENTS\n", encoding="utf-8")
         (self.temp_root / "03 Notes" / "Decisions.md").write_text("# Decisions\n", encoding="utf-8")
         (self.temp_root / "03 Notes" / "Open Decisions.md").write_text("# Open Decisions\n", encoding="utf-8")
         (self.temp_root / "04 Projects" / "HQ Bootstrap.md").write_text("# HQ Bootstrap\n", encoding="utf-8")
+        (self.temp_root / "routines.md").write_text("# Routines\n", encoding="utf-8")
         (self.temp_root / "scripts" / "hq_control_plane.py").write_text("# placeholder\n", encoding="utf-8")
         (self.temp_root / "scripts" / "hq_telemetry.py").write_text("# placeholder\n", encoding="utf-8")
         (self.temp_root / "tests" / "test_hq_control_plane.py").write_text("# placeholder\n", encoding="utf-8")
@@ -50,7 +52,12 @@ class HqControlPlaneTests(unittest.TestCase):
                 {
                     "roles": [
                         {"id": "ceo", "role_type": "human", "mission": "Approve high-risk work."},
-                        {"id": "coo", "role_type": "ai", "mission": "Route work."},
+                        {
+                            "id": "ai_operations_lead",
+                            "role_type": "ai",
+                            "mission": "Route work and run weekly review.",
+                            "escalates_to": "governor",
+                        },
                         {"id": "delivery", "role_type": "ai", "mission": "Execute work."},
                         {"id": "documentation", "role_type": "ai", "mission": "Sync truth."},
                         {"id": "governor", "role_type": "ai", "mission": "Enforce policy."},
@@ -67,6 +74,27 @@ class HqControlPlaneTests(unittest.TestCase):
                 {
                     "autonomy_tiers": [{"id": "A1"}, {"id": "A2"}, {"id": "A3"}, {"id": "A4"}],
                     "risk_tiers": [{"id": "low"}, {"id": "medium"}, {"id": "high"}],
+                    "weekly_metric_review": {
+                        "owner": "ai_operations_lead",
+                        "support": ["governor", "documentation"],
+                        "approver": "ceo",
+                        "required_metrics": [
+                            "autonomous_completion_rate",
+                            "human_escalation_rate",
+                            "decision_latency_hours",
+                            "documentation_lag_hours",
+                            "rework_or_rollback_rate",
+                        ],
+                    },
+                    "metric_thresholds": [
+                        {
+                            "metric_id": "autonomous_completion_rate",
+                            "comparison": ">=",
+                            "target": 0.6,
+                            "owner": "ai_operations_lead",
+                            "escalate_to": ["governor"],
+                        }
+                    ],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -80,6 +108,7 @@ class HqControlPlaneTests(unittest.TestCase):
                     "workflows": [
                         {
                             "id": "intake-to-execution",
+                            "states": ["intake", "triage", "policy_check", "scheduled", "done"],
                             "required_task_fields": [
                                 "id",
                                 "title",
@@ -94,6 +123,13 @@ class HqControlPlaneTests(unittest.TestCase):
                                 "autonomy_tier",
                                 "workflow",
                             ],
+                            "required_telemetry_events": ["intake", "route", "acceptance", "sync"],
+                            "acceptance_evidence": ["accepting role reviews outcome"],
+                            "transition_owners": {
+                                "intake->triage": "ai_operations_lead",
+                                "triage->policy_check": "governor",
+                                "policy_check->scheduled": "ai_operations_lead",
+                            },
                         }
                     ]
                 },
@@ -107,10 +143,51 @@ class HqControlPlaneTests(unittest.TestCase):
             json.dumps(
                 {
                     "primary_metrics": [
-                        {"id": "autonomous_completion_rate", "definition": "x"},
-                        {"id": "human_escalation_rate", "definition": "x"},
-                        {"id": "decision_latency_hours", "definition": "x"},
-                    ]
+                        {
+                            "id": "autonomous_completion_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 0.6},
+                        },
+                        {
+                            "id": "human_escalation_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": "<=", "value": 0.35},
+                        },
+                        {
+                            "id": "decision_latency_hours",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": "<=", "value": 24},
+                        },
+                        {
+                            "id": "documentation_lag_hours",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "review_owner": "documentation",
+                            "threshold": {"comparison": "<=", "value": 24},
+                        },
+                        {
+                            "id": "rework_or_rollback_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "review_owner": "governor",
+                            "threshold": {"comparison": "<=", "value": 0.2},
+                        },
+                    ],
+                    "secondary_metrics": [
+                        {
+                            "id": "telemetry_coverage_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 0.9},
+                        }
+                    ],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -123,10 +200,11 @@ class HqControlPlaneTests(unittest.TestCase):
                 {
                     "version": 1,
                     "updated_at": "2026-04-15",
-                    "operating_mode": "stage-1",
+                    "operating_mode": "stage-2-foundation",
                     "objective": {
                         "id": "obj-1",
                         "title": "Run one governed loop",
+                        "window": {"start": "2026-04-15", "target_end": "2026-05-31"},
                         "success_criteria": ["One task completes through the control plane."],
                     },
                     "tasks": [
@@ -134,7 +212,7 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "task-1",
                             "title": "Run first loop",
                             "column": "this_week",
-                            "owner": "coo",
+                            "owner": "ai_operations_lead",
                             "project": "HQ Bootstrap",
                             "support": ["governor", "delivery", "documentation"],
                             "next_step": "Route one real task.",

@@ -19,16 +19,24 @@
       "escalates_to": null
     },
     {
-      "id": "coo",
-      "display_name": "COO",
+      "id": "ai_operations_lead",
+      "display_name": "AI Operations Lead",
       "role_type": "ai",
       "default_autonomy_tier": "A2",
-      "mission": "Maintain the delegated-work queue and route execution.",
+      "mission": "Run the operating loop: maintain the delegated-work queue, route execution, and keep observability and runtime discipline healthy.",
       "owns": [
         "intake",
         "routing",
         "sequencing",
-        "queue_state"
+        "queue_state",
+        "observability",
+        "weekly_metric_review",
+        "eval_discipline",
+        "memory_hygiene",
+        "runtime_quality"
+      ],
+      "legacy_aliases": [
+        "coo"
       ],
       "escalates_to": "governor"
     },
@@ -57,7 +65,7 @@
         "execution",
         "artifacts"
       ],
-      "escalates_to": "coo"
+      "escalates_to": "ai_operations_lead"
     },
     {
       "id": "documentation",
@@ -70,7 +78,7 @@
         "board_rendering",
         "decision_log_alignment"
       ],
-      "escalates_to": "coo"
+      "escalates_to": "ai_operations_lead"
     },
     {
       "id": "assistant",
@@ -83,7 +91,7 @@
         "agenda_shaping",
         "follow_ups"
       ],
-      "escalates_to": "coo"
+      "escalates_to": "ai_operations_lead"
     },
     {
       "id": "finance",
@@ -122,7 +130,7 @@
         "benchmarks",
         "market_checks"
       ],
-      "escalates_to": "ceo"
+      "escalates_to": "ai_operations_lead"
     }
   ]
 }

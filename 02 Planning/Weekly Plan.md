@@ -4,15 +4,15 @@
 
 ### Operating Objective
 
-Move HQ from a documentation-first operating system to an AI-first control plane without breaking source-of-truth discipline.
+Move HQ from a stage-1 baseline to a stage-2 operating discipline without breaking source-of-truth discipline.
 
 ### Weekly Commitments
 
 1. Keep strategic truth in root files and Notes.
 2. Keep delegated work in `05 AI Control Plane/active-work.json`.
 3. Render `Task Board.md` from the control plane.
-4. Route work through COO -> Governor -> specialist -> Documentation.
-5. Start telemetry before adding external connectors.
+4. Route work through AI Operations Lead -> Governor -> specialist -> Documentation.
+5. Start telemetry-backed weekly metric review before adding external connectors.
 
 ### Checkpoints
 
@@ -37,16 +37,18 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
 ### Lean Weekly Review
 
 - Review date: 2026-04-15
-- Cycle status: stage 1 in progress
+- Cycle status: stage 2 foundation in progress
 - Shipped work:
   - Machine-readable control plane installed
   - Governor role added
   - Task board can be rendered from the queue
   - Telemetry script and validation path added
+  - AI Operations Lead role embedded as the standing operating owner
+  - Weekly metric review contract added for telemetry-backed review
 - Still active work:
   - Run the first real governed operating loop
   - Resolve approval thresholds and external-write policy
-  - Start collecting metrics from live work
+  - Start collecting weekly metrics from live work instead of chat reconstruction
 - Blockers:
   - Approval thresholds are still provisional
   - External connector policy is intentionally blocked
@@ -54,8 +56,8 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - The expected gain is founder leverage and lower coordination cost, not immediate revenue yet
 - Next 3 priorities:
   1. Run one real task through the new control plane.
-  2. Calibrate Governor approval thresholds with the founder.
-  3. Start weekly metric collection from telemetry.
+  2. Run the first telemetry-backed weekly metric review.
+  3. Calibrate Governor approval thresholds with the founder.
 
 ### Primary Metrics This Review Must Cover
 
@@ -64,3 +66,9 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
 - Decision latency hours
 - Documentation lag hours
 - Rework or rollback rate
+
+### Operating Discipline Signals
+
+- Telemetry coverage rate
+- Eval coverage rate
+- Memory hygiene exceptions
