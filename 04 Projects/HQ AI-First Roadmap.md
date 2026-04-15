@@ -32,6 +32,12 @@ Prove one governed loop on real founder work.
 - `02 Planning/Task Board.md` stays rendered from the queue
 - `03 Notes/Open Decisions.md` is reduced on the highest-risk policy questions
 
+## Gate Before Further Expansion
+
+- Before starting the next expansion tasks, add one more real founder or internal HQ work item and run it through the current governed loop.
+- Verify locally that queue state, Governor review, execution, acceptance, documentation sync, and telemetry coverage all work on that live item.
+- Only after that verification choose the next smallest expansion slice, such as a connector policy, repeated-work eval tightening, or another autonomy change.
+
 ## 31-90 Days
 
 ### Goal
