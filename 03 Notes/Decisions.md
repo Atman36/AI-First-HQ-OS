@@ -63,3 +63,23 @@
 
 - Decision: run the weekly metric review from `.hq/telemetry/` and control-plane state instead of reconstructing the week from chat memory.
 - Reason: Stage 2 discipline requires inspectable evidence, threshold breaches, and carry-forward actions grounded in runtime data.
+
+### Stage 2 Internal Writes Stay Inside HQ
+
+- Decision: in Stage 2, AI may write only to tracked files in this repository and private runtime artifacts under `.hq/` when the task is scoped and accepted.
+- Reason: the first governed loop proved repo-internal execution and documentation sync; broader write autonomy still lacks surface-specific audit and rollback rules.
+
+### External And Customer-Facing Writes Stay Blocked
+
+- Decision: email, calendar, CRM, and other customer-facing or external sends stay draft-only and require human review before execution.
+- Reason: internal operating proof is enough to run the loop inside HQ, but it is not evidence for asymmetric external-message risk.
+
+### Deployment Authority Stays Human-Only In Stage 2
+
+- Decision: Delivery may prepare code, PRs, release notes, and rollback plans, but production-affecting deploys remain human-only.
+- Reason: the new operating loop improves internal execution, not the safety of autonomous production changes.
+
+### Runtime Memory Boundary Is Good Enough For Stage 2
+
+- Decision: telemetry, handoffs, reflections, evals, and other runtime continuity stay under `.hq/`; only accepted conclusions move into tracked truth.
+- Reason: the first live governed loop confirmed that this split keeps shared state clean without adding a second memory layer.

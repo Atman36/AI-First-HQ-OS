@@ -35,8 +35,9 @@ Build the first usable AI-first operating system for the company.
 - Stage 1 baseline is installed
 - Stage 2 foundation is now the active move
 - AI Operations Lead replaces the stage-1 AI COO role as the standing operating owner
-- Weekly metric review and runtime-discipline contracts are being installed
-- First governed operating loop still needs live proof
+- Weekly metric review and runtime-discipline contracts are live
+- First governed operating loop has live proof on a founder request
+- Remaining approval calibration is now down to the autonomous spend envelope
 
 ## Current Workstreams
 
@@ -47,13 +48,13 @@ Build the first usable AI-first operating system for the company.
 
 ### Governance
 
-- Calibrate approval thresholds.
-- Keep external writes blocked until policy and rollback are explicit.
+- Keep the autonomous spend envelope explicit instead of implied.
+- Keep external writes blocked until another stable weekly review supports a narrower connector approval.
 
 ### Observability
 
 - Log routing, execution, acceptance, escalation, and sync events.
-- Use weekly metrics and threshold breaches to decide what to automate next.
+- Use weekly metrics and threshold breaches from live telemetry to decide what to automate next.
 
 ### Operating Discipline
 
@@ -63,15 +64,15 @@ Build the first usable AI-first operating system for the company.
 
 ### Adoption
 
-- Route one real founder task through the new loop.
+- Repeat the new loop on the next founder task without bypassing the queue.
 - Remove bypasses that reintroduce chat-only coordination.
 
 ## Local Risks
 
 - Decorative AI-first language without real delegated authority
 - Duplicate state between Markdown and JSON
-- Missing telemetry on real work
-- Governor becoming theoretical instead of operational
+- Missing telemetry on remaining active work after the first live loop
+- Expanding autonomy before telemetry coverage and spend thresholds are stable
 - Premature expansion into external connectors
 
 ## Dependencies
@@ -83,7 +84,7 @@ Build the first usable AI-first operating system for the company.
 
 ## Open Decisions
 
-- See `03 Notes/Open Decisions.md` for the blocking choices on external writes, budget envelope, deployment authority, and memory retention
+- See `03 Notes/Open Decisions.md` for the remaining spend-envelope decision
 
 ## Roadmap
 

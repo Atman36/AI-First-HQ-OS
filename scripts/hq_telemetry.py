@@ -176,6 +176,10 @@ def build_active_tasks() -> dict[str, dict[str, Any]]:
     }
 
 
+def is_current_active_task(task: dict[str, Any]) -> bool:
+    return str(task.get("column") or "").strip() != "done"
+
+
 def build_metric_registry() -> list[dict[str, Any]]:
     metrics = load_json(METRICS_REGISTRY_PATH)
     items: list[dict[str, Any]] = []
@@ -275,6 +279,9 @@ def format_metric_value(value: float | None, unit: str) -> str:
 
 def build_review_payload(since: date, until: date) -> dict[str, Any]:
     active_tasks = build_active_tasks()
+    current_active_tasks = {
+        task_id: task for task_id, task in active_tasks.items() if is_current_active_task(task)
+    }
     role_types = build_role_types()
     metric_registry = build_metric_registry()
     events = load_events(since, until)
@@ -285,7 +292,6 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
             continue
         grouped_events.setdefault(task_id, []).append(event)
 
-    all_task_ids = set(grouped_events) | set(active_tasks)
     completed_task_ids = {
         task_id
         for task_id, task_events in grouped_events.items()
@@ -379,10 +385,10 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
 
     ai_owned_active_tasks = sum(
         1
-        for task in active_tasks.values()
+        for task in current_active_tasks.values()
         if role_types.get(str(task.get("owner") or "").strip()) == "ai"
     )
-    active_tasks_with_telemetry = sum(1 for task_id in active_tasks if task_id in grouped_events)
+    active_tasks_with_telemetry = sum(1 for task_id in current_active_tasks if task_id in grouped_events)
 
     computed: dict[str, dict[str, Any]] = {
         "autonomous_completion_rate": ratio_result(
@@ -406,12 +412,12 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         "ai_handled_task_share": ratio_result(
             "ai_handled_task_share",
             ai_owned_active_tasks,
-            len(active_tasks),
+            len(current_active_tasks),
         ),
         "telemetry_coverage_rate": ratio_result(
             "telemetry_coverage_rate",
             active_tasks_with_telemetry,
-            len(active_tasks),
+            len(current_active_tasks),
         ),
         "eval_coverage_rate": ratio_result(
             "eval_coverage_rate",
@@ -449,14 +455,14 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         event_type = str(event.get("event_type") or "").strip() or "unknown"
         event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
 
-    missing_telemetry = sorted(task_id for task_id in active_tasks if task_id not in grouped_events)
+    missing_telemetry = sorted(task_id for task_id in current_active_tasks if task_id not in grouped_events)
 
     return {
         "generated_at": utc_now(),
         "window": {"since": since.isoformat(), "until": until.isoformat()},
         "total_events": len(events),
         "tasks_seen_in_telemetry": len(grouped_events),
-        "active_tasks": len(active_tasks),
+        "active_tasks": len(current_active_tasks),
         "missing_telemetry_task_ids": missing_telemetry,
         "breached_metrics": breached,
         "event_type_counts": event_type_counts,

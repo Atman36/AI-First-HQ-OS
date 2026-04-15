@@ -97,7 +97,8 @@
     {
       "id": "run-first-governed-loop",
       "title": "Run one real company task through AI Operations Lead -> Governor -> specialist -> Documentation",
-      "column": "this_week",
+      "column": "done",
+      "completed_at": "2026-04-15",
       "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [
@@ -105,7 +106,7 @@
         "delivery",
         "documentation"
       ],
-      "next_step": "Pick a real founder request and execute it through the updated control plane without bypasses.",
+      "next_step": "Repeat the same governed route on the next founder request and use the telemetry baseline to tighten the remaining thresholds.",
       "done_when": "One task completes with queue state, acceptance, board sync, telemetry coverage, and a weekly metric-review entry.",
       "primary_update_file": "05 AI Control Plane/active-work.json",
       "align_files": [
@@ -120,7 +121,8 @@
     {
       "id": "start-weekly-metric-review-from-telemetry",
       "title": "Run the first weekly metric review from telemetry and threshold rules",
-      "column": "this_week",
+      "column": "done",
+      "completed_at": "2026-04-15",
       "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [
@@ -128,7 +130,7 @@
         "documentation",
         "finance"
       ],
-      "next_step": "Generate the first weekly metrics report from live telemetry and assign owners to any threshold breaches.",
+      "next_step": "Use weekly review breaches as operating follow-through, not as a second reporting layer.",
       "done_when": "A weekly telemetry review is generated and used as the metric layer of the weekly operating review.",
       "primary_update_file": "05 AI Control Plane/metrics-registry.json",
       "align_files": [
@@ -143,8 +145,8 @@
     },
     {
       "id": "calibrate-approval-thresholds",
-      "title": "Calibrate Governor approval thresholds and external action policy",
-      "column": "this_week",
+      "title": "Lock the remaining autonomous spend envelope after the first live weekly review",
+      "column": "review",
       "owner": "governor",
       "project": "HQ Bootstrap",
       "support": [
@@ -152,8 +154,8 @@
         "finance",
         "ai_operations_lead"
       ],
-      "next_step": "Resolve open decisions about budget, external sends, deploy authority, and connector write access using real weekly review evidence.",
-      "done_when": "`03 Notes/Open Decisions.md` is reduced and `operating-policies.json` reflects approved thresholds and escalation logic.",
+      "next_step": "Decide whether to keep the autonomous spend envelope at EUR 0 or approve one bounded exception after another governed loop with finance signal.",
+      "done_when": "The spend envelope is explicitly approved or intentionally held at zero in policies and Notes.",
       "primary_update_file": "03 Notes/Open Decisions.md",
       "align_files": [
         "05 AI Control Plane/operating-policies.json",
@@ -177,7 +179,7 @@
         "finance",
         "growth"
       ],
-      "next_step": "Do not connect external write surfaces until thresholds, telemetry coverage, and rollback rules are stable.",
+      "next_step": "Keep external write surfaces blocked until the spend envelope decision is explicit and at least one more weekly review shows stable telemetry coverage.",
       "done_when": "At least one external connector is enabled with audit logging, review, and rollback notes.",
       "primary_update_file": "stack.md",
       "align_files": [

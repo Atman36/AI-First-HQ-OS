@@ -45,19 +45,27 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - Telemetry script and validation path added
   - AI Operations Lead role embedded as the standing operating owner
   - Weekly metric review contract added for telemetry-backed review
+  - First real governed loop completed on a live founder request through AI Operations Lead -> Governor -> Delivery -> Documentation
+  - First weekly metric review generated from live telemetry instead of chat reconstruction
+  - Stage 2 write boundaries narrowed to HQ-internal writes only; customer-facing sends and deploys remain human-reviewed
 - Still active work:
-  - Run the first real governed operating loop
-  - Resolve approval thresholds and external-write policy
-  - Start collecting weekly metrics from live work instead of chat reconstruction
+  - Decide whether the autonomous spend envelope should remain at EUR 0 or become a bounded approved amount
+  - Keep telemetry coverage reliable on non-done active tasks as the next founder requests enter the queue
+  - Repeat the governed loop on the next founder request without bypassing the queue
 - Blockers:
-  - Approval thresholds are still provisional
-  - External connector policy is intentionally blocked
+  - The spend envelope is still provisional
+  - External connector policy is intentionally blocked pending another stable weekly review
 - Money signal:
-  - The expected gain is founder leverage and lower coordination cost, not immediate revenue yet
+  - The current gain is founder leverage and lower coordination cost; no non-zero autonomous spend is justified yet
 - Next 3 priorities:
-  1. Run one real task through the new control plane.
-  2. Run the first telemetry-backed weekly metric review.
-  3. Calibrate Governor approval thresholds with the founder.
+  1. Close the remaining spend-envelope decision with CEO and Finance.
+  2. Keep telemetry coverage explicit on each non-done active task as new work enters the queue.
+  3. Run the next founder request through the same governed loop.
+
+### Threshold Interpretation From Live Telemetry
+
+- No metric thresholds were breached on the first live slice.
+- Interpretation: this proves the operating loop is viable, but one fast internal sample is not enough evidence to expand autonomy beyond the current Stage 2 boundaries.
 
 ### Primary Metrics This Review Must Cover
 

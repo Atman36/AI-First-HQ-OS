@@ -65,6 +65,22 @@
     "default_spend_without_budget_eur": 0,
     "max_external_send_without_review": 0
   },
+  "stage_2_write_boundaries": {
+    "internal_allowed_without_extra_review": [
+      "tracked files in this repository",
+      "private runtime artifacts under `.hq/`"
+    ],
+    "external_blocked_until_explicit_policy": [
+      "email sends",
+      "calendar writes",
+      "crm writes",
+      "new third-party connector writes",
+      "production deployments"
+    ],
+    "customer_facing_messages": "draft_only_with_human_review",
+    "deployment_authority": "delivery_may_prepare_changes_but_human_executes_production_deploys",
+    "memory_boundary": "runtime_continuity_stays_in_.hq_until_accepted_into_tracked_truth"
+  },
   "weekly_metric_review": {
     "cadence": "weekly",
     "owner": "ai_operations_lead",

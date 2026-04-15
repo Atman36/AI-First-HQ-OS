@@ -167,8 +167,9 @@ class HqTelemetryTests(unittest.TestCase):
             json.dumps(
                 {
                     "tasks": [
-                        {"id": "task-1", "owner": "delivery", "risk_tier": "medium"},
-                        {"id": "task-2", "owner": "delivery", "risk_tier": "medium"},
+                        {"id": "task-1", "owner": "delivery", "risk_tier": "medium", "column": "this_week"},
+                        {"id": "task-2", "owner": "delivery", "risk_tier": "medium", "column": "waiting"},
+                        {"id": "task-3", "owner": "delivery", "risk_tier": "medium", "column": "done"},
                     ]
                 },
                 ensure_ascii=False,
@@ -246,6 +247,7 @@ class HqTelemetryTests(unittest.TestCase):
         latest_json = self.temp_root / ".hq" / "telemetry" / "reviews" / "LATEST.json"
         review = json.loads(latest_json.read_text(encoding="utf-8"))
         self.assertEqual(review["total_events"], 6)
+        self.assertEqual(review["active_tasks"], 2)
         self.assertIn("human_escalation_rate", review["breached_metrics"])
         metrics = {item["id"]: item for item in review["metrics"]}
         self.assertEqual(metrics["autonomous_completion_rate"]["threshold_status"], "ok")

@@ -4,7 +4,7 @@
 
 - Move HQ from a stage-1 baseline to a stage-2 operating discipline.
 - Use `05 AI Control Plane/active-work.json` as the machine-readable queue for delegated work.
-- Prove one full governed operating loop and one telemetry-backed weekly metric review before adding external connectors or more automation.
+- Use the first governed loop and the first telemetry-backed weekly metric review to calibrate the remaining approval thresholds before adding external connectors.
 
 ## This Month
 
@@ -14,14 +14,15 @@
 
 ## This Week
 
-- Embed `AI Operations Lead` as the real operating role in routing and docs.
-- Validate the updated control plane on one real founder request.
-- Start logging telemetry and run the first weekly metric review from it.
-- Resolve the first blocking open decisions on approval thresholds and external writes.
+- Keep `AI Operations Lead` as the real operating role in live routing, not just in docs.
+- Carry the first live governed loop into repeatable queue discipline on the next founder request.
+- Use live telemetry threshold breaches to guide follow-through instead of adding another reporting layer.
+- Reduce the remaining approval question to the spend envelope and keep external connectors blocked meanwhile.
 
 ## Success Criteria
 
-- One real task moves through AI Operations Lead -> Governor -> specialist -> Documentation without bypassing the control plane.
+- The governed route through AI Operations Lead -> Governor -> specialist -> Documentation stays the default path for live work.
 - `Task Board.md` is rendered from `active-work.json`, not manually drifted.
-- Telemetry captures at least routing, execution, acceptance, sync, and lightweight eval signals for the first governed loop.
+- Telemetry captures routing, execution, acceptance, sync, and lightweight eval signals on live work.
 - Weekly review reports autonomy, escalation, latency, documentation freshness, and threshold breaches from telemetry.
+- The remaining spend-envelope decision is explicit; external connectors stay blocked until thresholds are stable.
