@@ -116,14 +116,16 @@
     "required_actions": [
       "assign an owner to every breached threshold or explicitly defer it",
       "carry forward policy or workflow changes through tracked source-of-truth files",
-      "do not increase autonomy from anecdote alone"
+      "do not increase autonomy from anecdote alone",
+      "treat missing task-cycle coverage on repeated AI-Operations-led internal work as an eval gap"
     ]
   },
   "eval_policy": {
     "minimum_checks_for_repeated_work": [
       "named done_when and accepting role",
       "workflow-defined telemetry events",
-      "at least one lightweight review or eval signal before expanding autonomy"
+      "at least one lightweight review or eval signal before expanding autonomy",
+      "a passing local task-cycle check in the weekly review once the same internal governed slice repeats"
     ],
     "control_plane_change_requires": [
       "python3 scripts/hq_control_plane.py validate",
@@ -158,7 +160,8 @@
       "missing telemetry on active work",
       "repeated policy exceptions without a decision update",
       "documentation lag remaining above threshold for more than one review",
-      "eval coverage staying below threshold on repeated work"
+      "eval coverage staying below threshold on repeated work",
+      "repeated internal governed work missing a passing task-cycle check in weekly review"
     ]
   },
   "metric_thresholds": [
@@ -236,6 +239,17 @@
         "ai_operations_lead"
       ],
       "action": "Add lightweight review or eval signals before repeating the same workflow more autonomously."
+    },
+    {
+      "metric_id": "repeated_internal_task_cycle_rate",
+      "comparison": ">=",
+      "target": 1.0,
+      "owner": "ai_operations_lead",
+      "escalate_to": [
+        "ai_operations_lead",
+        "governor"
+      ],
+      "action": "Keep autonomy flat and require a passing local task-cycle check on each repeated internal governed slice."
     }
   ],
   "kill_switches": [

@@ -47,6 +47,7 @@
 
 - Telemetry coverage on active work
 - Eval coverage on repeated work
+- Task-cycle coverage on repeated AI-Operations-led internal execution work
 - Memory hygiene exceptions between shared truth and `.hq/`
 
 ### Guardrail Rule

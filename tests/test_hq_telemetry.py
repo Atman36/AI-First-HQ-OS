@@ -111,6 +111,315 @@ class HqTelemetryTests(unittest.TestCase):
                             "source": [".hq/telemetry/"],
                             "unit": "ratio",
                             "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": "<=", "value": 0.3},
+                        },
+                        {
+                            "id": "decision_latency_hours",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "hours",
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": "<=", "value": 24},
+                        },
+                        {
+                            "id": "documentation_lag_hours",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "hours",
+                            "review_owner": "documentation",
+                            "threshold": {"comparison": "<=", "value": 24},
+                        },
+                        {
+                            "id": "rework_or_rollback_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_owner": "governor",
+                            "threshold": {"comparison": "<=", "value": 0.2},
+                        },
+                    ],
+                    "secondary_metrics": [
+                        {
+                            "id": "telemetry_coverage_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 0.9},
+                        },
+                        {
+                            "id": "eval_coverage_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 0.5},
+                        },
+                        {
+                            "id": "repeated_internal_task_cycle_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/", "05 AI Control Plane/active-work.json"],
+                            "unit": "ratio",
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 1.0},
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (control_plane_dir / "workflow-registry.json").write_text(
+            json.dumps(
+                {
+                    "workflows": [
+                        {
+                            "id": "intake-to-execution",
+                            "required_telemetry_events": [
+                                "intake",
+                                "route",
+                                "policy_check",
+                                "start",
+                                "acceptance",
+                                "sync",
+                            ],
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (control_plane_dir / "active-work.json").write_text(
+            json.dumps(
+                {
+                    "tasks": [
+                        {
+                            "id": "task-1",
+                            "owner": "ai_operations_lead",
+                            "support": ["governor", "delivery", "documentation"],
+                            "accepts_result": "ceo",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "column": "done",
+                            "completed_at": "2026-04-15",
+                        },
+                        {"id": "task-2", "owner": "delivery", "risk_tier": "medium", "column": "waiting"},
+                        {
+                            "id": "task-3",
+                            "owner": "ai_operations_lead",
+                            "support": ["governor", "delivery", "documentation"],
+                            "accepts_result": "ceo",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "task_cycle_required": True,
+                            "column": "done",
+                            "completed_at": "2026-04-15",
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        events = [
+            {
+                "created_at": "2026-04-15T10:00:00Z",
+                "event_type": "intake",
+                "task_id": "task-1",
+                "agent": "assistant",
+                "status": "queued",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T11:00:00Z",
+                "event_type": "route",
+                "task_id": "task-1",
+                "agent": "ai_operations_lead",
+                "status": "ready",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T11:15:00Z",
+                "event_type": "policy_check",
+                "task_id": "task-1",
+                "agent": "governor",
+                "status": "approved",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T11:30:00Z",
+                "event_type": "start",
+                "task_id": "task-1",
+                "agent": "delivery",
+                "status": "running",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T12:00:00Z",
+                "event_type": "acceptance",
+                "task_id": "task-1",
+                "agent": "ceo",
+                "status": "accepted",
+                "metadata": {"founder_hours_recovered": 2, "acceptance_check": "basic"},
+            },
+            {
+                "created_at": "2026-04-15T13:00:00Z",
+                "event_type": "sync",
+                "task_id": "task-1",
+                "agent": "documentation",
+                "status": "synced",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T09:00:00Z",
+                "event_type": "intake",
+                "task_id": "task-2",
+                "agent": "assistant",
+                "status": "queued",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T10:00:00Z",
+                "event_type": "escalation",
+                "task_id": "task-2",
+                "agent": "ceo",
+                "status": "blocked",
+                "metadata": {"human_escalation": True},
+            },
+            {
+                "created_at": "2026-04-15T14:00:00Z",
+                "event_type": "intake",
+                "task_id": "task-3",
+                "agent": "assistant",
+                "status": "queued",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T14:05:00Z",
+                "event_type": "route",
+                "task_id": "task-3",
+                "agent": "ai_operations_lead",
+                "status": "ready",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T14:10:00Z",
+                "event_type": "policy_check",
+                "task_id": "task-3",
+                "agent": "governor",
+                "status": "approved",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T14:15:00Z",
+                "event_type": "start",
+                "task_id": "task-3",
+                "agent": "delivery",
+                "status": "running",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T14:20:00Z",
+                "event_type": "acceptance",
+                "task_id": "task-3",
+                "agent": "ceo",
+                "status": "accepted",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T14:25:00Z",
+                "event_type": "sync",
+                "task_id": "task-3",
+                "agent": "documentation",
+                "status": "synced",
+                "metadata": {},
+            },
+        ]
+        telemetry_path = self.temp_root / ".hq" / "telemetry" / "2026-04" / "2026-04-15.jsonl"
+        telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+        telemetry_path.write_text(
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in events) + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "weekly-metrics",
+                "--since",
+                "2026-04-15",
+                "--until",
+                "2026-04-15",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        latest_json = self.temp_root / ".hq" / "telemetry" / "reviews" / "LATEST.json"
+        review = json.loads(latest_json.read_text(encoding="utf-8"))
+        self.assertEqual(review["total_events"], 14)
+        self.assertEqual(review["active_tasks"], 1)
+        self.assertIn("human_escalation_rate", review["breached_metrics"])
+        metrics = {item["id"]: item for item in review["metrics"]}
+        self.assertEqual(metrics["autonomous_completion_rate"]["threshold_status"], "ok")
+        self.assertEqual(metrics["human_escalation_rate"]["threshold_status"], "breached")
+        self.assertEqual(metrics["telemetry_coverage_rate"]["threshold_status"], "ok")
+        self.assertEqual(metrics["repeated_internal_task_cycle_rate"]["threshold_status"], "ok")
+        self.assertEqual(
+            review["repeated_internal_work"]["required_task_cycle_task_ids"],
+            ["task-3"],
+        )
+        self.assertEqual(review["repeated_internal_work"]["task_cycle_missing_task_ids"], [])
+
+    def test_weekly_metrics_flags_missing_task_cycle_on_repeated_internal_work(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        (control_plane_dir / "agent-registry.json").write_text(
+            json.dumps(
+                {
+                    "roles": [
+                        {"id": "ceo", "role_type": "human", "mission": "Approve."},
+                        {"id": "assistant", "role_type": "ai", "mission": "Intake."},
+                        {"id": "ai_operations_lead", "role_type": "ai", "mission": "Operate."},
+                        {"id": "delivery", "role_type": "ai", "mission": "Deliver."},
+                        {"id": "documentation", "role_type": "ai", "mission": "Sync."},
+                        {"id": "governor", "role_type": "ai", "mission": "Control."},
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (control_plane_dir / "metrics-registry.json").write_text(
+            json.dumps(
+                {
+                    "primary_metrics": [
+                        {
+                            "id": "autonomous_completion_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 0.6},
+                        },
+                        {
+                            "id": "human_escalation_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_owner": "ai_operations_lead",
                             "threshold": {"comparison": "<=", "value": 0.35},
                         },
                         {
@@ -155,7 +464,38 @@ class HqTelemetryTests(unittest.TestCase):
                             "review_owner": "ai_operations_lead",
                             "threshold": {"comparison": ">=", "value": 0.5},
                         },
+                        {
+                            "id": "repeated_internal_task_cycle_rate",
+                            "definition": "x",
+                            "source": [".hq/telemetry/", "05 AI Control Plane/active-work.json"],
+                            "unit": "ratio",
+                            "review_owner": "ai_operations_lead",
+                            "threshold": {"comparison": ">=", "value": 1.0},
+                        },
                     ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (control_plane_dir / "workflow-registry.json").write_text(
+            json.dumps(
+                {
+                    "workflows": [
+                        {
+                            "id": "intake-to-execution",
+                            "required_telemetry_events": [
+                                "intake",
+                                "route",
+                                "policy_check",
+                                "start",
+                                "acceptance",
+                                "sync",
+                            ],
+                        }
+                    ]
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -167,9 +507,31 @@ class HqTelemetryTests(unittest.TestCase):
             json.dumps(
                 {
                     "tasks": [
-                        {"id": "task-1", "owner": "delivery", "risk_tier": "medium", "column": "this_week"},
-                        {"id": "task-2", "owner": "delivery", "risk_tier": "medium", "column": "waiting"},
-                        {"id": "task-3", "owner": "delivery", "risk_tier": "medium", "column": "done"},
+                        {
+                            "id": "task-1",
+                            "title": "First loop",
+                            "owner": "ai_operations_lead",
+                            "support": ["governor", "delivery", "documentation"],
+                            "accepts_result": "ceo",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "column": "done",
+                            "completed_at": "2026-04-15",
+                        },
+                        {
+                            "id": "task-2",
+                            "title": "Second loop",
+                            "owner": "ai_operations_lead",
+                            "support": ["governor", "delivery", "documentation"],
+                            "accepts_result": "ceo",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "task_cycle_required": True,
+                            "column": "done",
+                            "completed_at": "2026-04-15",
+                        },
                     ]
                 },
                 ensure_ascii=False,
@@ -178,49 +540,94 @@ class HqTelemetryTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-
         events = [
             {
-                "created_at": "2026-04-15T10:00:00Z",
+                "created_at": "2026-04-15T09:00:00Z",
                 "event_type": "intake",
                 "task_id": "task-1",
+                "agent": "assistant",
                 "status": "queued",
                 "metadata": {},
             },
             {
-                "created_at": "2026-04-15T11:00:00Z",
+                "created_at": "2026-04-15T09:05:00Z",
+                "event_type": "route",
+                "task_id": "task-1",
+                "agent": "ai_operations_lead",
+                "status": "ready",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T09:10:00Z",
+                "event_type": "policy_check",
+                "task_id": "task-1",
+                "agent": "governor",
+                "status": "approved",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T09:15:00Z",
                 "event_type": "start",
                 "task_id": "task-1",
+                "agent": "delivery",
                 "status": "running",
                 "metadata": {},
             },
             {
-                "created_at": "2026-04-15T12:00:00Z",
+                "created_at": "2026-04-15T09:20:00Z",
                 "event_type": "acceptance",
                 "task_id": "task-1",
+                "agent": "ceo",
                 "status": "accepted",
-                "metadata": {"founder_hours_recovered": 2, "acceptance_check": "basic"},
+                "metadata": {},
             },
             {
-                "created_at": "2026-04-15T13:00:00Z",
+                "created_at": "2026-04-15T09:25:00Z",
                 "event_type": "sync",
                 "task_id": "task-1",
+                "agent": "documentation",
                 "status": "synced",
                 "metadata": {},
             },
             {
-                "created_at": "2026-04-15T09:00:00Z",
+                "created_at": "2026-04-15T10:00:00Z",
                 "event_type": "intake",
                 "task_id": "task-2",
+                "agent": "assistant",
                 "status": "queued",
                 "metadata": {},
             },
             {
-                "created_at": "2026-04-15T10:00:00Z",
-                "event_type": "escalation",
+                "created_at": "2026-04-15T10:05:00Z",
+                "event_type": "route",
                 "task_id": "task-2",
-                "status": "blocked",
-                "metadata": {"human_escalation": True},
+                "agent": "ai_operations_lead",
+                "status": "ready",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T10:15:00Z",
+                "event_type": "start",
+                "task_id": "task-2",
+                "agent": "delivery",
+                "status": "running",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T10:20:00Z",
+                "event_type": "acceptance",
+                "task_id": "task-2",
+                "agent": "ceo",
+                "status": "accepted",
+                "metadata": {},
+            },
+            {
+                "created_at": "2026-04-15T10:25:00Z",
+                "event_type": "sync",
+                "task_id": "task-2",
+                "agent": "documentation",
+                "status": "synced",
+                "metadata": {},
             },
         ]
         telemetry_path = self.temp_root / ".hq" / "telemetry" / "2026-04" / "2026-04-15.jsonl"
@@ -230,29 +637,16 @@ class HqTelemetryTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        parser = self.module.build_parser()
-        args = parser.parse_args(
-            [
-                "weekly-metrics",
-                "--since",
-                "2026-04-15",
-                "--until",
-                "2026-04-15",
-            ]
+        review = self.module.build_review_payload(
+            self.module.parse_date("2026-04-15"),
+            self.module.parse_date("2026-04-15"),
         )
-
-        exit_code = args.func(args)
-
-        self.assertEqual(exit_code, 0)
-        latest_json = self.temp_root / ".hq" / "telemetry" / "reviews" / "LATEST.json"
-        review = json.loads(latest_json.read_text(encoding="utf-8"))
-        self.assertEqual(review["total_events"], 6)
-        self.assertEqual(review["active_tasks"], 2)
-        self.assertIn("human_escalation_rate", review["breached_metrics"])
         metrics = {item["id"]: item for item in review["metrics"]}
-        self.assertEqual(metrics["autonomous_completion_rate"]["threshold_status"], "ok")
-        self.assertEqual(metrics["human_escalation_rate"]["threshold_status"], "breached")
-        self.assertEqual(metrics["telemetry_coverage_rate"]["threshold_status"], "ok")
+
+        self.assertIn("repeated_internal_task_cycle_rate", review["breached_metrics"])
+        self.assertEqual(metrics["repeated_internal_task_cycle_rate"]["threshold_status"], "breached")
+        self.assertEqual(review["repeated_internal_work"]["required_task_cycle_task_ids"], ["task-2"])
+        self.assertEqual(review["repeated_internal_work"]["task_cycle_missing_task_ids"], ["task-2"])
 
     def test_task_cycle_verifies_full_governed_loop(self):
         control_plane_dir = self.temp_root / "05 AI Control Plane"

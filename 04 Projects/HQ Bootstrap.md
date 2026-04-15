@@ -38,6 +38,7 @@ Build the first usable AI-first operating system for the company.
 - Weekly metric review and runtime-discipline contracts are live
 - First governed operating loop has live proof on a founder request
 - Second governed operating loop has now been verified locally on a new founder request with full cycle evidence
+- Repeated AI-Operations-led internal execution work now requires a passing `task-cycle` signal in weekly review
 - Autonomous spend envelope is now explicitly held at `EUR 0` for the Stage 2 foundation
 
 ## Current Workstreams
@@ -58,17 +59,18 @@ Build the first usable AI-first operating system for the company.
 - Log routing, execution, acceptance, escalation, and sync events.
 - Use local task-cycle verification when a live Stage 2 slice needs explicit full-cycle proof.
 - Use weekly metrics and threshold breaches from live telemetry to decide what to automate next.
+- Require weekly review to surface missing `task-cycle` coverage once the same internal governed slice repeats.
 
 ### Operating Discipline
 
 - Keep `AI Operations Lead` responsible for queue health, observability, eval follow-through, memory hygiene, and runtime quality.
 - Keep Governor independent as the control and approval layer.
-- Keep repeated work lightweight: explicit acceptance checks first, heavier automation later.
+- Keep repeated work lightweight: explicit acceptance checks and `task-cycle` coverage first, heavier automation later.
 
 ### Adoption
 
 - Keep the new loop as the default path after the second live founder task completed with local verification.
-- Choose only one smallest practical next slice from the stable evidence now on hand.
+- Keep the repeated-work `task-cycle` requirement attached to the next governed slices before choosing a bigger expansion.
 - Remove bypasses that reintroduce chat-only coordination.
 
 ## Local Risks

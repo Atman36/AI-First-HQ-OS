@@ -289,6 +289,25 @@ def is_eval_signal(event: dict[str, Any]) -> bool:
     )
 
 
+def is_repeated_internal_task(task: dict[str, Any]) -> bool:
+    return (
+        bool(task.get("task_cycle_required"))
+        and str(task.get("column") or "").strip() == "done"
+        and str(task.get("workflow") or "").strip() == "intake-to-execution"
+        and str(task.get("owner") or "").strip() == "ai_operations_lead"
+        and str(task.get("autonomy_tier") or "").strip() == "A2"
+        and str(task.get("risk_tier") or "").strip() in {"low", "medium"}
+    )
+
+
+def repeated_internal_task_ids(active_tasks: dict[str, dict[str, Any]]) -> set[str]:
+    return {
+        task_id
+        for task_id, task in active_tasks.items()
+        if is_repeated_internal_task(task)
+    }
+
+
 def evaluate_threshold(value: float | None, threshold: dict[str, Any] | None) -> str:
     if not threshold:
         return "no_threshold"
@@ -391,6 +410,10 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
     founder_hours = 0.0
     founder_hours_seen: set[str] = set()
     eval_covered_tasks: set[str] = set()
+    repeated_internal_ids = repeated_internal_task_ids(active_tasks)
+    repeated_internal_completed_in_window = repeated_internal_ids & completed_task_ids
+    repeated_internal_task_cycle_reports: list[dict[str, Any]] = []
+    repeated_internal_task_cycle_ok: set[str] = set()
 
     for task_id, task_events in grouped_events.items():
         intake_time: datetime | None = None
@@ -426,6 +449,13 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
             decision_latency_samples.append((ready_time - intake_time).total_seconds() / 3600)
         if acceptance_time and sync_time and sync_time >= acceptance_time:
             documentation_lag_samples.append((sync_time - acceptance_time).total_seconds() / 3600)
+
+    for task_id in sorted(repeated_internal_completed_in_window):
+        report = build_task_cycle_report(task_id, since=since, until=until)
+        repeated_internal_task_cycle_reports.append(report)
+        if report["status"] == "ok":
+            repeated_internal_task_cycle_ok.add(task_id)
+            eval_covered_tasks.add(task_id)
 
     ai_owned_active_tasks = sum(
         1
@@ -468,6 +498,11 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
             len(eval_covered_tasks & completed_task_ids),
             len(completed_task_ids),
         ),
+        "repeated_internal_task_cycle_rate": ratio_result(
+            "repeated_internal_task_cycle_rate",
+            len(repeated_internal_task_cycle_ok),
+            len(repeated_internal_completed_in_window),
+        ),
     }
 
     metrics_payload: list[dict[str, Any]] = []
@@ -500,6 +535,9 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
 
     missing_telemetry = sorted(task_id for task_id in current_active_tasks if task_id not in grouped_events)
+    repeated_internal_missing_task_cycle = sorted(
+        task_id for task_id in repeated_internal_completed_in_window if task_id not in repeated_internal_task_cycle_ok
+    )
 
     return {
         "generated_at": utc_now(),
@@ -511,6 +549,12 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         "breached_metrics": breached,
         "event_type_counts": event_type_counts,
         "metrics": metrics_payload,
+        "repeated_internal_work": {
+            "required_task_cycle_task_ids": sorted(repeated_internal_completed_in_window),
+            "task_cycle_ok_task_ids": sorted(repeated_internal_task_cycle_ok),
+            "task_cycle_missing_task_ids": repeated_internal_missing_task_cycle,
+            "task_cycle_reports": repeated_internal_task_cycle_reports,
+        },
     }
 
 
@@ -544,6 +588,19 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         lines.append("- Missing telemetry on active tasks: " + ", ".join(review["missing_telemetry_task_ids"]))
     else:
         lines.append("- Missing telemetry on active tasks: none")
+
+    repeated_internal = review.get("repeated_internal_work", {}) or {}
+    required_task_cycle = repeated_internal.get("required_task_cycle_task_ids", []) or []
+    lines.extend(["", "## Repeated Internal Work"])
+    if required_task_cycle:
+        lines.append("- Repeated internal tasks requiring task-cycle: " + ", ".join(required_task_cycle))
+        missing_task_cycle = repeated_internal.get("task_cycle_missing_task_ids", []) or []
+        if missing_task_cycle:
+            lines.append("- Missing or failing task-cycle: " + ", ".join(missing_task_cycle))
+        else:
+            lines.append("- Missing or failing task-cycle: none")
+    else:
+        lines.append("- Repeated internal tasks requiring task-cycle: none")
 
     lines.extend(["", "## Event Types"])
     if not review["event_type_counts"]:

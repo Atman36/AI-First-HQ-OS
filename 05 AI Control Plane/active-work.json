@@ -4,7 +4,7 @@
   "operating_mode": "ai-first-stage-2-foundation",
   "objective": {
     "id": "hq-ai-first-stage-2-foundation",
-    "title": "Install the Stage 2 operating discipline and prove the governed loop is repeatable on live work",
+    "title": "Install the Stage 2 operating discipline, prove the governed loop is repeatable, and tighten repeated-work verification",
     "window": {
       "start": "2026-04-15",
       "target_end": "2026-05-31"
@@ -14,7 +14,8 @@
       "two real tasks run through AI Operations Lead -> Governor -> specialist -> Documentation",
       "the queue stays current in active-work.json and Task Board.md is rendered from it",
       "weekly metrics can be generated from telemetry and active-work state",
-      "telemetry captures routing, execution, acceptance, sync, and lightweight eval signals"
+      "telemetry captures routing, execution, acceptance, sync, and lightweight eval signals",
+      "weekly review requires a passing local task-cycle signal on repeated AI-Operations-led internal execution slices"
     ]
   },
   "tasks": [
@@ -208,6 +209,35 @@
       "done_when": "The second live item completes with queue state, Governor review, execution, acceptance, documentation sync, telemetry coverage, and a local task-cycle verification result.",
       "primary_update_file": "05 AI Control Plane/active-work.json",
       "align_files": [
+        "scripts/hq_telemetry.py",
+        "tests/test_hq_telemetry.py",
+        "02 Planning/Weekly Plan.md",
+        "04 Projects/HQ Bootstrap.md"
+      ],
+      "task_cycle_required": true,
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "require-task-cycle-on-repeated-internal-work",
+      "title": "Require task-cycle coverage in weekly review for repeated internal governed work",
+      "column": "done",
+      "completed_at": "2026-04-15",
+      "owner": "ai_operations_lead",
+      "project": "HQ Bootstrap",
+      "support": [
+        "governor",
+        "delivery",
+        "documentation"
+      ],
+      "next_step": "Keep this check attached to repeated internal governed slices while spend stays at EUR 0 and connectors remain blocked.",
+      "done_when": "Weekly review reports a repeated internal task-cycle coverage signal and breaches if a repeated governed internal slice lacks a passing local check.",
+      "primary_update_file": "05 AI Control Plane/metrics-registry.json",
+      "align_files": [
+        "05 AI Control Plane/operating-policies.json",
+        "05 AI Control Plane/workflow-registry.json",
         "scripts/hq_telemetry.py",
         "tests/test_hq_telemetry.py",
         "02 Planning/Weekly Plan.md",

@@ -50,9 +50,10 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - Stage 2 write boundaries narrowed to HQ-internal writes only; customer-facing sends and deploys remain human-reviewed
   - Autonomous spend envelope closed at `EUR 0` for the Stage 2 foundation
   - Second real governed loop completed on a new founder request with a local task-cycle verification check covering queue state, policy gate, execution, acceptance, documentation sync, and telemetry coverage
+  - Weekly review now treats `task-cycle` as a required signal on repeated AI-Operations-led internal execution slices and breaches if a repeated slice lacks a passing local check
 - Still active work:
   - Keep telemetry coverage reliable on non-done active tasks as the next founder requests enter the queue
-  - Take only one smallest practical follow-on slice now that the second live governed loop has local full-cycle proof
+  - Keep repeated internal governed work on the new `task-cycle` coverage rule as the next founder requests enter the queue
   - Keep external connector expansion blocked until another stable weekly review and a connector-specific policy slice exist
 - Blockers:
   - No blocking open decision remains inside Stage 2 foundation
@@ -61,7 +62,7 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - The current gain is founder leverage and lower coordination cost; autonomous spend remains fixed at `EUR 0`
 - Next 3 priorities:
   1. Keep telemetry coverage explicit on each non-done active task as new work enters the queue.
-  2. Tighten one repeated-work verification slice instead of opening a connector or autonomy expansion.
+  2. Keep `task-cycle` attached to repeated internal governed work instead of opening a connector or autonomy expansion.
   3. Revisit connector policy only when there is one narrow use case with rollback notes.
 
 ### Threshold Interpretation From Live Telemetry
@@ -81,4 +82,5 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
 
 - Telemetry coverage rate
 - Eval coverage rate
+- Repeated internal task-cycle rate
 - Memory hygiene exceptions

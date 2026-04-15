@@ -131,6 +131,22 @@
         "value": 0.5
       },
       "action_if_breached": "Add lightweight acceptance or eval checks before repeating the same workflow more autonomously."
+    },
+    {
+      "id": "repeated_internal_task_cycle_rate",
+      "definition": "Share of repeated AI-Operations-led internal execution tasks that pass the local task-cycle check in the weekly review window.",
+      "source": [
+        ".hq/telemetry/",
+        "05 AI Control Plane/active-work.json"
+      ],
+      "unit": "ratio",
+      "review_cadence": "weekly",
+      "review_owner": "ai_operations_lead",
+      "threshold": {
+        "comparison": ">=",
+        "value": 1.0
+      },
+      "action_if_breached": "Do not treat repeated internal work as safely repeatable until each repeated governed slice passes task-cycle."
     }
   ]
 }

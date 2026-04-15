@@ -43,7 +43,8 @@
       "acceptance_evidence": [
         "done_when is specific and reviewable",
         "accepting role confirms the outcome before shared-truth sync",
-        "completed work has route, start, acceptance, and sync telemetry coverage"
+        "completed work has route, start, acceptance, and sync telemetry coverage",
+        "repeated AI-Operations-led internal execution slices pass a local task-cycle check before they count as stable repeat evidence"
       ],
       "transition_owners": {
         "intake->triage": "assistant",

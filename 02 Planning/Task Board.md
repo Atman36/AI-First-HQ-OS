@@ -4,7 +4,7 @@
 
 - Updated At: 2026-04-15
 - Operating Mode: ai-first-stage-2-foundation
-- Objective: Install the Stage 2 operating discipline and prove the governed loop is repeatable on live work
+- Objective: Install the Stage 2 operating discipline, prove the governed loop is repeatable, and tighten repeated-work verification
 
 ## Success Criteria
 - AI Operations Lead replaces the stage-1 AI COO role across docs and control-plane contracts
@@ -12,6 +12,7 @@
 - the queue stays current in active-work.json and Task Board.md is rendered from it
 - weekly metrics can be generated from telemetry and active-work state
 - telemetry captures routing, execution, acceptance, sync, and lightweight eval signals
+- weekly review requires a passing local task-cycle signal on repeated AI-Operations-led internal execution slices
 
 ## Waiting
 - [ ] Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors
@@ -86,4 +87,13 @@
   - Done when: The second live item completes with queue state, Governor review, execution, acceptance, documentation sync, telemetry coverage, and a local task-cycle verification result.
   - Primary update file: `05 AI Control Plane/active-work.json`
   - Align: `scripts/hq_telemetry.py`, `tests/test_hq_telemetry.py`, `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
+  - Completed at: 2026-04-15
+- [x] Require task-cycle coverage in weekly review for repeated internal governed work
+  - ID: require-task-cycle-on-repeated-internal-work | Owner: ai_operations_lead | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: HQ Bootstrap
+  - Support: governor, delivery, documentation
+  - Next: Keep this check attached to repeated internal governed slices while spend stays at EUR 0 and connectors remain blocked.
+  - Done when: Weekly review reports a repeated internal task-cycle coverage signal and breaches if a repeated governed internal slice lacks a passing local check.
+  - Primary update file: `05 AI Control Plane/metrics-registry.json`
+  - Align: `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, `scripts/hq_telemetry.py`, `tests/test_hq_telemetry.py`, `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
   - Completed at: 2026-04-15
