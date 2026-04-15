@@ -24,6 +24,7 @@
       "title": "Install the machine-readable AI control plane and generated board",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
@@ -48,6 +49,7 @@
       "title": "Add telemetry, validation, and tests for the HQ runtime",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
@@ -73,6 +75,7 @@
       "title": "Replace the stage-1 AI COO role with AI Operations Lead and tighten Stage 2 operating contracts",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
@@ -100,6 +103,7 @@
       "title": "Run one real company task through AI Operations Lead -> Governor -> specialist -> Documentation",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [
@@ -124,6 +128,7 @@
       "title": "Run the first weekly metric review from telemetry and threshold rules",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [
@@ -149,6 +154,7 @@
       "title": "Lock the remaining autonomous spend envelope after the first live weekly review",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "governor",
       "project": "HQ Bootstrap",
       "support": [
@@ -172,6 +178,7 @@
       "id": "connect-external-systems-under-governance",
       "title": "Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors",
       "column": "waiting",
+      "manager": "ai_operations_lead",
       "owner": "delivery",
       "project": "HQ Bootstrap",
       "support": [
@@ -198,6 +205,7 @@
       "title": "Run a second live governed loop and verify the full task cycle locally",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [
@@ -225,6 +233,7 @@
       "title": "Require task-cycle coverage in weekly review for repeated internal governed work",
       "column": "done",
       "completed_at": "2026-04-15",
+      "manager": "ai_operations_lead",
       "owner": "ai_operations_lead",
       "project": "HQ Bootstrap",
       "support": [

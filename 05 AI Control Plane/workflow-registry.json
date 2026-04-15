@@ -22,6 +22,7 @@
         "id",
         "title",
         "column",
+        "manager",
         "owner",
         "project",
         "next_step",
@@ -48,9 +49,9 @@
       ],
       "transition_owners": {
         "intake->triage": "assistant",
-        "triage->policy_check": "ai_operations_lead",
+        "triage->policy_check": "task_manager",
         "policy_check->scheduled": "governor",
-        "scheduled->executing": "ai_operations_lead",
+        "scheduled->executing": "task_manager",
         "executing->review": "task_owner",
         "review->accepted": "accepting_role",
         "accepted->synced": "documentation",
@@ -71,6 +72,7 @@
       "required_task_fields": [
         "id",
         "title",
+        "manager",
         "owner",
         "accepts_result",
         "risk_tier",
@@ -93,7 +95,7 @@
       ],
       "transition_owners": {
         "open->researched": "research",
-        "researched->proposal_ready": "ai_operations_lead",
+        "researched->proposal_ready": "task_manager",
         "proposal_ready->approved": "ceo",
         "approved->resolved": "documentation"
       }
@@ -112,6 +114,7 @@
         "id",
         "title",
         "column",
+        "manager",
         "owner",
         "project",
         "accepts_result",
@@ -131,7 +134,7 @@
         "carry-forward items are reflected in the control plane or weekly plan"
       ],
       "transition_owners": {
-        "collect->analyze": "ai_operations_lead",
+        "collect->analyze": "task_manager",
         "analyze->decide": "governor",
         "decide->publish": "documentation",
         "publish->carry_forward": "ceo"

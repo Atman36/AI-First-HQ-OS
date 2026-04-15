@@ -125,6 +125,7 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         review = json.loads(latest_json.read_text(encoding="utf-8"))
         self.assertEqual(review["total_reflections"], 2)
         self.assertEqual(review["candidate_improvements"], 0)
+        self.assertEqual(review["skill_candidates"], 0)
         self.assertEqual(review["groups"][0]["status"], "insufficient_evidence")
 
     def test_weekly_review_generates_candidate_and_blocks_restricted_scope(self):
@@ -209,10 +210,24 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         review = json.loads(latest_json.read_text(encoding="utf-8"))
         self.assertTrue(latest_md.exists())
         self.assertEqual(review["candidate_improvements"], 1)
+        self.assertEqual(review["skill_candidates"], 1)
         groups = {group["issue_key"]: group for group in review["groups"]}
         self.assertEqual(groups["instruction-loading"]["status"], "candidate")
+        self.assertIn("skill", groups["instruction-loading"]["manual_targets"])
+        self.assertTrue(groups["instruction-loading"]["skill_candidate"])
         self.assertEqual(groups["tool-access"]["status"], "manual_only")
         self.assertIn("must stay manual", groups["tool-access"]["guardrail_reason"])
+        skill_candidates = json.loads(
+            (self.module.RUNTIME_DIRS["improvements"] / "skill-candidates.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(skill_candidates["total_skill_candidates"], 1)
+        self.assertEqual(skill_candidates["candidates"][0]["issue_key"], "instruction-loading")
+        self.assertEqual(
+            skill_candidates["candidates"][0]["promotion_target"],
+            "skill",
+        )
 
     def test_weekly_review_loads_standalone_json_reflection(self):
         standalone_path = (
@@ -264,10 +279,79 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         review = json.loads(latest_json.read_text(encoding="utf-8"))
         self.assertEqual(review["total_reflections"], 1)
         self.assertEqual(review["candidate_improvements"], 1)
+        self.assertEqual(review["skill_candidates"], 1)
         group = review["groups"][0]
         self.assertEqual(group["status"], "candidate")
         self.assertIn("10 minutes", group["candidate_rule"])
         self.assertIn("timed out", group["summary"])
+
+    def test_weekly_review_keeps_skill_promotion_manual_for_restricted_scope(self):
+        reflections = [
+            {
+                "created_at": "2026-04-12T09:00:00Z",
+                "session": "s1",
+                "agent": "Delivery",
+                "summary": "Production writes were too tempting.",
+                "observation": "An automation proposal drifted toward production logic.",
+                "issue": "Improvement touched production logic directly.",
+                "lesson": "Keep production changes gated.",
+                "issue_key": "production-logic-drift",
+                "change_scope": "production_logic",
+                "proposed_rule": "Auto-update the production flow from the review.",
+                "tags": ["production", "safety"],
+            },
+            {
+                "created_at": "2026-04-13T09:00:00Z",
+                "session": "s2",
+                "agent": "Delivery",
+                "summary": "The same drift repeated.",
+                "observation": "Weekly review suggestions again touched production logic.",
+                "issue": "Improvement touched production logic directly.",
+                "lesson": "Keep production changes gated.",
+                "issue_key": "production-logic-drift",
+                "change_scope": "production_logic",
+                "proposed_rule": "Auto-update the production flow from the review.",
+                "tags": ["production", "safety"],
+            },
+        ]
+        for item in reflections:
+            self.module.append_jsonl(
+                self.module.reflections_file_for_timestamp(item["created_at"]),
+                self.module.normalize_reflection_payload(item),
+            )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "weekly-review",
+                "--since",
+                "2026-04-12",
+                "--until",
+                "2026-04-13",
+                "--min-observations",
+                "2",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        review = json.loads(
+            (self.module.RUNTIME_DIRS["improvements"] / "LATEST.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        group = review["groups"][0]
+        self.assertEqual(group["status"], "manual_only")
+        self.assertEqual(review["skill_candidates"], 0)
+        self.assertFalse(group["skill_candidate"])
+        self.assertNotIn("skill", group["manual_targets"])
+        skill_candidates = json.loads(
+            (self.module.RUNTIME_DIRS["improvements"] / "skill-candidates.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(skill_candidates["total_skill_candidates"], 0)
 
 
 if __name__ == "__main__":

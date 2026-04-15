@@ -29,6 +29,7 @@
           "id",
           "title",
           "column",
+          "manager",
           "owner",
           "project",
           "next_step",
@@ -38,7 +39,18 @@
           "risk_tier",
           "autonomy_tier",
           "workflow"
-        ]
+        ],
+        "properties": {
+          "manager": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "accepts_result": {
+            "type": "string"
+          }
+        }
       }
     }
   }

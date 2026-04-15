@@ -73,6 +73,7 @@ Turn HQ from a Markdown coordination vault into a company operating system where
 
 1. Intake lands in Inbox or a founder request.
 2. AI Operations Lead converts it into or updates a task in `active-work.json`.
+   The task contract must name a `manager`, `owner`, and `accepts_result` role explicitly.
 3. Governor checks risk tier, autonomy tier, and missing approvals.
 4. Specialist agent executes.
 5. Accepting role reviews outcome.
@@ -82,9 +83,22 @@ Turn HQ from a Markdown coordination vault into a company operating system where
 
 ## Hard Rules
 
-- No delegated task without owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
+- No delegated task without manager, owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
 - `active-work.json` is the machine-readable queue for delegated work.
 - `Task Board.md` is a rendered mirror for humans.
 - Repeated work needs explicit acceptance checks and telemetry signals before autonomy expands.
 - CEO approval is required for `A4` work and any budget, legal, public, or destructive commitment.
 - Governor can block execution even if the task is otherwise well-formed.
+
+## Manager vs Owner
+
+- `manager` owns routing, sequencing, and coordination for the task.
+- `owner` owns execution of the current work slice.
+- `accepts_result` is the role that confirms the result is good enough to count.
+- In Stage 2, `AI Operations Lead` remains the default task manager unless the operating model explicitly says otherwise.
+
+## Private Improvement Loop
+
+- Weekly review may emit manual-first candidates for `agent prompt`, `task checklist`, `operating procedure`, and `skill`.
+- Skill-oriented candidates are written only as private runtime backlog under `.hq/improvements/skill-candidates.json`.
+- The weekly review does not auto-edit `AGENTS.md`, shared truth, access rules, safety rules, or production logic.

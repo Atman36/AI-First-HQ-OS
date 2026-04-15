@@ -44,6 +44,13 @@ ALLOWED_CHANGE_SCOPES = {
     "production_logic",
     "access",
 }
+SKILL_ELIGIBLE_CHANGE_SCOPES = {
+    "workflow",
+    "prompt",
+    "routing",
+    "documentation",
+    "memory",
+}
 STOPWORDS = {
     "a",
     "an",
@@ -549,6 +556,23 @@ def choose_candidate_rule(group: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+def determine_manual_targets(status: str, change_scopes: list[str]) -> tuple[list[str], bool]:
+    if status != "candidate":
+        return [], False
+
+    targets = [
+        "agent prompt",
+        "task checklist",
+        "operating procedure",
+    ]
+    skill_candidate = bool(change_scopes) and all(
+        scope in SKILL_ELIGIBLE_CHANGE_SCOPES for scope in change_scopes
+    )
+    if skill_candidate:
+        targets.append("skill")
+    return targets, skill_candidate
+
+
 def build_group_record(group: dict[str, Any], min_observations: int, min_unique_sessions: int) -> dict[str, Any]:
     change_scopes = sorted({item.get("change_scope") or "workflow" for item in group["items"]})
     unique_sessions = sorted({item.get("session") or "" for item in group["items"] if item.get("session")})
@@ -573,6 +597,8 @@ def build_group_record(group: dict[str, Any], min_observations: int, min_unique_
             "Not enough repeated observations yet to promote a candidate improvement."
         )
 
+    manual_targets, skill_candidate = determine_manual_targets(status, change_scopes)
+
     record = {
         "issue_key": group["issue_key"],
         "change_scopes": change_scopes,
@@ -596,13 +622,9 @@ def build_group_record(group: dict[str, Any], min_observations: int, min_unique_
         "guardrail_reason": guardrail_reason,
         "candidate_rule": candidate_rule if status == "candidate" else "",
         "candidate_rule_source": source_type,
-        "manual_targets": [
-            "agent prompt",
-            "task checklist",
-            "operating procedure",
-        ]
-        if status == "candidate"
-        else [],
+        "manual_targets": manual_targets,
+        "skill_candidate": skill_candidate,
+        "promotion_target": "skill" if skill_candidate else "",
     }
     return record
 
@@ -615,11 +637,13 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         f"- Window: {review['window']['since']} -> {review['window']['until']}",
         f"- Total reflections: {review['total_reflections']}",
         f"- Candidate improvements: {review['candidate_improvements']}",
+        f"- Skill candidates: {review['skill_candidates']}",
         f"- Manual-only groups: {review['manual_only_groups']}",
         "",
     ]
 
     candidates = [group for group in review["groups"] if group["status"] == "candidate"]
+    skill_candidates = [group for group in candidates if group.get("skill_candidate")]
     parked = [group for group in review["groups"] if group["status"] != "candidate"]
 
     lines.append("## Candidate Improvements")
@@ -633,6 +657,19 @@ def render_review_markdown(review: dict[str, Any]) -> str:
                     f"  Observations: {group['observations']} across {group['unique_sessions']} sessions",
                     f"  Summary: {group['summary']}",
                     f"  Apply manually to: {', '.join(group['manual_targets'])}",
+                ]
+            )
+
+    lines.extend(["", "## Skill Candidates"])
+    if not skill_candidates:
+        lines.append("- None")
+    else:
+        for group in skill_candidates:
+            lines.extend(
+                [
+                    f"- {group['issue_key']}: {group['candidate_rule']}",
+                    "  Promotion target: skill backlog only",
+                    f"  Summary: {group['summary']}",
                 ]
             )
 
@@ -653,7 +690,8 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         [
             "",
             "## Safety Notes",
-            "- This review does not edit AGENTS.md, shared markdown, access rules, tools, or production logic.",
+            "- This review does not edit AGENTS.md, shared markdown, access rules, safety rules, tools, or production logic.",
+            "- Skill candidates are private backlog artifacts only and must be promoted manually.",
             "- Candidate improvements are review artifacts only and must be applied manually or by a separate gated command.",
             "",
         ]
@@ -661,11 +699,43 @@ def render_review_markdown(review: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_skill_candidates_backlog(review: dict[str, Any]) -> dict[str, Any]:
+    candidates = []
+    for group in review["groups"]:
+        if not group.get("skill_candidate"):
+            continue
+        candidates.append(
+            {
+                "issue_key": group["issue_key"],
+                "summary": group["summary"],
+                "candidate_rule": group["candidate_rule"],
+                "change_scopes": group["change_scopes"],
+                "observations": group["observations"],
+                "unique_sessions": group["unique_sessions"],
+                "manual_targets": group["manual_targets"],
+                "promotion_target": "skill",
+            }
+        )
+
+    return {
+        "generated_at": review["generated_at"],
+        "window": review["window"],
+        "total_skill_candidates": len(candidates),
+        "guardrails": [
+            "Skill promotion remains manual-first.",
+            "Weekly review does not edit AGENTS.md, shared truth, access rules, safety rules, or production logic.",
+            "Skill backlog artifacts stay under .hq/improvements/ until reviewed.",
+        ],
+        "candidates": candidates,
+    }
+
+
 def write_review_artifacts(review: dict[str, Any], review_slug: str) -> tuple[Path, Path]:
     review_dir = RUNTIME_DIRS["improvements"] / review_slug
     review_dir.mkdir(parents=True, exist_ok=True)
     json_path = review_dir / "review.json"
     md_path = review_dir / "review.md"
+    skill_candidates_path = RUNTIME_DIRS["improvements"] / "skill-candidates.json"
     write_json(json_path, review)
     md_path.write_text(render_review_markdown(review) + "\n", encoding="utf-8")
     write_json(RUNTIME_DIRS["improvements"] / "LATEST.json", review)
@@ -673,6 +743,7 @@ def write_review_artifacts(review: dict[str, Any], review_slug: str) -> tuple[Pa
         render_review_markdown(review) + "\n",
         encoding="utf-8",
     )
+    write_json(skill_candidates_path, build_skill_candidates_backlog(review))
     return json_path, md_path
 
 
@@ -715,6 +786,7 @@ def weekly_review_command(args: argparse.Namespace) -> int:
         "total_reflections": len(reflections),
         "total_groups": len(groups),
         "candidate_improvements": sum(1 for group in groups if group["status"] == "candidate"),
+        "skill_candidates": sum(1 for group in groups if group.get("skill_candidate")),
         "manual_only_groups": sum(1 for group in groups if group["status"] == "manual_only"),
         "thresholds": {
             "min_observations": args.min_observations,

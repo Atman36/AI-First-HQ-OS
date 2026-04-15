@@ -113,6 +113,7 @@ class HqControlPlaneTests(unittest.TestCase):
                                 "id",
                                 "title",
                                 "column",
+                                "manager",
                                 "owner",
                                 "project",
                                 "next_step",
@@ -212,6 +213,7 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "task-1",
                             "title": "Run first loop",
                             "column": "this_week",
+                            "manager": "ai_operations_lead",
                             "owner": "ai_operations_lead",
                             "project": "HQ Bootstrap",
                             "support": ["governor", "delivery", "documentation"],
@@ -255,6 +257,22 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("Generated from `05 AI Control Plane/active-work.json`", content)
         self.assertIn("Run first loop", content)
         self.assertIn("HQ Bootstrap", content)
+        self.assertIn("Manager: ai_operations_lead", content)
+        self.assertIn("Owner: ai_operations_lead", content)
+
+    def test_validate_requires_manager_role(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"][0].pop("manager")
+        active_work_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(self.module.ValidationError) as error:
+            self.module.validate_control_plane()
+
+        self.assertIn("manager", str(error.exception))
 
 
 if __name__ == "__main__":

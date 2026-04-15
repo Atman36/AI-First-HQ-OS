@@ -25,6 +25,7 @@ This file defines how work is routed in the AI-first HQ.
 
 Every delegated task must answer these questions before execution starts:
 
+- Who manages routing and coordination
 - Who owns it
 - Who supports it
 - What counts as done
@@ -50,3 +51,10 @@ Every handoff should include:
 - blockers or policy concerns
 
 Private continuation belongs in `.hq/handoffs/<task>/`.
+
+## Role Split
+
+- `manager` owns routing, coordination, and operating follow-through for the task.
+- `owner` executes the current slice of work.
+- `accepts_result` decides whether the outcome is accepted.
+- Default Stage 2 pattern: `AI Operations Lead` manages, `Delivery` or a specialist executes, and the named accepting role reviews the result.

@@ -48,7 +48,7 @@ COLUMN_TITLES = {
     "synced": "Synced",
     "done": "Done",
 }
-SPECIAL_TRANSITION_OWNERS = {"task_owner", "accepting_role"}
+SPECIAL_TRANSITION_OWNERS = {"task_owner", "task_manager", "accepting_role"}
 VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
 
 
@@ -412,8 +412,11 @@ def validate_active_work(
             if isinstance(value, str) and not value.strip():
                 context.add(f"{path}.{field}", "required field must not be empty")
 
+        manager = normalize_text(task.get("manager"))
         owner = normalize_text(task.get("owner"))
         accepts_result = normalize_text(task.get("accepts_result"))
+        if manager and manager not in role_ids:
+            context.add(f"{path}.manager", f"unknown role: {manager}")
         if owner and owner not in role_ids:
             context.add(f"{path}.owner", f"unknown role: {owner}")
         if accepts_result and accepts_result not in role_ids:
@@ -498,8 +501,9 @@ def task_lines(task: dict[str, Any]) -> list[str]:
     checkbox = checkbox_for_column(normalize_text(task.get("column")))
     lines = [f"- [{checkbox}] {normalize_text(task.get('title'))}"]
     lines.append(
-        "  - ID: {id} | Owner: {owner} | Accepts: {accepts} | Risk: {risk} | Autonomy: {autonomy}".format(
+        "  - ID: {id} | Manager: {manager} | Owner: {owner} | Accepts: {accepts} | Risk: {risk} | Autonomy: {autonomy}".format(
             id=normalize_text(task.get("id")),
+            manager=normalize_text(task.get("manager")),
             owner=normalize_text(task.get("owner")),
             accepts=normalize_text(task.get("accepts_result")),
             risk=normalize_text(task.get("risk_tier")),

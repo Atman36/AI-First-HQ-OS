@@ -92,9 +92,19 @@ Use `.hq/` for private, inspectable, non-git-tracked runtime artifacts:
 - `.hq/state/` for capability probe results and lightweight runtime state
 - `.hq/telemetry/` for structured event logs
 - `.hq/reflections/` for per-task lessons
-- `.hq/improvements/` for weekly synthesis
+- `.hq/improvements/` for weekly synthesis and manual-first promotion backlogs
 - `.hq/evals/` for eval runs and artifacts
 - `.hq/releases/` for rollout and rollback notes
+
+## Task Contract
+
+Delegated work is explicit about three roles:
+
+- `manager`: routes the task, coordinates handoffs, and owns operating follow-through
+- `owner`: executes the current task slice
+- `accepts_result`: reviews and accepts the outcome before shared-truth sync
+
+`AI Operations Lead` remains the default task manager in Stage 2 unless a narrower manager is assigned intentionally.
 
 ## Runtime Commands
 
@@ -145,4 +155,6 @@ The review output is a safe artifact only:
 
 - `.hq/improvements/LATEST.json` for machine-readable grouped observations
 - `.hq/improvements/LATEST.md` for a human review note with candidate improvements
+- `.hq/improvements/skill-candidates.json` for improvements that are explicit candidates for manual skill promotion
 - No shared Markdown files or `AGENTS.md` files are edited automatically by this flow
+- Skill promotion remains manual-first and does not update shared truth or agent prompts automatically
