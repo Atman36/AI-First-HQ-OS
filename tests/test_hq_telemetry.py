@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,9 @@ SCHEMA_FIXTURES = Path(__file__).resolve().parents[1] / "05 AI Control Plane" / 
 def load_module(temp_root: Path):
     os.environ["HQ_TELEMETRY_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_RUNTIME_PRIVATE_ROOT"] = str(temp_root / ".hq")
+    sys.modules.pop("hq_io", None)
+    sys.modules.pop("hq_telemetry_store", None)
+    sys.modules.pop("hq_telemetry_review", None)
     spec = importlib.util.spec_from_file_location("hq_telemetry_test_module", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -37,6 +41,9 @@ class HqTelemetryTests(unittest.TestCase):
     def tearDown(self):
         os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
+        os.environ.pop("HQ_TELEMETRY_JSONL_MAX_BYTES", None)
+        os.environ.pop("HQ_TELEMETRY_JSONL_MAX_RECORDS", None)
+        os.environ.pop("HQ_REVIEW_ARCHIVE_KEEP", None)
         self.temp_dir.cleanup()
 
     def write_workflow_registry(self, required_events: list[str] | None = None) -> None:
@@ -165,6 +172,60 @@ class HqTelemetryTests(unittest.TestCase):
         self.assertEqual(payload["task_id"], "run-first-governed-loop")
         self.assertEqual(payload["metadata"], {"phase": "triage"})
         self.assertEqual(payload["touched_files"], ["05 AI Control Plane/active-work.json"])
+
+    def test_event_command_rotates_daily_jsonl_when_threshold_is_hit(self):
+        os.environ["HQ_TELEMETRY_JSONL_MAX_BYTES"] = "256"
+        os.environ["HQ_TELEMETRY_JSONL_MAX_RECORDS"] = "1000"
+        telemetry_path = self.temp_root / ".hq" / "telemetry" / "2026-04" / "2026-04-16.jsonl"
+        telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+        telemetry_path.write_text(
+            json.dumps(
+                {
+                    "id": "old-event",
+                    "created_at": "2026-04-16T09:00:00Z",
+                    "event_type": "route",
+                    "agent": "ai_operations_lead",
+                    "task_id": "task-0",
+                    "status": "ready",
+                    "summary": "x" * 400,
+                    "metadata": {},
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "event",
+                "--event-type",
+                "route",
+                "--actor",
+                "ai_operations_lead",
+                "--role",
+                "AI Operations Lead",
+                "--task-id",
+                "task-1",
+                "--status",
+                "ready",
+                "--summary",
+                "Task routed after rotation threshold was reached.",
+                "--workflow",
+                "intake-to-execution",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        archived_files = sorted((telemetry_path.parent / "archive").glob("*.jsonl"))
+        self.assertEqual(len(archived_files), 1)
+        self.assertIn("old-event", archived_files[0].read_text(encoding="utf-8"))
+        current_lines = telemetry_path.read_text(encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(current_lines), 1)
+        self.assertEqual(json.loads(current_lines[0])["task_id"], "task-1")
 
     def test_weekly_metrics_generates_review_and_flags_breach(self):
         control_plane_dir = self.temp_root / "05 AI Control Plane"

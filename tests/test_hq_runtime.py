@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,8 @@ SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_runtime.py"
 def load_runtime_module(temp_root: Path):
     os.environ["HQ_RUNTIME_REPO_ROOT"] = str(temp_root)
     os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
+    sys.modules.pop("hq_io", None)
+    sys.modules.pop("hq_runtime_review", None)
     spec = importlib.util.spec_from_file_location("hq_runtime_test_module", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -29,6 +32,7 @@ class HqRuntimeReflectionTests(unittest.TestCase):
     def tearDown(self):
         os.environ.pop("HQ_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
+        os.environ.pop("HQ_REVIEW_ARCHIVE_KEEP", None)
         self.temp_dir.cleanup()
 
     def test_reflection_command_writes_jsonl_entry(self):
@@ -352,6 +356,57 @@ class HqRuntimeReflectionTests(unittest.TestCase):
             )
         )
         self.assertEqual(skill_candidates["total_skill_candidates"], 0)
+
+    def test_weekly_review_archives_old_review_directories(self):
+        os.environ["HQ_REVIEW_ARCHIVE_KEEP"] = "1"
+        old_review_dir = self.module.RUNTIME_DIRS["improvements"] / "2026-03-01_to_2026-03-07"
+        old_review_dir.mkdir(parents=True, exist_ok=True)
+        (old_review_dir / "review.json").write_text("{}\n", encoding="utf-8")
+
+        self.module.append_jsonl(
+            self.module.reflections_file_for_timestamp("2026-04-15T10:00:00Z"),
+            self.module.normalize_reflection_payload(
+                {
+                    "created_at": "2026-04-15T10:00:00Z",
+                    "session": "archive-test",
+                    "agent": "Delivery",
+                    "summary": "Review output retention should archive older windows.",
+                    "observation": "The current review replaced a prior output window.",
+                    "issue": "Review output count kept growing.",
+                    "lesson": "Archive stale review windows.",
+                    "issue_key": "review-retention",
+                    "change_scope": "workflow",
+                    "proposed_rule": "Archive older review windows automatically.",
+                    "tags": ["retention"],
+                }
+            ),
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "weekly-review",
+                "--since",
+                "2026-04-15",
+                "--until",
+                "2026-04-15",
+                "--min-observations",
+                "1",
+                "--min-unique-sessions",
+                "1",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        current_review_dir = self.module.RUNTIME_DIRS["improvements"] / "2026-04-15_to_2026-04-15"
+        archived_review_dir = (
+            self.module.RUNTIME_DIRS["improvements"] / "archive" / "2026-03-01_to_2026-03-07"
+        )
+        self.assertTrue(current_review_dir.exists())
+        self.assertFalse(old_review_dir.exists())
+        self.assertTrue(archived_review_dir.exists())
 
 
 if __name__ == "__main__":
