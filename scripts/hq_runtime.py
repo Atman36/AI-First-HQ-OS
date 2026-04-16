@@ -17,8 +17,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+DEFAULT_REPO_ROOT = Path(
+    os.environ.get("HQ_RUNTIME_REPO_ROOT", Path(__file__).resolve().parents[1])
+).resolve()
+os.environ.setdefault("HQ_MISSION_RUNTIME_REPO_ROOT", str(DEFAULT_REPO_ROOT))
+os.environ.setdefault("HQ_TELEMETRY_REPO_ROOT", str(DEFAULT_REPO_ROOT))
+
 from hq_io import append_jsonl as append_jsonl_record
 from hq_io import atomic_write_text, write_json
+import hq_mission_runtime
 from hq_runtime_review import ALLOWED_CHANGE_SCOPES
 from hq_runtime_review import derive_issue_key
 from hq_runtime_review import load_reflections
@@ -31,9 +38,7 @@ from hq_runtime_review import render_review_markdown
 from hq_runtime_review import weekly_review_command
 
 
-REPO_ROOT = Path(
-    os.environ.get("HQ_RUNTIME_REPO_ROOT", Path(__file__).resolve().parents[1])
-).resolve()
+REPO_ROOT = DEFAULT_REPO_ROOT
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
 RUNTIME_DIRS = {
     "handoffs": PRIVATE_ROOT / "handoffs",
@@ -788,6 +793,256 @@ def parse_date(value: str) -> date:
         raise argparse.ArgumentTypeError(f"invalid ISO date: {value}") from exc
 
 
+def normalize_cli_list(values: list[str] | None) -> list[str]:
+    items: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        items.append(text)
+    return items
+
+
+def mission_runtime_command(args: argparse.Namespace) -> int:
+    ensure_private_runtime()
+    hq_mission_runtime.ensure_runtime()
+    if not args.mission_args:
+        print("error=mission-runtime requires a subcommand")
+        return 2
+    mission_parser = hq_mission_runtime.build_parser()
+    try:
+        mission_args = mission_parser.parse_args(args.mission_args)
+    except SystemExit as exc:
+        return int(exc.code)
+    return int(mission_args.func(mission_args))
+
+
+def founder_inbox_markdown(
+    *,
+    review_date: str,
+    review_summary: str,
+    routes: list[str],
+    approvals: list[str],
+    blockers: list[str],
+    policy_exceptions: list[str],
+    kpi_drifts: list[str],
+    run_id: str,
+) -> str:
+    lines = [
+        "# Founder Weekly Operating Review",
+        "",
+        f"- Review Date: {review_date}",
+        f"- Run ID: {run_id}",
+        "",
+        "## Review Summary",
+        f"- {review_summary or 'Weekly operating review recorded.'}",
+        "",
+        "## Mission Routes",
+    ]
+    if routes:
+        lines.extend(f"- {item}" for item in routes)
+    else:
+        lines.append("- None")
+
+    sections = [
+        ("Approvals", approvals),
+        ("Blockers", blockers),
+        ("Policy Exceptions", policy_exceptions),
+        ("KPI Drift", kpi_drifts),
+    ]
+    for title, items in sections:
+        lines.extend(["", f"## {title}"])
+        if items:
+            lines.extend(f"- {item}" for item in items)
+        else:
+            lines.append("- None")
+
+    lines.extend(["", "## Founder Review Scope"])
+    if approvals or blockers or policy_exceptions or kpi_drifts:
+        lines.append("- Founder review required on the narrow operational surface above.")
+    else:
+        lines.append("- No founder review items.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_founder_inbox_artifact(session: str, content: str) -> Path:
+    inbox_dir = RUNTIME_DIRS["handoffs"] / "founder-weekly-operating-review"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    session_path = inbox_dir / f"{slugify(session)}.md"
+    latest_path = inbox_dir / "LATEST.md"
+    atomic_write_text(session_path, content)
+    atomic_write_text(latest_path, content)
+    return session_path
+
+
+def founder_weekly_review_command(args: argparse.Namespace) -> int:
+    ensure_private_runtime()
+    hq_mission_runtime.ensure_runtime()
+    routes = normalize_cli_list(args.route)
+    approvals = normalize_cli_list(args.approval)
+    blockers = normalize_cli_list(args.blocker)
+    policy_exceptions = normalize_cli_list(args.policy_exception)
+    kpi_drifts = normalize_cli_list(args.kpi_drift)
+    founder_attention_required = bool(
+        approvals or blockers or policy_exceptions or kpi_drifts or args.force_founder_review
+    )
+    if args.founder_decision and not founder_attention_required:
+        print("error=founder-decision requires founder review items or --force-founder-review")
+        return 2
+
+    mission = hq_mission_runtime.create_mission(
+        argparse.Namespace(
+            title=args.mission_title or f"Founder Weekly Operating Review {args.review_date}",
+            goal=args.goal or "Review weekly operating state and route the next mission slice.",
+            workflow="founder-weekly-operating-review",
+            project=args.project or "Founder Weekly Operating Review",
+            owner=args.owner,
+            manager=args.manager,
+            accepts_result=args.accepts_result,
+            source_task_id=args.source_task_id,
+            metadata={
+                "routes": routes,
+                "approvals": approvals,
+                "blockers": blockers,
+                "policy_exceptions": policy_exceptions,
+                "kpi_drifts": kpi_drifts,
+            },
+        )
+    )
+    run = hq_mission_runtime.start_run(
+        argparse.Namespace(
+            mission_id=mission["id"],
+            actor=args.actor,
+            loop="weekly_operating_review->mission_routing->policy_gate",
+            metadata={"review_date": args.review_date},
+        )
+    )
+    hq_mission_runtime.checkpoint_step(
+        argparse.Namespace(
+            run_id=run["id"],
+            key="weekly_operating_review",
+            actor=args.actor,
+            status="completed",
+            summary=args.review_summary or "Weekly operating review completed.",
+            evidence=[],
+            metadata={"review_date": args.review_date},
+        )
+    )
+    policy_summary = (
+        "Founder inbox requires review for approvals, blockers, policy exceptions, or KPI drift."
+        if founder_attention_required
+        else "No founder-only items detected during the weekly operating review."
+    )
+    routing_step = hq_mission_runtime.checkpoint_step(
+        argparse.Namespace(
+            run_id=run["id"],
+            key="mission_routing",
+            actor=args.actor,
+            status="completed",
+            summary=(
+                f"Prepared {len(routes)} mission route(s) for follow-up."
+                if routes
+                else "No new mission routes were queued in this review."
+            ),
+            evidence=[],
+            metadata={"route_count": len(routes)},
+        )
+    )
+    policy_step = hq_mission_runtime.checkpoint_step(
+        argparse.Namespace(
+            run_id=run["id"],
+            key="policy_gate",
+            actor=args.governor,
+            status="waiting_approval" if founder_attention_required else "completed",
+            summary=policy_summary,
+            evidence=[],
+            metadata={
+                "approval_count": len(approvals),
+                "blocker_count": len(blockers),
+                "policy_exception_count": len(policy_exceptions),
+                "kpi_drift_count": len(kpi_drifts),
+            },
+        )
+    )
+    inbox_path = write_founder_inbox_artifact(
+        args.session,
+        founder_inbox_markdown(
+            review_date=args.review_date,
+            review_summary=args.review_summary or "Weekly operating review completed.",
+            routes=routes,
+            approvals=approvals,
+            blockers=blockers,
+            policy_exceptions=policy_exceptions,
+            kpi_drifts=kpi_drifts,
+            run_id=run["id"],
+        ),
+    )
+    artifact = hq_mission_runtime.attach_artifact(
+        argparse.Namespace(
+            run_id=run["id"],
+            step_id=policy_step["id"],
+            kind="founder_inbox",
+            path=inbox_path.relative_to(REPO_ROOT).as_posix(),
+            summary="Founder weekly operating review inbox.",
+            metadata={"route_count": len(routes), "review_date": args.review_date},
+        )
+    )
+
+    approval = None
+    if founder_attention_required:
+        approval = hq_mission_runtime.request_approval(
+            argparse.Namespace(
+                run_id=run["id"],
+                step_id=policy_step["id"],
+                requested_by=args.governor,
+                requested_for="founder",
+                policy_action="pause_for_founder_approval",
+                summary=policy_summary,
+                metadata={"artifact_id": artifact["id"]},
+            )
+        )
+        if args.founder_decision:
+            hq_mission_runtime.decide_approval(
+                argparse.Namespace(
+                    approval_id=approval["id"],
+                    decision=args.founder_decision,
+                    decided_by=args.accepts_result,
+                    rationale=args.founder_rationale or "Founder weekly operating review decision recorded.",
+                )
+            )
+            hq_mission_runtime.finish_run(
+                argparse.Namespace(
+                    run_id=run["id"],
+                    status="completed" if args.founder_decision == "approved" else "blocked",
+                )
+            )
+    else:
+        hq_mission_runtime.finish_run(
+            argparse.Namespace(
+                run_id=run["id"],
+                status="completed",
+            )
+        )
+
+    current_run = hq_mission_runtime.require_file(
+        hq_mission_runtime.run_path(run["id"]),
+        "run",
+        "run",
+    )
+    print(f"mission_id={mission['id']}")
+    print(f"run_id={run['id']}")
+    print(f"routing_step_id={routing_step['id']}")
+    print(f"policy_step_id={policy_step['id']}")
+    print(f"founder_inbox={inbox_path}")
+    if approval:
+        print(f"approval_id={approval['id']}")
+    print(f"status={current_run['status']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Private runtime helpers for HQ, including a minimal-demo bootstrap scaffold."
@@ -949,6 +1204,125 @@ def build_parser() -> argparse.ArgumentParser:
         help="Repeat for any extra note that should stay private.",
     )
     handoff.set_defaults(func=handoff_command)
+
+    mission_runtime = subparsers.add_parser(
+        "mission-runtime",
+        aliases=["mission"],
+        help="Forward commands to the additive mission runtime nucleus.",
+    )
+    mission_runtime.add_argument(
+        "mission_args",
+        nargs=argparse.REMAINDER,
+        help="Arguments forwarded to scripts/hq_mission_runtime.py.",
+    )
+    mission_runtime.set_defaults(func=mission_runtime_command)
+
+    founder_weekly_review = subparsers.add_parser(
+        "founder-weekly-review",
+        aliases=["weekly-operating-review"],
+        help="Run the Founder Weekly Operating Review + Mission Routing pilot on Mission/Run/Step state.",
+    )
+    founder_weekly_review.add_argument(
+        "--session",
+        default=f"session-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        help="Session identifier for the generated founder inbox artifact.",
+    )
+    founder_weekly_review.add_argument(
+        "--review-date",
+        default=date.today().isoformat(),
+        help="Review date in ISO format. Defaults to today.",
+    )
+    founder_weekly_review.add_argument(
+        "--mission-title",
+        help="Optional custom mission title.",
+    )
+    founder_weekly_review.add_argument(
+        "--goal",
+        help="Optional explicit goal override for the mission.",
+    )
+    founder_weekly_review.add_argument(
+        "--project",
+        help="Optional project label override.",
+    )
+    founder_weekly_review.add_argument(
+        "--source-task-id",
+        default="founder-weekly-operating-review",
+        help="Task identifier used for telemetry lineage. Defaults to founder-weekly-operating-review.",
+    )
+    founder_weekly_review.add_argument(
+        "--owner",
+        default="ai_operations_lead",
+        help="Mission owner. Defaults to ai_operations_lead.",
+    )
+    founder_weekly_review.add_argument(
+        "--manager",
+        default="ceo",
+        help="Mission manager. Defaults to ceo.",
+    )
+    founder_weekly_review.add_argument(
+        "--accepts-result",
+        default="ceo",
+        help="Accepting role for the mission. Defaults to ceo.",
+    )
+    founder_weekly_review.add_argument(
+        "--actor",
+        default="ai_operations_lead",
+        help="Actor running the weekly review. Defaults to ai_operations_lead.",
+    )
+    founder_weekly_review.add_argument(
+        "--governor",
+        default="governor",
+        help="Actor applying the policy gate. Defaults to governor.",
+    )
+    founder_weekly_review.add_argument(
+        "--review-summary",
+        help="Short review summary.",
+    )
+    founder_weekly_review.add_argument(
+        "--route",
+        action="append",
+        default=[],
+        help="Repeat for each mission route produced by the weekly review.",
+    )
+    founder_weekly_review.add_argument(
+        "--approval",
+        action="append",
+        default=[],
+        help="Repeat for each approval item that must surface in the founder inbox.",
+    )
+    founder_weekly_review.add_argument(
+        "--blocker",
+        action="append",
+        default=[],
+        help="Repeat for each blocker that must surface in the founder inbox.",
+    )
+    founder_weekly_review.add_argument(
+        "--policy-exception",
+        action="append",
+        default=[],
+        help="Repeat for each policy exception that must surface in the founder inbox.",
+    )
+    founder_weekly_review.add_argument(
+        "--kpi-drift",
+        action="append",
+        default=[],
+        help="Repeat for each KPI drift item that must surface in the founder inbox.",
+    )
+    founder_weekly_review.add_argument(
+        "--force-founder-review",
+        action="store_true",
+        help="Force a founder approval pause even if the narrow founder surface is empty.",
+    )
+    founder_weekly_review.add_argument(
+        "--founder-decision",
+        choices=["approved", "rejected", "blocked"],
+        help="Optional founder decision to close the approval in the same command.",
+    )
+    founder_weekly_review.add_argument(
+        "--founder-rationale",
+        help="Optional rationale for --founder-decision.",
+    )
+    founder_weekly_review.set_defaults(func=founder_weekly_review_command)
 
     reflection = subparsers.add_parser(
         "reflection",

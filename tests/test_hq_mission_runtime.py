@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -8,12 +9,15 @@ from pathlib import Path
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_mission_runtime.py"
+SCHEMA_FIXTURES = Path(__file__).resolve().parents[1] / "05 AI Control Plane" / "schemas"
 
 
 def load_module(temp_root: Path):
     os.environ["HQ_MISSION_RUNTIME_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_RUNTIME_PRIVATE_ROOT"] = str(temp_root / ".hq")
+    os.environ["HQ_TELEMETRY_REPO_ROOT"] = str(temp_root)
     sys.modules.pop("hq_io", None)
+    sys.modules.pop("hq_telemetry_store", None)
     spec = importlib.util.spec_from_file_location("hq_mission_runtime_test_module", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -25,12 +29,19 @@ class HqMissionRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_root = Path(self.temp_dir.name)
+        (self.temp_root / "05 AI Control Plane" / "schemas").mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            SCHEMA_FIXTURES,
+            self.temp_root / "05 AI Control Plane" / "schemas",
+            dirs_exist_ok=True,
+        )
         self.module = load_module(self.temp_root)
         self.module.ensure_runtime()
 
     def tearDown(self):
         os.environ.pop("HQ_MISSION_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
+        os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         self.temp_dir.cleanup()
 
     def test_create_mission_and_start_run_persist_first_class_records(self):
@@ -270,6 +281,98 @@ class HqMissionRuntimeTests(unittest.TestCase):
 
         event_files = sorted(self.module.RUNTIME_DIRS["events"].glob("**/*.jsonl"))
         self.assertTrue(event_files)
+
+    def test_runtime_events_are_mirrored_into_telemetry_with_run_lineage(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                [
+                    "create-mission",
+                    "--title",
+                    "Founder Weekly Review",
+                    "--source-task-id",
+                    "weekly-review-task",
+                    "--workflow",
+                    "founder-weekly-operating-review",
+                ]
+            )
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "ai_operations_lead",
+                ]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "policy_gate",
+                    "--actor",
+                    "governor",
+                    "--status",
+                    "waiting_approval",
+                    "--summary",
+                    "Founder review required.",
+                ]
+            )
+        )
+
+        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        self.assertEqual(len(telemetry_files), 1)
+        events = [
+            json.loads(line)
+            for line in telemetry_files[0].read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(events[0]["event_type"], "mission_created")
+        self.assertEqual(events[0]["task_id"], "weekly-review-task")
+        self.assertEqual(events[1]["event_type"], "run_started")
+        self.assertEqual(events[1]["run_id"], run["id"])
+        self.assertEqual(events[2]["event_type"], "step_checkpointed")
+        self.assertEqual(events[2]["run_id"], run["id"])
+        self.assertEqual(events[2]["step_id"], step["id"])
+        self.assertEqual(events[2]["mission_id"], mission["id"])
+
+    def test_checkpoint_step_rejects_corrupt_run_payload_against_schema(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Corrupt Run Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        corrupt_run = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        corrupt_run.pop("mission_id")
+        self.module.run_path(run["id"]).write_text(
+            json.dumps(corrupt_run, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(ValueError):
+            self.module.checkpoint_step(
+                self.module.build_parser().parse_args(
+                    [
+                        "checkpoint-step",
+                        "--run-id",
+                        run["id"],
+                        "--key",
+                        "planner",
+                        "--actor",
+                        "delivery",
+                        "--status",
+                        "completed",
+                    ]
+                )
+            )
 
 
 if __name__ == "__main__":

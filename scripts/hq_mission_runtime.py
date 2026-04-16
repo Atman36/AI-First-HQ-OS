@@ -12,18 +12,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft202012Validator, FormatChecker
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from hq_io import append_jsonl, write_json
-
-
-REPO_ROOT = Path(
+DEFAULT_REPO_ROOT = Path(
     os.environ.get("HQ_MISSION_RUNTIME_REPO_ROOT", Path(__file__).resolve().parents[1])
 ).resolve()
+os.environ.setdefault("HQ_TELEMETRY_REPO_ROOT", str(DEFAULT_REPO_ROOT))
+
+from hq_io import append_jsonl, write_json
+from hq_telemetry_store import append_event as append_telemetry_event
+from hq_telemetry_store import ensure_runtime as ensure_telemetry_runtime
+from hq_telemetry_store import event_file_for_timestamp as telemetry_event_file_for_timestamp
+
+
+REPO_ROOT = DEFAULT_REPO_ROOT
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
+CONTROL_PLANE_DIR = REPO_ROOT / "05 AI Control Plane" / "schemas"
 RUNTIME_ROOT = PRIVATE_ROOT / "state" / "mission-runtime"
 RUNTIME_DIRS = {
     "missions": RUNTIME_ROOT / "missions",
@@ -33,6 +42,14 @@ RUNTIME_DIRS = {
     "artifacts": RUNTIME_ROOT / "artifacts",
     "events": RUNTIME_ROOT / "events",
 }
+ENTITY_SCHEMA_PATHS = {
+    "mission": CONTROL_PLANE_DIR / "mission.schema.json",
+    "run": CONTROL_PLANE_DIR / "run.schema.json",
+    "step": CONTROL_PLANE_DIR / "step.schema.json",
+    "approval": CONTROL_PLANE_DIR / "approval.schema.json",
+    "artifact": CONTROL_PLANE_DIR / "artifact.schema.json",
+}
+TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "telemetry-event.schema.json"
 ALLOWED_STEP_STATUSES = {
     "planned",
     "running",
@@ -82,9 +99,38 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def validate_payload_against_schema(
+    payload: dict[str, Any],
+    schema_path: Path,
+    *,
+    label: str,
+) -> None:
+    if not schema_path.exists():
+        raise ValueError(f"{label} schema not found: {schema_path}")
+    schema = load_json(schema_path)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(payload), key=lambda item: list(item.absolute_path))
+    if errors:
+        error = errors[0]
+        path = ".".join(str(item) for item in error.absolute_path)
+        raise ValueError(f"{label} failed schema validation at {path or '<root>'}: {error.message}")
+
+
+def validate_entity_payload(payload: dict[str, Any], entity_type: str) -> None:
+    schema_path = ENTITY_SCHEMA_PATHS.get(entity_type)
+    if schema_path is None:
+        raise ValueError(f"unsupported entity_type: {entity_type}")
+    validate_payload_against_schema(payload, schema_path, label=entity_type)
+
+
+def validate_telemetry_payload(payload: dict[str, Any]) -> None:
+    validate_payload_against_schema(payload, TELEMETRY_SCHEMA_PATH, label="telemetry_event")
+
+
 def ensure_runtime() -> None:
     for path in RUNTIME_DIRS.values():
         path.mkdir(parents=True, exist_ok=True)
+    ensure_telemetry_runtime()
 
 
 def mission_path(mission_id: str) -> Path:
@@ -132,10 +178,58 @@ def record_event(
     append_jsonl(event_file_for_timestamp(created_at), event)
 
 
-def require_file(path: Path, label: str) -> dict[str, Any]:
+def emit_runtime_telemetry(
+    *,
+    event_type: str,
+    status: str,
+    summary: str,
+    actor: str,
+    mission_id: str,
+    source_task_id: str = "",
+    workflow: str = "",
+    run_id: str = "",
+    step_id: str = "",
+    approval_id: str = "",
+    artifact_id: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    created_at = utc_now()
+    payload: dict[str, Any] = {
+        "id": str(uuid.uuid4()),
+        "created_at": created_at,
+        "event_type": event_type,
+        "agent": actor or "runtime",
+        "role": actor or "",
+        "task_id": source_task_id or mission_id,
+        "mission_id": mission_id,
+        "run_id": run_id,
+        "step_id": step_id,
+        "approval_id": approval_id,
+        "artifact_id": artifact_id,
+        "status": status,
+        "summary": summary,
+        "workflow": workflow,
+        "metadata": metadata or {},
+    }
+    payload = {key: value for key, value in payload.items() if value != "" or key == "metadata"}
+    validate_telemetry_payload(payload)
+    append_telemetry_event(telemetry_event_file_for_timestamp(created_at), payload)
+
+
+def write_entity(path: Path, payload: dict[str, Any]) -> None:
+    validate_entity_payload(payload, str(payload.get("entity_type") or "").strip())
+    write_json(path, payload)
+
+
+def require_file(path: Path, label: str, expected_entity_type: str | None = None) -> dict[str, Any]:
     if not path.exists():
         raise ValueError(f"{label} not found: {path.stem}")
-    return load_json(path)
+    payload = load_json(path)
+    entity_type = expected_entity_type or str(payload.get("entity_type") or label).strip()
+    validate_entity_payload(payload, entity_type)
+    if expected_entity_type and payload.get("entity_type") != expected_entity_type:
+        raise ValueError(f"{label} has unexpected entity_type: {payload.get('entity_type')}")
+    return payload
 
 
 def create_mission(args: argparse.Namespace) -> dict[str, Any]:
@@ -160,12 +254,22 @@ def create_mission(args: argparse.Namespace) -> dict[str, Any]:
         "updated_at": created_at,
         "metadata": args.metadata or {},
     }
-    write_json(mission_path(mission_id), payload)
+    write_entity(mission_path(mission_id), payload)
     record_event(
         event_type="mission_created",
         entity_id=mission_id,
         summary=f"Created mission '{payload['title']}'.",
         payload={"workflow": payload["workflow"], "source_task_id": payload["source_task_id"]},
+    )
+    emit_runtime_telemetry(
+        event_type="mission_created",
+        status=payload["status"],
+        summary=f"Created mission '{payload['title']}'.",
+        actor=payload["owner"] or payload["manager"] or "runtime",
+        mission_id=payload["id"],
+        source_task_id=payload["source_task_id"],
+        workflow=payload["workflow"],
+        metadata={"entity_type": "mission"},
     )
     return payload
 
@@ -179,7 +283,7 @@ def create_mission_command(args: argparse.Namespace) -> int:
 
 
 def start_run(args: argparse.Namespace) -> dict[str, Any]:
-    mission = require_file(mission_path(args.mission_id), "mission")
+    mission = require_file(mission_path(args.mission_id), "mission", "mission")
     run_id = make_id("run", f"{mission['title']}-{args.actor or 'runtime'}")
     created_at = utc_now()
     payload = {
@@ -203,17 +307,28 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "updated_at": created_at,
         "metadata": args.metadata or {},
     }
-    write_json(run_path(run_id), payload)
+    write_entity(run_path(run_id), payload)
     mission["latest_run_id"] = run_id
     mission["run_ids"] = list(dict.fromkeys([*mission.get("run_ids", []), run_id]))
     mission["status"] = "active"
     mission["updated_at"] = created_at
-    write_json(mission_path(mission["id"]), mission)
+    write_entity(mission_path(mission["id"]), mission)
     record_event(
         event_type="run_started",
         entity_id=run_id,
         summary=f"Started run for mission '{mission['title']}'.",
         payload={"mission_id": mission["id"], "actor": payload["actor"]},
+    )
+    emit_runtime_telemetry(
+        event_type="run_started",
+        status=payload["status"],
+        summary=f"Started run for mission '{mission['title']}'.",
+        actor=payload["actor"] or mission["owner"] or "runtime",
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=payload["id"],
+        metadata={"entity_type": "run"},
     )
     return payload
 
@@ -233,7 +348,8 @@ def start_run_command(args: argparse.Namespace) -> int:
 def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
     if args.status not in ALLOWED_STEP_STATUSES:
         raise ValueError("status must be one of: " + ", ".join(sorted(ALLOWED_STEP_STATUSES)))
-    run = require_file(run_path(args.run_id), "run")
+    run = require_file(run_path(args.run_id), "run", "run")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
     step_id = make_id("step", f"{args.key}-{args.actor or 'actor'}")
     created_at = utc_now()
     payload = {
@@ -252,7 +368,7 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         "updated_at": created_at,
         "completed_at": created_at if args.status == "completed" else "",
     }
-    write_json(step_path(step_id), payload)
+    write_entity(step_path(step_id), payload)
     run["step_ids"] = list(dict.fromkeys([*run.get("step_ids", []), step_id]))
     run["current_step_id"] = step_id
     if args.status == "completed":
@@ -267,12 +383,24 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
     else:
         run["status"] = "running"
     run["updated_at"] = created_at
-    write_json(run_path(run["id"]), run)
+    write_entity(run_path(run["id"]), run)
     record_event(
         event_type="step_checkpointed",
         entity_id=step_id,
         summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
         payload={"run_id": run["id"], "actor": payload["actor"]},
+    )
+    emit_runtime_telemetry(
+        event_type="step_checkpointed",
+        status=payload["status"],
+        summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
+        actor=payload["actor"] or run["actor"] or "runtime",
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=payload["id"],
+        metadata={"entity_type": "step", "step_key": payload["key"]},
     )
     return payload
 
@@ -294,8 +422,11 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             "policy_action must be one of: " + ", ".join(sorted(ALLOWED_POLICY_ACTIONS))
         )
-    run = require_file(run_path(args.run_id), "run")
-    step = require_file(step_path(args.step_id), "step")
+    run = require_file(run_path(args.run_id), "run", "run")
+    step = require_file(step_path(args.step_id), "step", "step")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    if step["run_id"] != run["id"]:
+        raise ValueError("step does not belong to the provided run")
     approval_id = make_id("approval", f"{step['key']}-{args.requested_by or 'requester'}")
     created_at = utc_now()
     payload = {
@@ -313,24 +444,38 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         "summary": str(args.summary or "").strip(),
         "rationale": "",
         "requested_at": created_at,
+        "updated_at": created_at,
         "decided_at": "",
         "decided_by": "",
         "metadata": args.metadata or {},
     }
-    write_json(approval_path(approval_id), payload)
+    write_entity(approval_path(approval_id), payload)
     run["approval_ids"] = list(dict.fromkeys([*run.get("approval_ids", []), approval_id]))
     run["status"] = "waiting_approval"
     run["updated_at"] = created_at
-    write_json(run_path(run["id"]), run)
+    write_entity(run_path(run["id"]), run)
     if step["status"] != "waiting_approval":
         step["status"] = "waiting_approval"
         step["updated_at"] = created_at
-        write_json(step_path(step["id"]), step)
+        write_entity(step_path(step["id"]), step)
     record_event(
         event_type="approval_requested",
         entity_id=approval_id,
         summary=f"Requested approval for step '{step['key']}'.",
         payload={"run_id": run["id"], "step_id": step["id"], "policy_action": args.policy_action},
+    )
+    emit_runtime_telemetry(
+        event_type="approval_requested",
+        status="waiting_approval",
+        summary=f"Requested approval for step '{step['key']}'.",
+        actor=payload["requested_by"],
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=step["id"],
+        approval_id=payload["id"],
+        metadata={"entity_type": "approval", "policy_action": payload["policy_action"]},
     )
     return payload
 
@@ -350,9 +495,12 @@ def request_approval_command(args: argparse.Namespace) -> int:
 def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
     if args.decision not in ALLOWED_APPROVAL_DECISIONS:
         raise ValueError("decision must be one of: " + ", ".join(sorted(ALLOWED_APPROVAL_DECISIONS)))
-    approval = require_file(approval_path(args.approval_id), "approval")
-    run = require_file(run_path(approval["run_id"]), "run")
-    step = require_file(step_path(approval["step_id"]), "step")
+    approval = require_file(approval_path(args.approval_id), "approval", "approval")
+    run = require_file(run_path(approval["run_id"]), "run", "run")
+    step = require_file(step_path(approval["step_id"]), "step", "step")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    if step["run_id"] != run["id"]:
+        raise ValueError("approval step does not belong to approval run")
     decided_at = utc_now()
     approval["decision"] = args.decision
     approval["status"] = "decided"
@@ -360,7 +508,7 @@ def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
     approval["decided_by"] = str(args.decided_by or "").strip()
     approval["decided_at"] = decided_at
     approval["updated_at"] = decided_at
-    write_json(approval_path(approval["id"]), approval)
+    write_entity(approval_path(approval["id"]), approval)
     if args.decision == "approved":
         run["status"] = "running"
     elif args.decision == "rejected":
@@ -368,16 +516,29 @@ def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
     else:
         run["status"] = "blocked"
     run["updated_at"] = decided_at
-    write_json(run_path(run["id"]), run)
+    write_entity(run_path(run["id"]), run)
     step["metadata"] = step.get("metadata", {})
     step["metadata"]["approval_decision"] = args.decision
     step["updated_at"] = decided_at
-    write_json(step_path(step["id"]), step)
+    write_entity(step_path(step["id"]), step)
     record_event(
         event_type="approval_decided",
         entity_id=approval["id"],
         summary=f"Approval decision '{args.decision}' recorded.",
         payload={"run_id": run["id"], "step_id": step["id"], "decided_by": approval["decided_by"]},
+    )
+    emit_runtime_telemetry(
+        event_type="approval_decided",
+        status=args.decision,
+        summary=f"Approval decision '{args.decision}' recorded.",
+        actor=approval["decided_by"] or "runtime",
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=step["id"],
+        approval_id=approval["id"],
+        metadata={"entity_type": "approval"},
     )
     return approval
 
@@ -395,8 +556,11 @@ def decide_approval_command(args: argparse.Namespace) -> int:
 
 
 def attach_artifact(args: argparse.Namespace) -> dict[str, Any]:
-    run = require_file(run_path(args.run_id), "run")
-    step = require_file(step_path(args.step_id), "step")
+    run = require_file(run_path(args.run_id), "run", "run")
+    step = require_file(step_path(args.step_id), "step", "step")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    if step["run_id"] != run["id"]:
+        raise ValueError("step does not belong to the provided run")
     artifact_id = make_id("artifact", f"{args.kind}-{Path(args.path).name}")
     created_at = utc_now()
     payload = {
@@ -413,15 +577,28 @@ def attach_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "updated_at": created_at,
         "metadata": args.metadata or {},
     }
-    write_json(artifact_path(artifact_id), payload)
+    write_entity(artifact_path(artifact_id), payload)
     run["artifact_ids"] = list(dict.fromkeys([*run.get("artifact_ids", []), artifact_id]))
     run["updated_at"] = created_at
-    write_json(run_path(run["id"]), run)
+    write_entity(run_path(run["id"]), run)
     record_event(
         event_type="artifact_attached",
         entity_id=artifact_id,
         summary=f"Attached artifact '{payload['kind']}'.",
         payload={"run_id": run["id"], "step_id": step["id"], "path": payload["path"]},
+    )
+    emit_runtime_telemetry(
+        event_type="artifact_attached",
+        status="attached",
+        summary=f"Attached artifact '{payload['kind']}'.",
+        actor=step["actor"] or run["actor"] or "runtime",
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=step["id"],
+        artifact_id=payload["id"],
+        metadata={"entity_type": "artifact", "path": payload["path"]},
     )
     return payload
 
@@ -439,21 +616,32 @@ def attach_artifact_command(args: argparse.Namespace) -> int:
 
 
 def finish_run(args: argparse.Namespace) -> dict[str, Any]:
-    run = require_file(run_path(args.run_id), "run")
-    mission = require_file(mission_path(run["mission_id"]), "mission")
+    run = require_file(run_path(args.run_id), "run", "run")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
     finished_at = utc_now()
     run["status"] = args.status
     run["finished_at"] = finished_at
     run["updated_at"] = finished_at
-    write_json(run_path(run["id"]), run)
+    write_entity(run_path(run["id"]), run)
     mission["status"] = "completed" if args.status == "completed" else args.status
     mission["updated_at"] = finished_at
-    write_json(mission_path(mission["id"]), mission)
+    write_entity(mission_path(mission["id"]), mission)
     record_event(
         event_type="run_finished",
         entity_id=run["id"],
         summary=f"Finished run with status '{args.status}'.",
         payload={"mission_id": mission["id"]},
+    )
+    emit_runtime_telemetry(
+        event_type="run_finished",
+        status=args.status,
+        summary=f"Finished run with status '{args.status}'.",
+        actor=run["actor"] or mission["owner"] or "runtime",
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        metadata={"entity_type": "run"},
     )
     return run
 
@@ -473,7 +661,7 @@ def finish_run_command(args: argparse.Namespace) -> int:
 def show_run_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
-        payload = require_file(run_path(args.run_id), "run")
+        payload = require_file(run_path(args.run_id), "run", "run")
     except ValueError as exc:
         print(f"error={exc}")
         return 2

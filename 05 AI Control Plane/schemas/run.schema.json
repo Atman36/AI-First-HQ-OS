@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "entity_type",
+    "id",
+    "mission_id",
+    "status",
+    "actor",
+    "loop",
+    "current_step_id",
+    "resume_from_step_id",
+    "last_successful_step_id",
+    "step_ids",
+    "approval_ids",
+    "artifact_ids",
+    "checkpoint_count",
+    "started_at",
+    "finished_at",
+    "created_at",
+    "updated_at",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entity_type": {
+      "type": "string",
+      "const": "run"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "waiting_approval",
+        "completed",
+        "failed",
+        "blocked",
+        "cancelled"
+      ]
+    },
+    "actor": {
+      "type": "string"
+    },
+    "loop": {
+      "type": "string"
+    },
+    "current_step_id": {
+      "type": "string"
+    },
+    "resume_from_step_id": {
+      "type": "string"
+    },
+    "last_successful_step_id": {
+      "type": "string"
+    },
+    "step_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "approval_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "artifact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checkpoint_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

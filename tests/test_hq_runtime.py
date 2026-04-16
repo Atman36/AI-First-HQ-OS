@@ -14,9 +14,13 @@ SCHEMA_FIXTURES = Path(__file__).resolve().parents[1] / "05 AI Control Plane" / 
 
 def load_runtime_module(temp_root: Path):
     os.environ["HQ_RUNTIME_REPO_ROOT"] = str(temp_root)
+    os.environ["HQ_MISSION_RUNTIME_REPO_ROOT"] = str(temp_root)
+    os.environ["HQ_TELEMETRY_REPO_ROOT"] = str(temp_root)
     os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
     sys.modules.pop("hq_io", None)
+    sys.modules.pop("hq_mission_runtime", None)
     sys.modules.pop("hq_runtime_review", None)
+    sys.modules.pop("hq_telemetry_store", None)
     spec = importlib.util.spec_from_file_location("hq_runtime_test_module", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -38,8 +42,10 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.module.ensure_private_runtime()
 
     def tearDown(self):
+        os.environ.pop("HQ_MISSION_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
+        os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         os.environ.pop("HQ_REVIEW_ARCHIVE_KEEP", None)
         self.temp_dir.cleanup()
 
@@ -449,6 +455,112 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn("growth", role_ids)
         self.assertIn("research", role_ids)
         self.assertNotIn("assistant", role_ids)
+
+    def test_mission_runtime_command_proxies_new_runtime_surface(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["mission-runtime", "init"])
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        runtime_root = self.temp_root / ".hq" / "state" / "mission-runtime"
+        self.assertTrue((runtime_root / "missions").exists())
+        self.assertTrue((runtime_root / "runs").exists())
+
+    def test_founder_weekly_review_completes_without_founder_attention_items(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "founder-weekly-review",
+                "--review-summary",
+                "Reviewed weekly operating state and next priorities.",
+                "--route",
+                "Route repo hardening mission to delivery.",
+                "--route",
+                "Route telemetry follow-up to ai_operations_lead.",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        mission_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "missions").glob("*.json")
+        )
+        run_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "runs").glob("*.json")
+        )
+        approval_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "approvals").glob("*.json")
+        )
+        artifact_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "artifacts").glob("*.json")
+        )
+        self.assertEqual(len(mission_files), 1)
+        self.assertEqual(len(run_files), 1)
+        self.assertEqual(len(approval_files), 0)
+        self.assertEqual(len(artifact_files), 1)
+
+        mission = json.loads(mission_files[0].read_text(encoding="utf-8"))
+        run = json.loads(run_files[0].read_text(encoding="utf-8"))
+        artifact = json.loads(artifact_files[0].read_text(encoding="utf-8"))
+        self.assertEqual(mission["workflow"], "founder-weekly-operating-review")
+        self.assertEqual(run["status"], "completed")
+        self.assertEqual(artifact["kind"], "founder_inbox")
+
+        inbox_path = self.temp_root / artifact["path"]
+        self.assertTrue(inbox_path.exists())
+        inbox_text = inbox_path.read_text(encoding="utf-8")
+        self.assertIn("Mission Routes", inbox_text)
+        self.assertIn("No founder review items.", inbox_text)
+
+    def test_founder_weekly_review_pauses_for_founder_approval_when_attention_items_exist(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "founder-weekly-review",
+                "--review-summary",
+                "Weekly review identified founder decisions.",
+                "--route",
+                "Route runtime hardening mission to delivery.",
+                "--approval",
+                "Approve telemetry schema extension for runtime lineage.",
+                "--blocker",
+                "Need founder sign-off on policy escalation wording.",
+                "--policy-exception",
+                "Governor flagged an exception for a new approval path.",
+                "--kpi-drift",
+                "Telemetry coverage fell below target.",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        run_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "runs").glob("*.json")
+        )
+        approval_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "approvals").glob("*.json")
+        )
+        self.assertEqual(len(run_files), 1)
+        self.assertEqual(len(approval_files), 1)
+
+        run = json.loads(run_files[0].read_text(encoding="utf-8"))
+        approval = json.loads(approval_files[0].read_text(encoding="utf-8"))
+        self.assertEqual(run["status"], "waiting_approval")
+        self.assertEqual(approval["status"], "pending")
+        self.assertEqual(approval["policy_action"], "pause_for_founder_approval")
+
+        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        self.assertEqual(len(telemetry_files), 1)
+        events = [
+            json.loads(line)
+            for line in telemetry_files[0].read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertTrue(any(event.get("run_id") == run["id"] for event in events))
+        self.assertTrue(any(event.get("approval_id") == approval["id"] for event in events))
 
     def test_spec_command_writes_private_spec_packet(self):
         parser = self.module.build_parser()
