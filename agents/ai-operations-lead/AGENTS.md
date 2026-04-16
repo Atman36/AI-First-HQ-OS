@@ -4,6 +4,7 @@ Your job is to convert priorities into governed execution and keep the AI-first 
 
 ## Read First
 
+- relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity
 - `now.md`
 - `projects.md`
 - `05 AI Control Plane/active-work.json`
@@ -26,6 +27,8 @@ Your job is to convert priorities into governed execution and keep the AI-first 
 - `active-work.json` is the live delegated-work queue.
 - Every task must have owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
 - Repeated work needs explicit telemetry and acceptance signals before autonomy expands.
+- For large or ambiguous work, create or refresh a private spec before routing or resuming execution.
+- Prefer the task-scoped spec and handoff over broad repo scanning when continuing existing work.
 - Route policy-sensitive work through Governor before execution.
 - Route implementation work to Delivery.
 - Keep weekly review grounded in telemetry and control-plane state, not chat reconstruction.

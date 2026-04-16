@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal private runtime helpers for HQ sessions, probes, and handoffs."""
+"""Minimal private runtime helpers for HQ sessions, probes, specs, and handoffs."""
 
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ REPO_ROOT = Path(
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
 RUNTIME_DIRS = {
     "handoffs": PRIVATE_ROOT / "handoffs",
+    "specs": PRIVATE_ROOT / "specs",
     "logs": PRIVATE_ROOT / "logs",
     "state": PRIVATE_ROOT / "state",
     "memory": PRIVATE_ROOT / "memory",
@@ -588,7 +589,87 @@ def render_section(title: str, items: list[str]) -> str:
     return "\n".join(lines)
 
 
+def spec_markdown(args: argparse.Namespace, updated_at: str) -> str:
+    goal = args.goal or args.task
+    header = [
+        "# Spec",
+        "",
+        f"- Task: {args.task}",
+        f"- Session: {args.session}",
+        f"- Updated At: {updated_at}",
+        f"- Owner: {args.owner or 'Unassigned'}",
+        f"- Status: {args.status}",
+        f"- Goal: {goal}",
+        f"- Primary Update File: {args.primary_file or 'Not set'}",
+        "",
+    ]
+    sections = [
+        render_section("Why Now", args.why),
+        "",
+        render_section("In Scope", args.in_scope),
+        "",
+        render_section("Out Of Scope", args.out_of_scope),
+        "",
+        render_section("Read First", args.read_file),
+        "",
+        render_section("Constraints", args.constraint),
+        "",
+        render_section("Acceptance", args.acceptance),
+        "",
+        render_section("Open Questions", args.question),
+        "",
+        render_section("Notes", args.note),
+        "",
+    ]
+    return "\n".join(header + sections)
+
+
+def spec_command(args: argparse.Namespace) -> int:
+    ensure_private_runtime()
+    updated_at = utc_now()
+    task_slug = slugify(args.task)
+    session_slug = slugify(args.session)
+    task_dir = RUNTIME_DIRS["specs"] / task_slug
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    markdown = spec_markdown(args, updated_at)
+    spec_path = task_dir / f"{session_slug}.md"
+    latest_path = task_dir / "LATEST.md"
+    manifest_path = task_dir / "manifest.json"
+
+    atomic_write_text(spec_path, markdown)
+    atomic_write_text(latest_path, markdown)
+    write_json(
+        manifest_path,
+        {
+            "task": args.task,
+            "task_slug": task_slug,
+            "session": args.session,
+            "owner": args.owner or "",
+            "status": args.status,
+            "updated_at": updated_at,
+            "latest_file": latest_path.relative_to(REPO_ROOT).as_posix(),
+            "session_file": spec_path.relative_to(REPO_ROOT).as_posix(),
+            "goal": args.goal or args.task,
+            "primary_file": args.primary_file or "",
+            "why": args.why,
+            "in_scope": args.in_scope,
+            "out_of_scope": args.out_of_scope,
+            "read_first": args.read_file,
+            "constraints": args.constraint,
+            "acceptance": args.acceptance,
+            "open_questions": args.question,
+        },
+    )
+
+    print(f"spec_file={spec_path}")
+    print(f"latest_file={latest_path}")
+    print(f"manifest_file={manifest_path}")
+    return 0
+
+
 def handoff_markdown(args: argparse.Namespace, updated_at: str) -> str:
+    read_first = list(dict.fromkeys(([args.spec_file] if args.spec_file else []) + args.read_first))
     header = [
         "# Handoff",
         "",
@@ -598,11 +679,14 @@ def handoff_markdown(args: argparse.Namespace, updated_at: str) -> str:
         f"- Owner: {args.owner or 'Unassigned'}",
         f"- Status: {args.status}",
         f"- Continue From: {args.continue_from or 'Not set'}",
+        f"- Spec File: {args.spec_file or 'Not set'}",
         f"- Primary Update File: {args.primary_file or 'Not set'}",
         f"- Accepting Role: {args.accepting_role or 'Not set'}",
         "",
     ]
     sections = [
+        render_section("Read First", read_first),
+        "",
         render_section("Done", args.done),
         "",
         render_section("Next", args.next),
@@ -634,6 +718,7 @@ def handoff_command(args: argparse.Namespace) -> int:
 
     atomic_write_text(handoff_path, markdown)
     atomic_write_text(latest_path, markdown)
+    read_first = list(dict.fromkeys(([args.spec_file] if args.spec_file else []) + args.read_first))
     write_json(
         manifest_path,
         {
@@ -646,7 +731,9 @@ def handoff_command(args: argparse.Namespace) -> int:
             "latest_file": latest_path.relative_to(REPO_ROOT).as_posix(),
             "session_file": handoff_path.relative_to(REPO_ROOT).as_posix(),
             "continue_from": args.continue_from or "",
+            "spec_file": args.spec_file or "",
             "primary_file": args.primary_file or "",
+            "read_first": read_first,
             "important_files": args.important_file,
             "risks": args.risk,
             "blockers": args.blocker,
@@ -711,6 +798,72 @@ def build_parser() -> argparse.ArgumentParser:
     )
     probe.set_defaults(func=probe_command)
 
+    spec = subparsers.add_parser(
+        "spec",
+        help="Write a private task-scoped spec into the runtime.",
+    )
+    spec.add_argument("--task", required=True, help="Task or workstream identifier.")
+    spec.add_argument(
+        "--session",
+        default=f"session-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        help="Session identifier. Defaults to a UTC timestamp.",
+    )
+    spec.add_argument("--owner", help="Current owner of the task slice.")
+    spec.add_argument(
+        "--status",
+        default="draft",
+        help="Spec status. Defaults to draft.",
+    )
+    spec.add_argument("--goal", help="Concrete outcome this spec should drive.")
+    spec.add_argument(
+        "--primary-file",
+        help="Primary update file for the next slice.",
+    )
+    spec.add_argument("--why", action="append", default=[], help="Repeat for each why-now point.")
+    spec.add_argument(
+        "--in-scope",
+        action="append",
+        default=[],
+        help="Repeat for each in-scope item.",
+    )
+    spec.add_argument(
+        "--out-of-scope",
+        action="append",
+        default=[],
+        help="Repeat for each out-of-scope item.",
+    )
+    spec.add_argument(
+        "--read-file",
+        action="append",
+        default=[],
+        help="Repeat for each file the next agent should read before broad scanning.",
+    )
+    spec.add_argument(
+        "--constraint",
+        action="append",
+        default=[],
+        help="Repeat for each constraint.",
+    )
+    spec.add_argument(
+        "--acceptance",
+        action="append",
+        default=[],
+        help="Repeat for each acceptance criterion.",
+    )
+    spec.add_argument(
+        "--question",
+        action="append",
+        default=[],
+        help="Repeat for each open question.",
+    )
+    spec.add_argument(
+        "--note",
+        action="append",
+        default=[],
+        help="Repeat for extra notes that should stay private.",
+    )
+    spec.set_defaults(func=spec_command)
+
     handoff = subparsers.add_parser(
         "handoff",
         help="Write a task-scoped handoff file into the private runtime.",
@@ -732,6 +885,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="File or place where the next agent should continue first.",
     )
     handoff.add_argument(
+        "--spec-file",
+        help="Private spec file that should be read before broader repo context.",
+    )
+    handoff.add_argument(
         "--primary-file",
         help="Primary update file for the next slice.",
     )
@@ -746,6 +903,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Repeat for each file the next agent should read.",
+    )
+    handoff.add_argument(
+        "--read-first",
+        action="append",
+        default=[],
+        help="Repeat for each file or artifact the next agent should read before broad scanning.",
     )
     handoff.add_argument("--risk", action="append", default=[], help="Repeat for each risk.")
     handoff.add_argument("--blocker", action="append", default=[], help="Repeat for each blocker.")

@@ -4,6 +4,7 @@ Your job is to turn scoped work into concrete outputs inside the authority limit
 
 ## Read First
 
+- relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity
 - `now.md`
 - `projects.md`
 - `stack.md`
@@ -22,5 +23,7 @@ Your job is to turn scoped work into concrete outputs inside the authority limit
 
 - Execute only within the task's risk tier and autonomy tier.
 - Stop and escalate if the task would create an external write, spend, deployment, or destructive action beyond current policy.
+- For large or ambiguous work, ask for or create a private spec before widening context.
+- Prefer the private spec packet over broad repo rereads when resuming the same task.
 - Leave private continuity in `.hq/handoffs/<task>/` if the work pauses.
 - Hand shared truth updates to Documentation after acceptance.

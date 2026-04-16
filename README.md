@@ -17,6 +17,7 @@ This repository packages the reusable public shell of an AI-first company operat
 - `skills/` contains reusable callable skills for slash-style invocation and UI surfacing
 - `scripts/` provides validation, telemetry, runtime helpers, and publication guardrails
 - `.hq/` is reserved for private local runtime artifacts and live operating state; it must never enter public git history
+- large work should use a private `.hq/specs/` packet plus `.hq/handoffs/` continuity instead of reopening the whole repo context in each new chat
 
 ## Features
 
@@ -44,6 +45,7 @@ This repository packages the reusable public shell of an AI-first company operat
 ```bash
 python3 -m pip install -r requirements-dev.txt
 python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_runtime.py spec --task "Example large task" --goal "Define the next narrow slice"
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_control_plane.py sync
 python3 -m unittest
@@ -57,11 +59,15 @@ python3 scripts/hq_gate.py
 
 ```bash
 python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_runtime.py spec --task "Example large task"
+python3 scripts/hq_runtime.py handoff --task "Example large task" --spec-file .hq/specs/example-large-task/LATEST.md
 python3 scripts/hq_control_plane.py validate
 python3 -m unittest
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_gate.py
 ```
+
+Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
 
 ## Public GitHub Boundary
 
@@ -80,6 +86,7 @@ Everything else is local-only and must not be tracked.
 Keep these private:
 
 - `.hq/` runtime state, telemetry, handoffs, evals, reflections, releases, and local prompts
+- `.hq/specs/` private task packets for large work
 - live operating docs such as `now.md`, `projects.md`, `routines.md`, `stack.md`, and Markdown work under `02 Planning/`, `03 Notes/`, and `04 Projects/`
 - raw customer or prospect data
 - personal notes, journals, archives, and imported research dumps

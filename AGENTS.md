@@ -66,11 +66,11 @@ These files make the control plane legible for humans, but they are local-only a
 - Humans retain strategy, budget, legal, public, destructive, hiring, and override authority.
 - Governor can block or pause work that lacks policy coverage, telemetry, or approval.
 - AI Operations Lead owns orchestration quality: queue health, telemetry discipline, weekly metric review, eval follow-through, memory hygiene, and runtime-quality escalation.
-- AI Operations Lead also owns cross-session continuity: leave a next-session starter prompt in memory or `.hq/handoffs/` when work should resume without founder re-briefing.
+- AI Operations Lead also owns cross-session continuity: for large work, leave a private spec in `.hq/specs/` and keep the execution handoff in `.hq/handoffs/` so the next session reads the narrow packet first instead of reconstructing context from scratch.
 - Do not let two agents edit the same file at the same time.
 - Shared docs describe company state, not private scratchpads.
 - Keep tracked Git history limited to prompts, scripts, tests, CI files, schemas, and minimal repo metadata. Everything else is local-only unless explicitly approved for publication.
-- Use `.hq/handoffs/` for task-scoped private continuity.
+- Use `.hq/specs/` for large-task private context packets and `.hq/handoffs/` for task-scoped private continuity.
 - When deeper external analysis is required, the system may request founder-run Deep Research or GPT 5.4 Pro packets; only accepted conclusions belong in HQ state.
 - Make a git commit when you change scripts, agent prompts, agent skills, plugins, or other tracked system files. If a task changes only local operating docs or other untracked private material, do not make a repo commit unless the user explicitly asks for one.
 - Never commit private user data, customer data, raw imports, credentials, payment artifacts, or other private runtime material.

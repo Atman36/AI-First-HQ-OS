@@ -434,6 +434,99 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertTrue(task_board.exists())
         self.assertIn("Generated from `05 AI Control Plane/active-work.json`", task_board.read_text(encoding="utf-8"))
 
+    def test_spec_command_writes_private_spec_packet(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "spec",
+                "--task",
+                "Launch scheduler hardening",
+                "--owner",
+                "AI Operations Lead",
+                "--goal",
+                "Define a narrow implementation packet for scheduler work.",
+                "--primary-file",
+                "scripts/hq_runtime.py",
+                "--why",
+                "The next chat should not re-read the whole repo.",
+                "--in-scope",
+                "Define the private spec structure.",
+                "--out-of-scope",
+                "Do not add background daemons yet.",
+                "--read-file",
+                "scripts/hq_runtime.py",
+                "--constraint",
+                "Keep runtime artifacts private under .hq/.",
+                "--acceptance",
+                "A future chat can resume from this spec alone.",
+                "--question",
+                "Should scheduler setup become a separate skill later?",
+                "--note",
+                "Reference launchd ideas without copying them.",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        spec_dir = self.module.RUNTIME_DIRS["specs"] / "launch-scheduler-hardening"
+        latest_path = spec_dir / "LATEST.md"
+        manifest_path = spec_dir / "manifest.json"
+        self.assertTrue(latest_path.exists())
+        self.assertTrue(manifest_path.exists())
+        content = latest_path.read_text(encoding="utf-8")
+        self.assertIn("# Spec", content)
+        self.assertIn("Define a narrow implementation packet for scheduler work.", content)
+        self.assertIn("scripts/hq_runtime.py", content)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["task"], "Launch scheduler hardening")
+        self.assertEqual(manifest["read_first"], ["scripts/hq_runtime.py"])
+        self.assertEqual(manifest["primary_file"], "scripts/hq_runtime.py")
+
+    def test_handoff_command_records_spec_file_in_read_first(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "handoff",
+                "--task",
+                "Launch scheduler hardening",
+                "--owner",
+                "Delivery",
+                "--spec-file",
+                ".hq/specs/launch-scheduler-hardening/LATEST.md",
+                "--continue-from",
+                "scripts/hq_runtime.py",
+                "--primary-file",
+                "scripts/hq_runtime.py",
+                "--read-first",
+                ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
+                "--done",
+                "Spec created.",
+                "--next",
+                "Implement the runtime changes.",
+            ]
+        )
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        handoff_dir = self.module.RUNTIME_DIRS["handoffs"] / "launch-scheduler-hardening"
+        latest_path = handoff_dir / "LATEST.md"
+        manifest_path = handoff_dir / "manifest.json"
+        self.assertTrue(latest_path.exists())
+        content = latest_path.read_text(encoding="utf-8")
+        self.assertIn("Spec File: .hq/specs/launch-scheduler-hardening/LATEST.md", content)
+        self.assertIn("## Read First", content)
+        self.assertIn(".hq/handoffs/launch-scheduler-hardening/LATEST.md", content)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            manifest["read_first"],
+            [
+                ".hq/specs/launch-scheduler-hardening/LATEST.md",
+                ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
