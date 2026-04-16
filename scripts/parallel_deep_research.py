@@ -18,6 +18,18 @@ from typing import Any
 
 
 API_BASE = "https://api.parallel.ai/v1/tasks/runs"
+AUTO_PROCESSORS = {
+    "simple": "base",
+    "standard": "core",
+    "serious": "pro",
+    "deep": "ultra",
+}
+AUTO_FAST_PROCESSORS = {
+    "simple": "base-fast",
+    "standard": "core-fast",
+    "serious": "pro-fast",
+    "deep": "ultra-fast",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,8 +52,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--processor",
-        default="pro",
-        help="Parallel processor to use. Defaults to 'pro'.",
+        default="auto",
+        help="Parallel processor to use. Defaults to 'auto'.",
+    )
+    parser.add_argument(
+        "--effort",
+        choices=sorted(AUTO_PROCESSORS),
+        default="standard",
+        help="Routing hint for --processor=auto. Defaults to 'standard'.",
+    )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Prefer the matching -fast processor when --processor=auto.",
     )
     parser.add_argument(
         "--description",
@@ -57,6 +80,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(".env.parallel"),
         help="Env file with PARALLEL_API_KEY. Defaults to .env.parallel.",
+    )
+    parser.add_argument(
+        "--previous-interaction-id",
+        help="Continue an existing Parallel interaction.",
+    )
+    parser.add_argument(
+        "--schema-file",
+        type=Path,
+        help="Optional JSON schema file for structured output.",
     )
     parser.add_argument(
         "--output-dir",
@@ -102,6 +134,26 @@ def build_prompt(args: argparse.Namespace) -> str:
     return args.prompt.strip()
 
 
+def resolve_processor(processor: str, effort: str, fast: bool) -> str:
+    if processor != "auto":
+        return processor
+    if fast:
+        return AUTO_FAST_PROCESSORS[effort]
+    return AUTO_PROCESSORS[effort]
+
+
+def build_output_schema(args: argparse.Namespace) -> dict[str, Any]:
+    if args.schema_file:
+        return {
+            "type": "json",
+            "json_schema": json.loads(args.schema_file.read_text(encoding="utf-8")),
+        }
+    return {
+        "type": "text",
+        "description": args.description,
+    }
+
+
 def slugify(value: str) -> str:
     normalized = value.lower()
     normalized = re.sub(r"[^a-z0-9]+", "-", normalized)
@@ -137,17 +189,22 @@ def request_json(
         raise SystemExit(f"Network error while calling Parallel API: {exc}") from exc
 
 
-def create_run(api_key: str, prompt: str, processor: str, description: str) -> dict[str, Any]:
+def create_run(
+    api_key: str,
+    prompt: str,
+    processor: str,
+    output_schema: dict[str, Any],
+    previous_interaction_id: str | None = None,
+) -> dict[str, Any]:
     payload = {
         "input": prompt,
         "processor": processor,
         "task_spec": {
-            "output_schema": {
-                "type": "text",
-                "description": description,
-            }
+            "output_schema": output_schema
         },
     }
+    if previous_interaction_id:
+        payload["previous_interaction_id"] = previous_interaction_id
     return request_json("POST", API_BASE, api_key, payload)
 
 
@@ -186,10 +243,12 @@ def fetch_result(api_key: str, run_id: str) -> dict[str, Any]:
 
 def extract_markdown(result: dict[str, Any]) -> str:
     output = result.get("output", {})
-    content = output.get("content")
+    if isinstance(output, str):
+        return output.strip() + "\n"
+    content = output.get("content", output)
     if isinstance(content, str):
         return content.strip() + "\n"
-    if isinstance(content, dict):
+    if isinstance(content, (dict, list)):
         return json.dumps(content, ensure_ascii=False, indent=2) + "\n"
     raise SystemExit(f"Unexpected output payload: {json.dumps(output, ensure_ascii=False)}")
 
@@ -227,10 +286,18 @@ def main() -> int:
 
     prompt = build_prompt(args)
     title = args.title or prompt[:80]
+    processor = resolve_processor(args.processor, args.effort, args.fast)
+    output_schema = build_output_schema(args)
 
-    run = create_run(api_key, prompt, args.processor, args.description)
+    run = create_run(
+        api_key=api_key,
+        prompt=prompt,
+        processor=processor,
+        output_schema=output_schema,
+        previous_interaction_id=args.previous_interaction_id,
+    )
     run_id = run["run_id"]
-    print(f"[created] run_id={run_id} processor={args.processor}", flush=True)
+    print(f"[created] run_id={run_id} processor={processor}", flush=True)
 
     wait_for_completion(
         api_key=api_key,
@@ -239,7 +306,7 @@ def main() -> int:
         max_wait_minutes=args.max_wait_minutes,
     )
     result = fetch_result(api_key, run_id)
-    markdown_path, json_path = save_outputs(args.output_dir, title, args.processor, result)
+    markdown_path, json_path = save_outputs(args.output_dir, title, processor, result)
 
     print(f"[saved] markdown={markdown_path}", flush=True)
     print(f"[saved] metadata={json_path}", flush=True)

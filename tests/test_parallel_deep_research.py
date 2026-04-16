@@ -37,6 +37,33 @@ class ParallelDeepResearchTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
 
+    def test_resolve_processor_uses_auto_profiles(self):
+        self.assertEqual(
+            self.module.resolve_processor("auto", "simple", False),
+            "base",
+        )
+        self.assertEqual(
+            self.module.resolve_processor("auto", "standard", True),
+            "core-fast",
+        )
+        self.assertEqual(
+            self.module.resolve_processor("pro", "simple", False),
+            "pro",
+        )
+
+    def test_build_output_schema_reads_json_schema_file(self):
+        args = self.module.argparse.Namespace(
+            schema_file=Path("/tmp/schema.json"),
+            description="ignored",
+        )
+        schema_text = '{"type":"object","properties":{"name":{"type":"string"}}}'
+        with mock.patch.object(Path, "read_text", return_value=schema_text):
+            schema = self.module.build_output_schema(args)
+
+        self.assertEqual(schema["type"], "json")
+        self.assertEqual(schema["json_schema"]["type"], "object")
+        self.assertIn("name", schema["json_schema"]["properties"])
+
     def test_request_json_posts_payload_via_urllib(self):
         with mock.patch.object(
             self.module.urllib.request,
@@ -55,6 +82,21 @@ class ParallelDeepResearchTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://example.com/tasks")
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(json.loads(request.data.decode("utf-8")), {"input": "research"})
+
+    def test_create_run_passes_interaction_id_and_schema(self):
+        with mock.patch.object(self.module, "request_json", return_value={"run_id": "run-123"}) as mocked_request:
+            self.module.create_run(
+                api_key="secret-key",
+                prompt="research",
+                processor="core",
+                output_schema={"type": "text", "description": "brief"},
+                previous_interaction_id="interaction-1",
+            )
+
+        payload = mocked_request.call_args.args[3]
+        self.assertEqual(payload["processor"], "core")
+        self.assertEqual(payload["previous_interaction_id"], "interaction-1")
+        self.assertEqual(payload["task_spec"]["output_schema"]["description"], "brief")
 
     def test_request_json_exits_on_http_error(self):
         error = HTTPError(
@@ -123,6 +165,11 @@ class ParallelDeepResearchTests(unittest.TestCase):
         second_write = mocked_write_text.call_args_list[1].args[0]
         self.assertEqual(first_write, "# Report\n")
         self.assertIn('"content": "# Report\\n"', second_write)
+
+    def test_extract_markdown_serializes_json_outputs(self):
+        result = {"output": {"content": {"company": "Parallel"}}}
+        rendered = self.module.extract_markdown(result)
+        self.assertIn('"company": "Parallel"', rendered)
 
 
 if __name__ == "__main__":

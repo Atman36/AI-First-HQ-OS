@@ -44,6 +44,7 @@ __pycache__/
 # Environment
 .env
 .env.parallel
+.env.cerebras
 .env.local
 .env.*.local
 .python-version
