@@ -35,6 +35,8 @@ class HqPublicSafetyTests(unittest.TestCase):
             self.write_file("README.md", "# AI-First HQ OS\n"),
             self.write_file("scripts/tool.py", "print('ok')\n"),
             self.write_file("agents/delivery/AGENTS.md", "# Delivery\n"),
+            self.write_file("skills/ceo/SKILL.md", "---\nname: ceo\ndescription: CEO skill.\n---\n"),
+            self.write_file("skills/ceo/agents/openai.yaml", "interface:\n  display_name: \"CEO\"\n"),
             self.write_file("05 AI Control Plane/schemas/active-work.schema.json", "{}\n"),
         ]
 

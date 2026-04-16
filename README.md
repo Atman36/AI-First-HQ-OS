@@ -14,6 +14,7 @@ This repository packages the reusable public shell of an AI-first company operat
 - Live operating state stays local and out of git history
 - `05 AI Control Plane/schemas/` holds reusable schemas for the local control plane
 - `agents/` contains role prompts for specialized execution
+- `skills/` contains reusable callable skills for slash-style invocation and UI surfacing
 - `scripts/` provides validation, telemetry, runtime helpers, and publication guardrails
 - `.hq/` is reserved for private local runtime artifacts and live operating state; it must never enter public git history
 
@@ -21,6 +22,7 @@ This repository packages the reusable public shell of an AI-first company operat
 
 - AI-first control plane for governed delegation
 - role-based agent prompts
+- reusable skills with UI metadata
 - machine-readable workflow and policy layer
 - telemetry and runtime helper scripts
 - public-safety validation for GitHub publication
@@ -30,10 +32,12 @@ This repository packages the reusable public shell of an AI-first company operat
 
 - `AGENTS.md` shared repository rules
 - `agents/*/AGENTS.md` role-specific prompts
+- `skills/*/SKILL.md` reusable skill definitions
 - `05 AI Control Plane/schemas/` reusable schema definitions
 - `scripts/` validation, runtime, telemetry, and publication-safety tools
 - `tests/` automated coverage for core behavior
 - `agents/*/AGENTS.md` role prompts safe for publication
+- `skills/` agent skills safe for publication
 
 ## Quick Start
 
@@ -66,6 +70,7 @@ The public repository is allowlist-only. These path classes are allowed:
 - `README.md`, `AGENTS.md`, `.gitignore`, `requirements-dev.txt`
 - `.github/workflows/`
 - `agents/*/AGENTS.md`
+- `skills/`
 - `scripts/`
 - `tests/`
 - `05 AI Control Plane/schemas/`

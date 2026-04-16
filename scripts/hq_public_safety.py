@@ -61,6 +61,7 @@ ALLOWED_EXACT_PATHS = {
 ALLOWED_PATH_PREFIXES = (
     ".github/workflows/",
     "scripts/",
+    "skills/",
     "tests/",
     "05 AI Control Plane/schemas/",
 )

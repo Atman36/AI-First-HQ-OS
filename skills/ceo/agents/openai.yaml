@@ -1,0 +1,4 @@
+interface:
+  display_name: "CEO"
+  short_description: "HQ CEO orchestrator and project manager"
+  default_prompt: "Use $ceo to prioritize HQ work, route it through subagents, and decide the next move."
