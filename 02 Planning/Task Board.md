@@ -4,7 +4,7 @@
 
 - Updated At: 2026-04-16
 - Operating Mode: ai-first-stage-2-foundation
-- Objective: Install the Stage 2 operating discipline, prove the governed loop is repeatable, and tighten repeated-work verification
+- Objective: Keep the Stage 2 operating discipline stable while standing up the first founder revenue sprint
 
 ## Success Criteria
 - AI Operations Lead replaces the stage-1 AI COO role across docs and control-plane contracts
@@ -13,6 +13,18 @@
 - weekly metrics can be generated from telemetry and active-work state
 - telemetry captures routing, execution, acceptance, sync, and lightweight eval signals
 - weekly review requires a passing local task-cycle signal on repeated AI-Operations-led internal execution slices
+- one commercial portfolio plan exists with a 30/90/365-day revenue path and a prioritized first offer
+- no tracked Git history is used for private user or customer data
+
+## This Week
+- [ ] Package the first paid offer from the existing portfolio
+  - ID: package-first-paid-offer-from-existing-portfolio | Manager: ai_operations_lead | Owner: growth | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: Founder Revenue Sprint
+  - Support: research, finance, delivery, documentation
+  - Next: Turn the recommended wedge into one-page offer copy, pricing logic, pilot scope, qualification questions, and proof gaps.
+  - Done when: One recommended offer has ICP, outcome promise, scope, price floor, delivery model, and proof gaps documented.
+  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
+  - Align: `projects.md`, `02 Planning/Weekly Plan.md`
 
 ## Waiting
 - [ ] Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors
@@ -23,6 +35,14 @@
   - Done when: At least one external connector is enabled with audit logging, review, and rollback notes.
   - Primary update file: `stack.md`
   - Align: `05 AI Control Plane/operating-policies.json`, `04 Projects/HQ Bootstrap.md`
+- [ ] Prepare the cross-border billing and legal route for US/EU sales
+  - ID: prepare-cross-border-billing-route | Manager: ai_operations_lead | Owner: finance | Accepts: ceo | Risk: high | Autonomy: A1
+  - Project: Founder Revenue Sprint
+  - Support: research, governor, documentation
+  - Next: Compare Merchant of Record, foreign partner or entity, and Russia-only billing paths; then bring a decision-ready brief to CEO.
+  - Done when: There is a decision-ready comparison covering payment provider options, compliance assumptions, blocked actions, and the recommended first route.
+  - Primary update file: `03 Notes/Open Decisions.md`
+  - Align: `04 Projects/Founder Revenue Sprint.md`, `stack.md`
 
 ## Done
 - [x] Install the machine-readable AI control plane and generated board
@@ -105,4 +125,13 @@
   - Done when: Control-plane structural validation is schema-driven, deep-research has happy-path and error-path coverage, and one local plus CI gate runs the same checks.
   - Primary update file: `scripts/hq_control_plane.py`
   - Align: `05 AI Control Plane/workflow-registry.json`, `05 AI Control Plane/schemas/active-work.schema.json`, `05 AI Control Plane/schemas/agent-registry.schema.json`, `05 AI Control Plane/schemas/metrics-registry.schema.json`, `05 AI Control Plane/schemas/operating-policies.schema.json`, `05 AI Control Plane/schemas/workflow-registry.schema.json`, `05 AI Control Plane/schemas/telemetry-event.schema.json`, `scripts/hq_telemetry.py`, `scripts/parallel_deep_research.py`, `scripts/hq_gate.py`, `.github/workflows/hq-gate.yml`, `requirements-dev.txt`, `tests/__init__.py`, `tests/test_hq_control_plane.py`, `tests/test_hq_telemetry.py`, `tests/test_parallel_deep_research.py`
+  - Completed at: 2026-04-16
+- [x] Stand up the founder revenue sprint and commercial portfolio plan
+  - ID: stand-up-founder-revenue-sprint | Manager: ai_operations_lead | Owner: growth | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: Founder Revenue Sprint
+  - Support: research, finance, documentation
+  - Next: Package the first sellable offer and validate one decision-ready billing route before any external launch.
+  - Done when: The portfolio is triaged, a 30/90/365-day revenue plan exists in tracked truth, privacy boundaries are explicit, and the next commercial tasks are in the queue.
+  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
+  - Align: `now.md`, `projects.md`, `03 Notes/Decisions.md`, `03 Notes/Open Decisions.md`, `02 Planning/Weekly Plan.md`, `AGENTS.md`
   - Completed at: 2026-04-16

@@ -54,6 +54,12 @@
 - `.hq/evals/` stores eval datasets and run outputs.
 - `.hq/releases/` stores rollout and rollback notes.
 
+## Public GitHub Boundary
+
+- Tracked history is for system files, agent instructions, skills, scripts, and accepted company truth.
+- User data, customer data, raw imports, credentials, transcripts, and payment exports must stay under `.hq/` or outside this repository.
+- If deeper founder memory is added later, keep raw imports private and promote only derived summaries into tracked truth.
+
 ## Founder Working Defaults
 
 - Default language: Russian

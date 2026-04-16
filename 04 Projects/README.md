@@ -6,6 +6,7 @@ Project pages live here. Keep them more detailed than `projects.md`, but not con
 
 - [[HQ Bootstrap]]
 - [[HQ AI-First Roadmap]]
+- [[Founder Revenue Sprint]]
 
 ## Rule
 

@@ -45,6 +45,8 @@ These files make the control plane legible for humans:
 - `reports/` is support input, not source of truth.
 - Reports change company state only after the conclusion is summarized into a tracked source-of-truth file.
 - Private runtime artifacts stay only under `.hq/`.
+- User or customer data is never valid tracked source of truth in this repository.
+- If a file contains personal data, customer data, imported workspace data, credentials, payment exports, or raw transcripts, it must stay under `.hq/` or outside this repository.
 
 ## File Contract
 
@@ -65,6 +67,7 @@ These files make the control plane legible for humans:
 - AI Operations Lead owns orchestration quality: queue health, telemetry discipline, weekly metric review, eval follow-through, memory hygiene, and runtime-quality escalation.
 - Do not let two agents edit the same file at the same time.
 - Shared docs describe company state, not private scratchpads.
+- Keep tracked Git history limited to system files, instructions, skills, scripts, and accepted shared truth; do not commit private user or customer data.
 - Use `.hq/handoffs/` for task-scoped private continuity.
 - If you change tracked Markdown files here, make a git commit unless the user explicitly asks not to.
 
@@ -113,4 +116,5 @@ These files make the control plane legible for humans:
 - `05 AI Control Plane/` holds machine-readable state, workflows, policies, and metrics.
 - `agents/<role>/AGENTS.md` contains the role prompt.
 - `.hq/` is the only repo-local private runtime path and must remain git-ignored.
+- User files, customer files, raw imports, and private operating data stay only under `.hq/` or outside the repo; they do not belong in future public GitHub history.
 - `reports/` remains reference material only until summarized into tracked truth.

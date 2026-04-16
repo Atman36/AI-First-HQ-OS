@@ -54,6 +54,14 @@ __pycache__/
 /SESSION.md
 /SESSION-*.md
 
+# Public repo safety: raw user/customer data must never be tracked
+/private/
+/private-data/
+/user-data/
+/customer-data/
+/imports/raw/
+/uploads/
+
 # Agent-specific (Paperclip private data should stay outside this repo)
 # But if accidentally created here:
 HEARTBEAT.md

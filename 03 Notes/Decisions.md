@@ -88,3 +88,15 @@
 
 - Decision: keep the autonomous spend envelope at `EUR 0` for the whole Stage 2 foundation; any company spend or money movement still needs fresh CEO approval.
 - Reason: the first telemetry-backed weekly review did not justify non-zero autonomous spend, and there is still no connector-specific audit or rollback path that would make autonomous spend safe.
+
+## 2026-04-16
+
+### First Revenue Must Come From Existing Assets, Not A Net-New Build
+
+- Decision: pursue the first external revenue through productized pilots, service wrappers, and redesign offers around the current portfolio instead of starting another new product.
+- Reason: the portfolio already contains near-sellable assets, and the immediate problem is proving demand and collecting money, not creating more unfinished surface area.
+
+### Public Git History Must Exclude User And Customer Data
+
+- Decision: keep tracked HQ history limited to system files, agent instructions, skills, scripts, and accepted shared truth; user data, customer data, raw imports, credentials, and payment artifacts must stay under `.hq/` or outside the repo.
+- Reason: HQ is intended for future public GitHub publication, so privacy boundaries must be explicit before more operating infrastructure is added.

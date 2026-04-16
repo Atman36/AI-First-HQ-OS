@@ -4,7 +4,7 @@
 
 ### Operating Objective
 
-Move HQ from a stage-1 baseline to a stage-2 operating discipline without breaking source-of-truth discipline.
+Move HQ from a stage-1 baseline to a stage-2 operating discipline without breaking source-of-truth discipline, and stand up the first founder revenue sprint from the current portfolio.
 
 ### Weekly Commitments
 
@@ -13,6 +13,8 @@ Move HQ from a stage-1 baseline to a stage-2 operating discipline without breaki
 3. Render `Task Board.md` from the control plane.
 4. Route work through AI Operations Lead -> Governor -> specialist -> Documentation.
 5. Start telemetry-backed weekly metric review before adding external connectors.
+6. Package one first paid offer from the existing project portfolio instead of building a new product in parallel.
+7. Keep private user and customer data out of tracked HQ because the repository is expected to become public on GitHub.
 
 ### Checkpoints
 
@@ -21,6 +23,7 @@ Move HQ from a stage-1 baseline to a stage-2 operating discipline without breaki
 - Governor reviews medium- and high-risk work before execution.
 - At least one real task completes through the new control plane.
 - Weekly review includes the five primary AI-first metrics.
+- One revenue sprint page, one first-offer task, and one billing-route decision track exist in the control plane.
 
 ### Risks
 
@@ -29,6 +32,8 @@ Move HQ from a stage-1 baseline to a stage-2 operating discipline without breaki
 - Governance too weak for real autonomy
 - Governance too heavy for the current stage
 - External writes added before logging and rollback exist
+- Trying to commercialize too many projects at once without a first sellable wedge
+- Accidentally committing private user or customer data into a repo intended for future public GitHub use
 
 ### Rule
 
@@ -55,15 +60,17 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
   - Keep telemetry coverage reliable on non-done active tasks as the next founder requests enter the queue
   - Keep repeated internal governed work on the new `task-cycle` coverage rule as the next founder requests enter the queue
   - Keep external connector expansion blocked until another stable weekly review and a connector-specific policy slice exist
+  - Stand up the founder revenue sprint around the existing portfolio and choose one first paid wedge instead of adding another unfinished build
+  - Prepare the cross-border billing route as a decision packet before any public sales motion toward US/EU buyers
 - Blockers:
   - No blocking open decision remains inside Stage 2 foundation
   - External connector policy is intentionally blocked pending another stable weekly review and a concrete use case
 - Money signal:
   - The current gain is founder leverage and lower coordination cost; autonomous spend remains fixed at `EUR 0`
 - Next 3 priorities:
-  1. Keep telemetry coverage explicit on each non-done active task as new work enters the queue.
-  2. Keep `task-cycle` attached to repeated internal governed work instead of opening a connector or autonomy expansion.
-  3. Revisit connector policy only when there is one narrow use case with rollback notes.
+  1. Keep telemetry and `task-cycle` coverage explicit on each new active task as the founder revenue sprint enters the queue.
+  2. Package one first paid offer from the existing portfolio instead of splitting attention across multiple product bets.
+  3. Prepare a decision-ready billing and legal route for US/EU sales before revisiting any external payment surface.
 
 ### Threshold Interpretation From Live Telemetry
 
