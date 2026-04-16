@@ -48,6 +48,365 @@ RUNTIME_DIRS = {
     "releases": PRIVATE_ROOT / "releases",
 }
 CAPABILITIES_FILE = RUNTIME_DIRS["state"] / "capabilities.json"
+LOCAL_STATE_DIRS = (
+    REPO_ROOT / "02 Planning",
+    REPO_ROOT / "03 Notes",
+    REPO_ROOT / "04 Projects",
+    REPO_ROOT / "05 AI Control Plane",
+)
+
+
+def sample_agent_registry() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "2026-04-16",
+        "roles": [
+            {
+                "id": "ceo",
+                "display_name": "CEO",
+                "role_type": "human",
+                "default_autonomy_tier": "A4",
+                "mission": "Approve strategy and high-risk work.",
+            },
+            {
+                "id": "ai_operations_lead",
+                "display_name": "AI Operations Lead",
+                "role_type": "ai",
+                "default_autonomy_tier": "A2",
+                "mission": "Route work and maintain queue quality.",
+                "escalates_to": "governor",
+            },
+            {
+                "id": "delivery",
+                "display_name": "Delivery",
+                "role_type": "ai",
+                "default_autonomy_tier": "A2",
+                "mission": "Execute bounded implementation tasks.",
+            },
+            {
+                "id": "documentation",
+                "display_name": "Documentation",
+                "role_type": "ai",
+                "default_autonomy_tier": "A2",
+                "mission": "Sync accepted decisions into shared truth.",
+            },
+            {
+                "id": "governor",
+                "display_name": "Governor",
+                "role_type": "ai",
+                "default_autonomy_tier": "A3",
+                "mission": "Enforce risk controls and approvals.",
+            },
+        ],
+    }
+
+
+def sample_policies() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "2026-04-16",
+        "stage": "stage-2-foundation",
+        "autonomy_tiers": [
+            {"id": "A1", "description": "Drafts only."},
+            {"id": "A2", "description": "Internal execution."},
+            {"id": "A3", "description": "External action with review."},
+            {"id": "A4", "description": "Human only."},
+        ],
+        "risk_tiers": [
+            {"id": "low", "description": "Low risk.", "default_approval": "owner"},
+            {"id": "medium", "description": "Medium risk.", "default_approval": "governor"},
+            {"id": "high", "description": "High risk.", "default_approval": "ceo"},
+        ],
+        "approvals": {
+            "human_only_actions": ["spend"],
+            "governor_review_required_for": ["medium-risk work"],
+            "default_spend_without_budget_eur": 0,
+            "max_external_send_without_review": 0,
+        },
+        "weekly_metric_review": {
+            "cadence": "weekly",
+            "owner": "ai_operations_lead",
+            "support": ["governor", "documentation"],
+            "approver": "ceo",
+            "required_metrics": [
+                "autonomous_completion_rate",
+                "human_escalation_rate",
+                "decision_latency_hours",
+                "documentation_lag_hours",
+                "rework_or_rollback_rate",
+            ],
+        },
+        "eval_policy": {
+            "minimum_checks_for_repeated_work": ["task-cycle"],
+            "control_plane_change_requires": ["python3 scripts/hq_control_plane.py validate"],
+        },
+        "metric_thresholds": [
+            {
+                "metric_id": "autonomous_completion_rate",
+                "comparison": ">=",
+                "target": 0.6,
+                "owner": "ai_operations_lead",
+                "escalate_to": ["governor"],
+            }
+        ],
+    }
+
+
+def sample_workflow_registry() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "2026-04-16",
+        "board_columns": [
+            {"id": "intake", "title": "Intake"},
+            {"id": "triage", "title": "Triage"},
+            {"id": "policy_check", "title": "Policy Check"},
+            {"id": "scheduled", "title": "Scheduled"},
+            {"id": "this_week", "title": "This Week"},
+            {"id": "done", "title": "Done"},
+        ],
+        "telemetry": {
+            "event_types": ["intake", "route", "acceptance", "sync", "review"],
+            "statuses": ["queued", "ready", "accepted", "synced", "done"],
+            "event_sets": {
+                "completion": ["acceptance", "sync"],
+                "ready": ["route"],
+                "eval": ["review"],
+            },
+            "status_sets": {
+                "completion": ["accepted", "synced", "done"],
+                "ready": ["ready"],
+                "accepted": ["accepted"],
+                "synced": ["synced"],
+            },
+        },
+        "workflows": [
+            {
+                "id": "intake-to-execution",
+                "purpose": "Route internal work.",
+                "states": ["intake", "triage", "policy_check", "scheduled", "done"],
+                "required_task_fields": [
+                    "id",
+                    "title",
+                    "column",
+                    "manager",
+                    "owner",
+                    "project",
+                    "next_step",
+                    "done_when",
+                    "primary_update_file",
+                    "accepts_result",
+                    "risk_tier",
+                    "autonomy_tier",
+                    "workflow",
+                ],
+                "required_telemetry_events": ["intake", "route", "acceptance", "sync"],
+                "acceptance_evidence": ["accepting role reviews outcome"],
+                "transition_owners": {
+                    "intake->triage": "ai_operations_lead",
+                    "triage->policy_check": "governor",
+                    "policy_check->scheduled": "ai_operations_lead",
+                },
+            }
+        ],
+    }
+
+
+def sample_metrics_registry() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "2026-04-16",
+        "primary_metrics": [
+            {
+                "id": "autonomous_completion_rate",
+                "definition": "Share of tasks completed without manual redo.",
+                "source": [".hq/telemetry/"],
+                "unit": "ratio",
+                "review_cadence": "weekly",
+                "review_owner": "ai_operations_lead",
+                "threshold": {"comparison": ">=", "value": 0.6},
+            },
+            {
+                "id": "human_escalation_rate",
+                "definition": "Share of tasks escalated to a human reviewer.",
+                "source": [".hq/telemetry/"],
+                "unit": "ratio",
+                "review_cadence": "weekly",
+                "review_owner": "ai_operations_lead",
+                "threshold": {"comparison": "<=", "value": 0.35},
+            },
+            {
+                "id": "decision_latency_hours",
+                "definition": "Hours between intake and acceptance.",
+                "source": [".hq/telemetry/"],
+                "unit": "hours",
+                "review_cadence": "weekly",
+                "review_owner": "ai_operations_lead",
+                "threshold": {"comparison": "<=", "value": 24},
+            },
+            {
+                "id": "documentation_lag_hours",
+                "definition": "Hours between acceptance and documentation sync.",
+                "source": [".hq/telemetry/"],
+                "unit": "hours",
+                "review_cadence": "weekly",
+                "review_owner": "documentation",
+                "threshold": {"comparison": "<=", "value": 24},
+            },
+            {
+                "id": "rework_or_rollback_rate",
+                "definition": "Share of tasks that required rollback or rework.",
+                "source": [".hq/telemetry/"],
+                "unit": "ratio",
+                "review_cadence": "weekly",
+                "review_owner": "governor",
+                "threshold": {"comparison": "<=", "value": 0.2},
+            },
+        ],
+        "secondary_metrics": [
+            {
+                "id": "telemetry_coverage_rate",
+                "definition": "Share of governed tasks with complete telemetry.",
+                "source": [".hq/telemetry/"],
+                "unit": "ratio",
+                "review_cadence": "weekly",
+                "review_owner": "ai_operations_lead",
+                "threshold": {"comparison": ">=", "value": 0.9},
+            }
+        ],
+    }
+
+
+def sample_active_work() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "2026-04-16",
+        "operating_mode": "stage-2-foundation",
+        "objective": {
+            "id": "local-bootstrap",
+            "title": "Bootstrap a local HQ operating workspace",
+            "window": {"start": "2026-04-16", "target_end": "2026-05-31"},
+            "success_criteria": [
+                "Local control-plane files validate successfully.",
+                "Task Board.md can be rendered from active-work.json.",
+            ],
+        },
+        "tasks": [
+            {
+                "id": "bootstrap-local-workspace",
+                "title": "Review and customize the local HQ scaffold",
+                "column": "this_week",
+                "manager": "ai_operations_lead",
+                "owner": "documentation",
+                "project": "HQ Bootstrap",
+                "support": ["governor", "delivery"],
+                "next_step": "Replace sample values with your real local operating state.",
+                "done_when": "The local queue, notes, and weekly plan reflect real work instead of scaffold placeholders.",
+                "primary_update_file": "05 AI Control Plane/active-work.json",
+                "align_files": [
+                    "now.md",
+                    "projects.md",
+                    "02 Planning/Weekly Plan.md",
+                    "03 Notes/Decisions.md",
+                    "03 Notes/Open Decisions.md",
+                    "04 Projects/HQ Bootstrap.md",
+                ],
+                "accepts_result": "ceo",
+                "risk_tier": "medium",
+                "autonomy_tier": "A2",
+                "workflow": "intake-to-execution",
+            }
+        ],
+    }
+
+
+def local_text_files() -> dict[Path, str]:
+    return {
+        REPO_ROOT / "now.md": """# Now
+
+## Current Focus
+
+- Bootstrap the local HQ workspace.
+- Replace sample operating state with real local decisions.
+- Keep live operating files local and out of Git history.
+""",
+        REPO_ROOT / "projects.md": """# Projects
+
+## Active
+
+### HQ Bootstrap
+
+- Status: active
+- Goal: turn the scaffolded local HQ workspace into a real operating system for current work
+- Owner: CEO
+- Next step: replace sample queue and notes with live local state
+""",
+        REPO_ROOT / "routines.md": """# Routines
+
+## Weekly
+
+- Review the active queue.
+- Sync accepted decisions into local notes.
+- Review telemetry and runtime quality.
+""",
+        REPO_ROOT / "stack.md": """# Stack
+
+## Core
+
+- Markdown for local operating truth
+- JSON control plane under `05 AI Control Plane/`
+- Python scripts for validation, telemetry, and runtime helpers
+""",
+        REPO_ROOT / "02 Planning" / "Weekly Plan.md": """# Weekly Plan
+
+## This Week
+
+- Review the scaffolded queue and update it with real work.
+- Run `python3 scripts/hq_control_plane.py sync` after queue changes.
+""",
+        REPO_ROOT / "02 Planning" / "Backlog.md": """# Backlog
+
+- Add future work here after triage.
+""",
+        REPO_ROOT / "03 Notes" / "Inbox.md": """# Inbox
+
+- Capture raw requests here before triage.
+""",
+        REPO_ROOT / "03 Notes" / "Decisions.md": """# Decisions
+
+## 2026-04-16
+
+### Local Bootstrap Created
+
+- Decision: create a local HQ scaffold from the public bootstrap script.
+- Reason: the public repository ships scripts and prompts, while live operating state stays local.
+""",
+        REPO_ROOT / "03 Notes" / "Open Decisions.md": """# Open Decisions
+
+## Current
+
+- Decide which real workflows, roles, and weekly commitments should replace the bootstrap placeholders.
+""",
+        REPO_ROOT / "04 Projects" / "HQ Bootstrap.md": """# HQ Bootstrap
+
+## Goal
+
+- Replace the scaffolded local operating files with real working state.
+
+## Next Step
+
+- Edit `05 AI Control Plane/active-work.json`, then run `python3 scripts/hq_control_plane.py sync`.
+""",
+    }
+
+
+def local_json_files() -> dict[Path, dict[str, Any]]:
+    return {
+        REPO_ROOT / "05 AI Control Plane" / "agent-registry.json": sample_agent_registry(),
+        REPO_ROOT / "05 AI Control Plane" / "operating-policies.json": sample_policies(),
+        REPO_ROOT / "05 AI Control Plane" / "workflow-registry.json": sample_workflow_registry(),
+        REPO_ROOT / "05 AI Control Plane" / "metrics-registry.json": sample_metrics_registry(),
+        REPO_ROOT / "05 AI Control Plane" / "active-work.json": sample_active_work(),
+    }
 
 
 def utc_now() -> str:
@@ -85,11 +444,71 @@ def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     append_jsonl_record(path, payload)
 
 
-def bootstrap_command(_: argparse.Namespace) -> int:
+def write_text_if_needed(path: Path, content: str, *, force: bool) -> bool:
+    if path.exists() and not force:
+        return False
+    atomic_write_text(path, content)
+    return True
+
+
+def write_json_if_needed(path: Path, payload: dict[str, Any], *, force: bool) -> bool:
+    if path.exists() and not force:
+        return False
+    write_json(path, payload)
+    return True
+
+
+def render_local_task_board() -> tuple[int, str]:
+    env = os.environ.copy()
+    env["HQ_CONTROL_PLANE_REPO_ROOT"] = str(REPO_ROOT)
+    completed = subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / "hq_control_plane.py"), "sync"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    output = (completed.stdout or "") + (completed.stderr or "")
+    return completed.returncode, output.strip()
+
+
+def bootstrap_command(args: argparse.Namespace) -> int:
     paths = ensure_private_runtime()
     print(f"private_root={PRIVATE_ROOT}")
     for name, path in paths.items():
         print(f"{name}={path}")
+
+    if args.runtime_only:
+        return 0
+
+    for path in LOCAL_STATE_DIRS:
+        path.mkdir(parents=True, exist_ok=True)
+
+    created: list[str] = []
+    skipped: list[str] = []
+
+    for path, content in local_text_files().items():
+        changed = write_text_if_needed(path, content, force=args.force)
+        (created if changed else skipped).append(path.relative_to(REPO_ROOT).as_posix())
+
+    for path, payload in local_json_files().items():
+        changed = write_json_if_needed(path, payload, force=args.force)
+        (created if changed else skipped).append(path.relative_to(REPO_ROOT).as_posix())
+
+    exit_code, sync_output = render_local_task_board()
+    if exit_code != 0:
+        print(sync_output)
+        return exit_code
+
+    created.append((REPO_ROOT / "02 Planning" / "Task Board.md").relative_to(REPO_ROOT).as_posix())
+    print(f"local_state_created={len(created)}")
+    for item in created:
+        print(f"created={item}")
+    print(f"local_state_skipped={len(skipped)}")
+    for item in skipped:
+        print(f"skipped={item}")
+    if sync_output:
+        print(sync_output)
     return 0
 
 
@@ -260,7 +679,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="Create the private runtime directories if missing.",
+        help="Create the private runtime and scaffold local HQ state if missing.",
+    )
+    bootstrap.add_argument(
+        "--runtime-only",
+        action="store_true",
+        help="Create only `.hq/` runtime directories.",
+    )
+    bootstrap.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite scaffolded local state files if they already exist.",
     )
     bootstrap.set_defaults(func=bootstrap_command)
 

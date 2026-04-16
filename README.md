@@ -39,16 +39,21 @@ This repository packages the reusable public shell of an AI-first company operat
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
+python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_control_plane.py validate
+python3 scripts/hq_control_plane.py sync
 python3 -m unittest
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_gate.py
 ```
 
-Local control-plane state such as `active-work.json` is intentionally not published. Create it locally before running `python3 scripts/hq_control_plane.py validate` or `python3 scripts/hq_control_plane.py sync`.
+`python3 scripts/hq_runtime.py bootstrap` creates the local-only HQ scaffold that is intentionally not published to GitHub: `now.md`, `projects.md`, planning/notes/project pages, and the local control-plane JSON files.
 
 ## Core Commands
 
 ```bash
+python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_control_plane.py validate
 python3 -m unittest
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_gate.py

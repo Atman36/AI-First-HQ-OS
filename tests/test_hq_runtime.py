@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from pathlib import Path
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_runtime.py"
+SCHEMA_FIXTURES = Path(__file__).resolve().parents[1] / "05 AI Control Plane" / "schemas"
 
 
 def load_runtime_module(temp_root: Path):
@@ -26,6 +28,12 @@ class HqRuntimeReflectionTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_root = Path(self.temp_dir.name)
+        (self.temp_root / "05 AI Control Plane" / "schemas").mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            SCHEMA_FIXTURES,
+            self.temp_root / "05 AI Control Plane" / "schemas",
+            dirs_exist_ok=True,
+        )
         self.module = load_runtime_module(self.temp_root)
         self.module.ensure_private_runtime()
 
@@ -407,6 +415,24 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertTrue(current_review_dir.exists())
         self.assertFalse(old_review_dir.exists())
         self.assertTrue(archived_review_dir.exists())
+
+    def test_bootstrap_creates_local_state_scaffold(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["bootstrap"])
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue((self.temp_root / ".hq").exists())
+        self.assertTrue((self.temp_root / "now.md").exists())
+        self.assertTrue((self.temp_root / "projects.md").exists())
+        self.assertTrue((self.temp_root / "02 Planning" / "Weekly Plan.md").exists())
+        self.assertTrue((self.temp_root / "03 Notes" / "Decisions.md").exists())
+        self.assertTrue((self.temp_root / "04 Projects" / "HQ Bootstrap.md").exists())
+        self.assertTrue((self.temp_root / "05 AI Control Plane" / "active-work.json").exists())
+        task_board = self.temp_root / "02 Planning" / "Task Board.md"
+        self.assertTrue(task_board.exists())
+        self.assertIn("Generated from `05 AI Control Plane/active-work.json`", task_board.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
