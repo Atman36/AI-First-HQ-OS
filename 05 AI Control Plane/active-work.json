@@ -3,18 +3,21 @@
   "updated_at": "2026-04-16",
   "operating_mode": "ai-first-stage-2-foundation",
   "objective": {
-    "id": "hq-public-github-hardening",
-    "title": "Prepare HQ for public GitHub publication without leaking private runtime or live operating data",
+    "id": "hq-public-safety-and-founder-revenue",
+    "title": "Keep HQ public-safe while standing up the first founder revenue sprint",
     "window": {
       "start": "2026-04-16",
-      "target_end": "2026-04-30"
+      "target_end": "2026-05-16"
     },
     "success_criteria": [
       "README explains the public AI-first project clearly",
       "tracked example docs are public-safe and reusable",
       "Task Board.md is rendered from active-work.json",
       "local and CI validation fail on blocked private paths, sensitive local artifacts, and obvious secrets",
-      "no tracked git history contains private runtime, customer data, personal data, or credentials"
+      "no tracked git history contains private runtime, customer data, personal data, or credentials",
+      "Founder Revenue Sprint has one selected wedge, one parked challenger, and explicit open dependencies in tracked truth",
+      "Deal Velocity Pilot packaging, trust pack, outreach prep, and cross-border route are active queue items",
+      "no tracked file contains raw prospect data, customer materials, or bulky research output from the private GPT pack"
     ]
   },
   "tasks": [
@@ -150,6 +153,136 @@
       "accepts_result": "governor",
       "risk_tier": "medium",
       "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "stand-up-founder-revenue-sprint",
+      "title": "Stand up the founder revenue sprint from the GPT 5.4 Pro management pack",
+      "column": "done",
+      "completed_at": "2026-04-16",
+      "manager": "ai_operations_lead",
+      "owner": "documentation",
+      "project": "Founder Revenue Sprint",
+      "support": [
+        "research",
+        "growth",
+        "finance"
+      ],
+      "next_step": "Package the Deal Velocity Pilot, build the minimum trust pack, and resolve the cross-border route before any serious external launch.",
+      "done_when": "The winner, challenger, strategic rules, and open dependencies from the private pack are distilled into tracked HQ without copying raw research.",
+      "primary_update_file": "04 Projects/Founder Revenue Sprint.md",
+      "align_files": [
+        "now.md",
+        "projects.md",
+        "02 Planning/Weekly Plan.md",
+        "03 Notes/Decisions.md",
+        "03 Notes/Open Decisions.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "package-deal-velocity-pilot",
+      "title": "Package the human-reviewed Deal Velocity Pilot",
+      "column": "this_week",
+      "manager": "ai_operations_lead",
+      "owner": "growth",
+      "project": "Founder Revenue Sprint",
+      "support": [
+        "research",
+        "finance",
+        "delivery",
+        "documentation"
+      ],
+      "next_step": "Turn the selected wedge into a one-page offer with ICP, trigger event, scope, exclusions, first deliverable, price band, qualification questions, and proof gaps.",
+      "done_when": "The Deal Velocity Pilot has a usable commercial memo for live conversations and a clear list of what is explicitly out of scope.",
+      "primary_update_file": "04 Projects/Founder Revenue Sprint.md",
+      "align_files": [
+        "projects.md",
+        "02 Planning/Weekly Plan.md",
+        "03 Notes/Decisions.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "build-minimum-trust-pack",
+      "title": "Build the minimum trust pack for early pilot sales",
+      "column": "this_week",
+      "manager": "ai_operations_lead",
+      "owner": "governor",
+      "project": "Founder Revenue Sprint",
+      "support": [
+        "delivery",
+        "documentation",
+        "research"
+      ],
+      "next_step": "Define the minimum sendable package covering security overview, data handling, retention and deletion, NDA baseline, subprocessor posture, DPA position, and incident contact.",
+      "done_when": "A serious prospect can review the trust pack without hand-waving about how sensitive materials will be handled.",
+      "primary_update_file": "04 Projects/Founder Revenue Sprint.md",
+      "align_files": [
+        "03 Notes/Open Decisions.md",
+        "03 Notes/Decisions.md",
+        "02 Planning/Weekly Plan.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "high",
+      "autonomy_tier": "A1",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "build-target-list-and-start-outreach",
+      "title": "Build the first target list and start founder-led discovery outreach",
+      "column": "this_week",
+      "manager": "ai_operations_lead",
+      "owner": "growth",
+      "project": "Founder Revenue Sprint",
+      "support": [
+        "research",
+        "delivery",
+        "documentation"
+      ],
+      "next_step": "Choose the sharpest first B2B SaaS slice, build the first 20-50 target accounts, and draft outreach plus discovery prompts around live security-review bottlenecks.",
+      "done_when": "The first target list exists, messaging is drafted, and the first batch of discovery conversations is ready to request.",
+      "primary_update_file": "04 Projects/Founder Revenue Sprint.md",
+      "align_files": [
+        "projects.md",
+        "02 Planning/Weekly Plan.md",
+        "now.md",
+        "03 Notes/Open Decisions.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "resolve-cross-border-route-for-pilot-sales",
+      "title": "Resolve the foreign-entity and invoicing route for US/EU pilot sales",
+      "column": "this_week",
+      "manager": "ai_operations_lead",
+      "owner": "finance",
+      "project": "Founder Revenue Sprint",
+      "support": [
+        "research",
+        "governor",
+        "documentation"
+      ],
+      "next_step": "Turn the current conclusion into a decision-ready brief covering jurisdiction shortlist, bank and processor sequence, counterparty design, blocked actions, and where human counsel is mandatory.",
+      "done_when": "HQ has a decision-ready foreign-entity route with legal and tax questions explicit enough for human review before serious enterprise closing.",
+      "primary_update_file": "03 Notes/Open Decisions.md",
+      "align_files": [
+        "04 Projects/Founder Revenue Sprint.md",
+        "stack.md",
+        "03 Notes/Decisions.md"
+      ],
+      "accepts_result": "ceo",
+      "risk_tier": "high",
+      "autonomy_tier": "A1",
       "workflow": "intake-to-execution"
     }
   ]

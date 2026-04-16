@@ -4,7 +4,7 @@
 
 - Updated At: 2026-04-16
 - Operating Mode: ai-first-stage-2-foundation
-- Objective: Prepare HQ for public GitHub publication without leaking private runtime or live operating data
+- Objective: Keep HQ public-safe while standing up the first founder revenue sprint
 
 ## Success Criteria
 - README explains the public AI-first project clearly
@@ -12,6 +12,43 @@
 - Task Board.md is rendered from active-work.json
 - local and CI validation fail on blocked private paths, sensitive local artifacts, and obvious secrets
 - no tracked git history contains private runtime, customer data, personal data, or credentials
+- Founder Revenue Sprint has one selected wedge, one parked challenger, and explicit open dependencies in tracked truth
+- Deal Velocity Pilot packaging, trust pack, outreach prep, and cross-border route are active queue items
+- no tracked file contains raw prospect data, customer materials, or bulky research output from the private GPT pack
+
+## This Week
+- [ ] Package the human-reviewed Deal Velocity Pilot
+  - ID: package-deal-velocity-pilot | Manager: ai_operations_lead | Owner: growth | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: Founder Revenue Sprint
+  - Support: research, finance, delivery, documentation
+  - Next: Turn the selected wedge into a one-page offer with ICP, trigger event, scope, exclusions, first deliverable, price band, qualification questions, and proof gaps.
+  - Done when: The Deal Velocity Pilot has a usable commercial memo for live conversations and a clear list of what is explicitly out of scope.
+  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
+  - Align: `projects.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`
+- [ ] Build the minimum trust pack for early pilot sales
+  - ID: build-minimum-trust-pack | Manager: ai_operations_lead | Owner: governor | Accepts: ceo | Risk: high | Autonomy: A1
+  - Project: Founder Revenue Sprint
+  - Support: delivery, documentation, research
+  - Next: Define the minimum sendable package covering security overview, data handling, retention and deletion, NDA baseline, subprocessor posture, DPA position, and incident contact.
+  - Done when: A serious prospect can review the trust pack without hand-waving about how sensitive materials will be handled.
+  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
+  - Align: `03 Notes/Open Decisions.md`, `03 Notes/Decisions.md`, `02 Planning/Weekly Plan.md`
+- [ ] Build the first target list and start founder-led discovery outreach
+  - ID: build-target-list-and-start-outreach | Manager: ai_operations_lead | Owner: growth | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: Founder Revenue Sprint
+  - Support: research, delivery, documentation
+  - Next: Choose the sharpest first B2B SaaS slice, build the first 20-50 target accounts, and draft outreach plus discovery prompts around live security-review bottlenecks.
+  - Done when: The first target list exists, messaging is drafted, and the first batch of discovery conversations is ready to request.
+  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
+  - Align: `projects.md`, `02 Planning/Weekly Plan.md`, `now.md`, `03 Notes/Open Decisions.md`
+- [ ] Resolve the foreign-entity and invoicing route for US/EU pilot sales
+  - ID: resolve-cross-border-route-for-pilot-sales | Manager: ai_operations_lead | Owner: finance | Accepts: ceo | Risk: high | Autonomy: A1
+  - Project: Founder Revenue Sprint
+  - Support: research, governor, documentation
+  - Next: Turn the current conclusion into a decision-ready brief covering jurisdiction shortlist, bank and processor sequence, counterparty design, blocked actions, and where human counsel is mandatory.
+  - Done when: HQ has a decision-ready foreign-entity route with legal and tax questions explicit enough for human review before serious enterprise closing.
+  - Primary update file: `03 Notes/Open Decisions.md`
+  - Align: `04 Projects/Founder Revenue Sprint.md`, `stack.md`, `03 Notes/Decisions.md`
 
 ## Done
 - [x] Install the machine-readable AI control plane and generated board
@@ -58,4 +95,13 @@
   - Done when: Local and CI validation fail if blocked private paths, sensitive local artifacts, or obvious secrets are tracked.
   - Primary update file: `scripts/hq_gate.py`
   - Align: `scripts/hq_public_safety.py`, `.github/workflows/hq-gate.yml`, `tests/test_hq_public_safety.py`, `.gitignore`
+  - Completed at: 2026-04-16
+- [x] Stand up the founder revenue sprint from the GPT 5.4 Pro management pack
+  - ID: stand-up-founder-revenue-sprint | Manager: ai_operations_lead | Owner: documentation | Accepts: ceo | Risk: medium | Autonomy: A2
+  - Project: Founder Revenue Sprint
+  - Support: research, growth, finance
+  - Next: Package the Deal Velocity Pilot, build the minimum trust pack, and resolve the cross-border route before any serious external launch.
+  - Done when: The winner, challenger, strategic rules, and open dependencies from the private pack are distilled into tracked HQ without copying raw research.
+  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
+  - Align: `now.md`, `projects.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `03 Notes/Open Decisions.md`
   - Completed at: 2026-04-16
