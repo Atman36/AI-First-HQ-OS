@@ -15,13 +15,14 @@ This repository packages the reusable public shell of an AI-first company operat
 - `05 AI Control Plane/schemas/` holds reusable schemas for the local control plane
 - `agents/` contains role prompts for specialized execution
 - `skills/` contains reusable callable skills for slash-style invocation and UI surfacing
-- `scripts/` provides validation, telemetry, runtime helpers, and publication guardrails
+- `scripts/` provides validation, telemetry, runtime helpers, the additive mission runtime nucleus, and publication guardrails
 - `.hq/` is reserved for private local runtime artifacts and live operating state; it must never enter public git history
 - large work should use a private `.hq/specs/` packet plus `.hq/handoffs/` continuity instead of reopening the whole repo context in each new chat
 
 ## Features
 
 - AI-first control plane for governed delegation
+- additive `Mission` / `Run` / `Step` / `Approval` state nucleus for durable local execution
 - role-based agent prompts
 - shared role-prompt skeleton with generator-backed normalization
 - reusable skills with UI metadata
@@ -48,6 +49,7 @@ This repository packages the reusable public shell of an AI-first company operat
 ```bash
 python3 -m pip install -r requirements-dev.txt
 python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_mission_runtime.py init
 python3 scripts/hq_runtime.py spec --task "Example large task" --goal "Define the next narrow slice"
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_control_plane.py sync
@@ -64,6 +66,7 @@ python3 scripts/hq_gate.py
 
 ```bash
 python3 scripts/hq_runtime.py bootstrap
+python3 scripts/hq_mission_runtime.py init
 python3 scripts/hq_runtime.py spec --task "Example large task"
 python3 scripts/hq_runtime.py handoff --task "Example large task" --spec-file .hq/specs/example-large-task/LATEST.md
 python3 scripts/hq_control_plane.py validate
@@ -75,6 +78,8 @@ python3 scripts/hq_gate.py
 ```
 
 Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
+
+`scripts/hq_runtime.py` remains the compatibility surface for bootstrap, spec, and handoff helpers. `scripts/hq_mission_runtime.py` is the additive runtime nucleus for first-class `Mission`, `Run`, `Step`, `Approval`, and `Artifact` records; it should grow before any deep rewrite of the older helper surface.
 
 Tracked role prompts are generated from the shared skeleton. After changing the scaffold, run `python3 scripts/hq_role_prompt_scaffold.py --write` and then `python3 scripts/hq_role_prompt_scaffold.py --check`.
 
