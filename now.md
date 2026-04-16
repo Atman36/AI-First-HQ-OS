@@ -5,6 +5,7 @@
 - Prepare HQ for public GitHub publication as an AI-first operating system.
 - Keep tracked history limited to reusable framework files, prompts, agents, scripts, tests, and public-safe example docs.
 - Enforce a hard boundary between tracked project files and private runtime data under `.hq/`.
+- Keep the founder revenue sprint narrowed to a human-reviewed `Security Questionnaire Deal Velocity Pilot` instead of reopening the portfolio.
 
 ## This Month
 
@@ -18,6 +19,7 @@
 - Sanitize tracked example planning and decision files.
 - Add a publication-safety gate to local validation and GitHub Actions.
 - Keep private user, customer, and personal data outside tracked history.
+- Turn the accepted founder revenue conclusion into a focused project brief, parked challenger, and explicit open questions.
 
 ## Success Criteria
 

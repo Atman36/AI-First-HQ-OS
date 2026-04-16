@@ -60,3 +60,18 @@
 
 - Decision: add a publication-safety check to local and CI validation so blocked paths, sensitive local artifacts, and obvious secrets fail before push.
 - Reason: repository privacy should depend on automation, not on manual memory during commits.
+
+### Founder Revenue Sprint Starts With Security Questionnaire Deal Velocity Pilot
+
+- Decision: treat `AI Security Questionnaire Automation` as the first commercial wedge and sell it first as a human-reviewed `Security Questionnaire Deal Velocity Pilot`.
+- Reason: this path sits on an already standardized buyer workflow, ties directly to active revenue friction, supports manual-first delivery, and compounds into reusable answer libraries and trust operations.
+
+### Legal Vertical RAG Stays A Parked Challenger
+
+- Decision: keep `Legal Vertical RAG` as the strongest challenger, but do not make it the active first build track.
+- Reason: the market is real, but first revenue there is more credibility-heavy, more custom, and more governance-sensitive than the security wedge.
+
+### Cross-Border Monetization Remains Counsel-Gated
+
+- Decision: keep `foreign-entity + non-RU banking` as the default scaling direction, but treat contracting, sanctions screening, tax, and processor eligibility as unresolved until human legal and tax review is complete.
+- Reason: the route is directionally better than direct Russia-based billing, but it is not an accepted operating fact yet.

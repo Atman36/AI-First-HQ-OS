@@ -14,6 +14,7 @@ Prepare HQ for public GitHub publication without leaking private runtime state, 
 4. Replace live internal operating examples with public-safe examples.
 5. Add a publication-safety gate to local validation and CI.
 6. Keep `.hq/` and other sensitive local artifacts out of tracked history.
+7. Keep the founder revenue sprint narrowed to the security questionnaire pilot and document only accepted conclusions in tracked files.
 
 ### Checkpoints
 
@@ -28,6 +29,8 @@ Prepare HQ for public GitHub publication without leaking private runtime state, 
 - Duplicate state between Markdown and control-plane JSON
 - Weak publication rules that rely on memory instead of automation
 - Sensitive local files being committed before review
+- Founder revenue work drifting back into broad portfolio analysis instead of a single sellable wedge
+- Cross-border contracting assumptions being treated as solved before counsel-backed validation
 
 ### Rule
 
@@ -44,9 +47,10 @@ Live delegated task movement belongs in `05 AI Control Plane/active-work.json`. 
 - Still active work:
   - keep the blocked-path and secret scanner aligned with real project usage
   - improve public onboarding without reintroducing live private context
+  - keep the founder revenue sprint documented as accepted management truth only, not as a raw research dump
 - Blockers:
   - none inside the repository itself
 - Next 3 priorities:
   1. Keep publication guardrails strict as the repo evolves.
-  2. Add more public-safe examples only when they improve onboarding.
-  3. Keep all live operating memory under `.hq/`.
+ 2. Keep the founder revenue sprint narrowed to a human-reviewed security questionnaire pilot.
+ 3. Keep all live operating memory under `.hq/`.

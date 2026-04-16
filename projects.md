@@ -21,3 +21,13 @@
 - Supporting agents: Governor, Delivery, Documentation
 - Current stage: README rewrite, example-state sanitization, and automated publication checks
 - Next step: keep the gate aligned with real usage and tighten rules when new private artifact classes appear
+
+### Founder Revenue Sprint
+
+- Status: active
+- Goal: close the first narrow external revenue wedge without reopening broad portfolio exploration
+- Value: validates a real pain-driven offer, creates a path to recurring revenue, and gives HQ a sharper commercial center
+- Owner: CEO
+- Supporting agents: AI Operations Lead, Growth, Research, Finance, Delivery, Governor, Documentation
+- Current stage: `AI Security Questionnaire Automation` selected as the winner; the first paid offer is a human-reviewed `Security Questionnaire Deal Velocity Pilot`; `Legal Vertical RAG` is parked as the challenger
+- Next step: package the pilot, define the minimum trust pack, and resolve the foreign-entity plus non-RU banking path with human counsel
