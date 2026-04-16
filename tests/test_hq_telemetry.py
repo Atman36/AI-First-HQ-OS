@@ -1,12 +1,14 @@
 import importlib.util
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_telemetry.py"
+SCHEMA_FIXTURES = Path(__file__).resolve().parents[1] / "05 AI Control Plane" / "schemas"
 
 
 def load_module(temp_root: Path):
@@ -23,13 +25,104 @@ class HqTelemetryTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_root = Path(self.temp_dir.name)
-        (self.temp_root / "05 AI Control Plane").mkdir(parents=True, exist_ok=True)
+        (self.temp_root / "05 AI Control Plane" / "schemas").mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            SCHEMA_FIXTURES,
+            self.temp_root / "05 AI Control Plane" / "schemas",
+            dirs_exist_ok=True,
+        )
+        self.write_workflow_registry()
         self.module = load_module(self.temp_root)
 
     def tearDown(self):
         os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
         self.temp_dir.cleanup()
+
+    def write_workflow_registry(self, required_events: list[str] | None = None) -> None:
+        events = required_events or [
+            "intake",
+            "route",
+            "policy_check",
+            "start",
+            "acceptance",
+            "sync",
+        ]
+        workflow_registry = {
+            "version": 1,
+            "updated_at": "2026-04-16",
+            "board_columns": [
+                {"id": "waiting", "title": "Waiting"},
+                {"id": "executing", "title": "Executing"},
+                {"id": "done", "title": "Done"},
+            ],
+            "telemetry": {
+                "event_types": [
+                    "intake",
+                    "route",
+                    "policy_check",
+                    "start",
+                    "progress",
+                    "approval",
+                    "acceptance",
+                    "sync",
+                    "escalation",
+                    "rollback",
+                    "review",
+                    "eval",
+                ],
+                "statuses": [
+                    "queued",
+                    "ready",
+                    "approved",
+                    "running",
+                    "blocked",
+                    "accepted",
+                    "synced",
+                    "done",
+                    "rolled_back",
+                    "reviewed",
+                ],
+                "event_sets": {
+                    "intake": ["intake"],
+                    "ready": ["policy_check", "approval", "start"],
+                    "completion": ["acceptance", "sync"],
+                    "acceptance": ["acceptance"],
+                    "sync": ["sync"],
+                    "eval": ["review", "eval"],
+                    "rollback": ["rollback"],
+                    "escalation": ["escalation"],
+                },
+                "status_sets": {
+                    "ready": ["ready", "approved", "running"],
+                    "completion": ["accepted", "synced", "done"],
+                    "accepted": ["accepted"],
+                    "synced": ["synced"],
+                },
+            },
+            "workflows": [
+                {
+                    "id": "intake-to-execution",
+                    "purpose": "Default loop.",
+                    "states": ["waiting", "executing", "done"],
+                    "required_task_fields": [
+                        "id",
+                        "workflow",
+                        "owner",
+                        "column",
+                    ],
+                    "required_telemetry_events": events,
+                    "transition_owners": {
+                        "waiting->executing": "task_manager",
+                        "executing->done": "documentation",
+                    },
+                }
+            ],
+        }
+        (self.temp_root / "05 AI Control Plane" / "workflow-registry.json").write_text(
+            json.dumps(workflow_registry, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     def test_event_command_writes_jsonl(self):
         parser = self.module.build_parser()
@@ -171,29 +264,7 @@ class HqTelemetryTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        (control_plane_dir / "workflow-registry.json").write_text(
-            json.dumps(
-                {
-                    "workflows": [
-                        {
-                            "id": "intake-to-execution",
-                            "required_telemetry_events": [
-                                "intake",
-                                "route",
-                                "policy_check",
-                                "start",
-                                "acceptance",
-                                "sync",
-                            ],
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        self.write_workflow_registry()
         (control_plane_dir / "active-work.json").write_text(
             json.dumps(
                 {
@@ -480,29 +551,7 @@ class HqTelemetryTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        (control_plane_dir / "workflow-registry.json").write_text(
-            json.dumps(
-                {
-                    "workflows": [
-                        {
-                            "id": "intake-to-execution",
-                            "required_telemetry_events": [
-                                "intake",
-                                "route",
-                                "policy_check",
-                                "start",
-                                "acceptance",
-                                "sync",
-                            ],
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        self.write_workflow_registry()
         (control_plane_dir / "active-work.json").write_text(
             json.dumps(
                 {
@@ -650,29 +699,7 @@ class HqTelemetryTests(unittest.TestCase):
 
     def test_task_cycle_verifies_full_governed_loop(self):
         control_plane_dir = self.temp_root / "05 AI Control Plane"
-        (control_plane_dir / "workflow-registry.json").write_text(
-            json.dumps(
-                {
-                    "workflows": [
-                        {
-                            "id": "intake-to-execution",
-                            "required_telemetry_events": [
-                                "intake",
-                                "route",
-                                "policy_check",
-                                "start",
-                                "acceptance",
-                                "sync",
-                            ],
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        self.write_workflow_registry()
         (control_plane_dir / "active-work.json").write_text(
             json.dumps(
                 {
@@ -773,29 +800,7 @@ class HqTelemetryTests(unittest.TestCase):
 
     def test_task_cycle_fails_when_policy_gate_or_done_state_is_missing(self):
         control_plane_dir = self.temp_root / "05 AI Control Plane"
-        (control_plane_dir / "workflow-registry.json").write_text(
-            json.dumps(
-                {
-                    "workflows": [
-                        {
-                            "id": "intake-to-execution",
-                            "required_telemetry_events": [
-                                "intake",
-                                "route",
-                                "policy_check",
-                                "start",
-                                "acceptance",
-                                "sync",
-                            ],
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        self.write_workflow_registry()
         (control_plane_dir / "active-work.json").write_text(
             json.dumps(
                 {

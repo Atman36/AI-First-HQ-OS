@@ -1,12 +1,14 @@
 import importlib.util
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_control_plane.py"
+SCHEMA_FIXTURES = Path(__file__).resolve().parents[1] / "05 AI Control Plane" / "schemas"
 
 
 def load_module(temp_root: Path):
@@ -23,6 +25,11 @@ class HqControlPlaneTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_root = Path(self.temp_dir.name)
         (self.temp_root / "05 AI Control Plane" / "schemas").mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            SCHEMA_FIXTURES,
+            self.temp_root / "05 AI Control Plane" / "schemas",
+            dirs_exist_ok=True,
+        )
         (self.temp_root / "02 Planning").mkdir(parents=True, exist_ok=True)
         (self.temp_root / "03 Notes").mkdir(parents=True, exist_ok=True)
         (self.temp_root / "04 Projects").mkdir(parents=True, exist_ok=True)
@@ -50,17 +57,45 @@ class HqControlPlaneTests(unittest.TestCase):
         (control_plane_dir / "agent-registry.json").write_text(
             json.dumps(
                 {
+                    "version": 1,
+                    "updated_at": "2026-04-16",
                     "roles": [
-                        {"id": "ceo", "role_type": "human", "mission": "Approve high-risk work."},
+                        {
+                            "id": "ceo",
+                            "display_name": "CEO",
+                            "role_type": "human",
+                            "default_autonomy_tier": "A4",
+                            "mission": "Approve high-risk work.",
+                        },
                         {
                             "id": "ai_operations_lead",
+                            "display_name": "AI Operations Lead",
                             "role_type": "ai",
+                            "default_autonomy_tier": "A2",
                             "mission": "Route work and run weekly review.",
                             "escalates_to": "governor",
                         },
-                        {"id": "delivery", "role_type": "ai", "mission": "Execute work."},
-                        {"id": "documentation", "role_type": "ai", "mission": "Sync truth."},
-                        {"id": "governor", "role_type": "ai", "mission": "Enforce policy."},
+                        {
+                            "id": "delivery",
+                            "display_name": "Delivery",
+                            "role_type": "ai",
+                            "default_autonomy_tier": "A2",
+                            "mission": "Execute work.",
+                        },
+                        {
+                            "id": "documentation",
+                            "display_name": "Documentation",
+                            "role_type": "ai",
+                            "default_autonomy_tier": "A2",
+                            "mission": "Sync truth.",
+                        },
+                        {
+                            "id": "governor",
+                            "display_name": "Governor",
+                            "role_type": "ai",
+                            "default_autonomy_tier": "A3",
+                            "mission": "Enforce policy.",
+                        },
                     ]
                 },
                 ensure_ascii=False,
@@ -72,9 +107,28 @@ class HqControlPlaneTests(unittest.TestCase):
         (control_plane_dir / "operating-policies.json").write_text(
             json.dumps(
                 {
-                    "autonomy_tiers": [{"id": "A1"}, {"id": "A2"}, {"id": "A3"}, {"id": "A4"}],
-                    "risk_tiers": [{"id": "low"}, {"id": "medium"}, {"id": "high"}],
+                    "version": 1,
+                    "updated_at": "2026-04-16",
+                    "stage": "stage-2-foundation",
+                    "autonomy_tiers": [
+                        {"id": "A1", "description": "Drafts only."},
+                        {"id": "A2", "description": "Internal execution."},
+                        {"id": "A3", "description": "External action with review."},
+                        {"id": "A4", "description": "Human only."},
+                    ],
+                    "risk_tiers": [
+                        {"id": "low", "description": "Low risk.", "default_approval": "owner"},
+                        {"id": "medium", "description": "Medium risk.", "default_approval": "governor"},
+                        {"id": "high", "description": "High risk.", "default_approval": "ceo"},
+                    ],
+                    "approvals": {
+                        "human_only_actions": ["spend"],
+                        "governor_review_required_for": ["medium-risk work"],
+                        "default_spend_without_budget_eur": 0,
+                        "max_external_send_without_review": 0,
+                    },
                     "weekly_metric_review": {
+                        "cadence": "weekly",
                         "owner": "ai_operations_lead",
                         "support": ["governor", "documentation"],
                         "approver": "ceo",
@@ -85,6 +139,10 @@ class HqControlPlaneTests(unittest.TestCase):
                             "documentation_lag_hours",
                             "rework_or_rollback_rate",
                         ],
+                    },
+                    "eval_policy": {
+                        "minimum_checks_for_repeated_work": ["task-cycle"],
+                        "control_plane_change_requires": ["python3 scripts/hq_control_plane.py validate"],
                     },
                     "metric_thresholds": [
                         {
@@ -105,9 +163,35 @@ class HqControlPlaneTests(unittest.TestCase):
         (control_plane_dir / "workflow-registry.json").write_text(
             json.dumps(
                 {
+                    "version": 1,
+                    "updated_at": "2026-04-16",
+                    "board_columns": [
+                        {"id": "intake", "title": "Intake"},
+                        {"id": "triage", "title": "Triage"},
+                        {"id": "policy_check", "title": "Policy Check"},
+                        {"id": "scheduled", "title": "Scheduled"},
+                        {"id": "this_week", "title": "This Week"},
+                        {"id": "done", "title": "Done"},
+                    ],
+                    "telemetry": {
+                        "event_types": ["intake", "route", "acceptance", "sync", "review"],
+                        "statuses": ["queued", "ready", "accepted", "synced", "done"],
+                        "event_sets": {
+                            "completion": ["acceptance", "sync"],
+                            "ready": ["route"],
+                            "eval": ["review"]
+                        },
+                        "status_sets": {
+                            "completion": ["accepted", "synced", "done"],
+                            "ready": ["ready"],
+                            "accepted": ["accepted"],
+                            "synced": ["synced"]
+                        }
+                    },
                     "workflows": [
                         {
                             "id": "intake-to-execution",
+                            "purpose": "Route internal work.",
                             "states": ["intake", "triage", "policy_check", "scheduled", "done"],
                             "required_task_fields": [
                                 "id",
@@ -143,11 +227,15 @@ class HqControlPlaneTests(unittest.TestCase):
         (control_plane_dir / "metrics-registry.json").write_text(
             json.dumps(
                 {
+                    "version": 1,
+                    "updated_at": "2026-04-16",
                     "primary_metrics": [
                         {
                             "id": "autonomous_completion_rate",
                             "definition": "x",
                             "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_cadence": "weekly",
                             "review_owner": "ai_operations_lead",
                             "threshold": {"comparison": ">=", "value": 0.6},
                         },
@@ -155,6 +243,8 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "human_escalation_rate",
                             "definition": "x",
                             "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_cadence": "weekly",
                             "review_owner": "ai_operations_lead",
                             "threshold": {"comparison": "<=", "value": 0.35},
                         },
@@ -162,6 +252,8 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "decision_latency_hours",
                             "definition": "x",
                             "source": [".hq/telemetry/"],
+                            "unit": "hours",
+                            "review_cadence": "weekly",
                             "review_owner": "ai_operations_lead",
                             "threshold": {"comparison": "<=", "value": 24},
                         },
@@ -169,6 +261,8 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "documentation_lag_hours",
                             "definition": "x",
                             "source": [".hq/telemetry/"],
+                            "unit": "hours",
+                            "review_cadence": "weekly",
                             "review_owner": "documentation",
                             "threshold": {"comparison": "<=", "value": 24},
                         },
@@ -176,6 +270,8 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "rework_or_rollback_rate",
                             "definition": "x",
                             "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_cadence": "weekly",
                             "review_owner": "governor",
                             "threshold": {"comparison": "<=", "value": 0.2},
                         },
@@ -185,6 +281,8 @@ class HqControlPlaneTests(unittest.TestCase):
                             "id": "telemetry_coverage_rate",
                             "definition": "x",
                             "source": [".hq/telemetry/"],
+                            "unit": "ratio",
+                            "review_cadence": "weekly",
                             "review_owner": "ai_operations_lead",
                             "threshold": {"comparison": ">=", "value": 0.9},
                         }

@@ -2,7 +2,7 @@
 
 > Generated from `05 AI Control Plane/active-work.json`. Do not edit this board by hand; run `python3 scripts/hq_control_plane.py sync` after queue changes.
 
-- Updated At: 2026-04-15
+- Updated At: 2026-04-16
 - Operating Mode: ai-first-stage-2-foundation
 - Objective: Install the Stage 2 operating discipline, prove the governed loop is repeatable, and tighten repeated-work verification
 
@@ -97,3 +97,12 @@
   - Primary update file: `05 AI Control Plane/metrics-registry.json`
   - Align: `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, `scripts/hq_telemetry.py`, `tests/test_hq_telemetry.py`, `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
   - Completed at: 2026-04-15
+- [x] Harden control-plane contracts, deep-research coverage, and validation gates from the 2026-04-15 audit
+  - ID: harden-control-plane-contracts-and-gates | Manager: ai_operations_lead | Owner: delivery | Accepts: governor | Risk: medium | Autonomy: A2
+  - Project: HQ Bootstrap
+  - Support: ai_operations_lead, governor, documentation
+  - Next: Split weekly review aggregation and telemetry IO boundaries into narrower runtime modules in the next sprint.
+  - Done when: Control-plane structural validation is schema-driven, deep-research has happy-path and error-path coverage, and one local plus CI gate runs the same checks.
+  - Primary update file: `scripts/hq_control_plane.py`
+  - Align: `05 AI Control Plane/workflow-registry.json`, `05 AI Control Plane/schemas/active-work.schema.json`, `05 AI Control Plane/schemas/agent-registry.schema.json`, `05 AI Control Plane/schemas/metrics-registry.schema.json`, `05 AI Control Plane/schemas/operating-policies.schema.json`, `05 AI Control Plane/schemas/workflow-registry.schema.json`, `05 AI Control Plane/schemas/telemetry-event.schema.json`, `scripts/hq_telemetry.py`, `scripts/parallel_deep_research.py`, `scripts/hq_gate.py`, `.github/workflows/hq-gate.yml`, `requirements-dev.txt`, `tests/__init__.py`, `tests/test_hq_control_plane.py`, `tests/test_hq_telemetry.py`, `tests/test_parallel_deep_research.py`
+  - Completed at: 2026-04-16

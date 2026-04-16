@@ -1,6 +1,132 @@
 {
   "version": 1,
-  "updated_at": "2026-04-15",
+  "updated_at": "2026-04-16",
+  "board_columns": [
+    {
+      "id": "intake",
+      "title": "Intake"
+    },
+    {
+      "id": "triage",
+      "title": "Triage"
+    },
+    {
+      "id": "policy_check",
+      "title": "Policy Check"
+    },
+    {
+      "id": "scheduled",
+      "title": "Scheduled"
+    },
+    {
+      "id": "this_week",
+      "title": "This Week"
+    },
+    {
+      "id": "executing",
+      "title": "Executing"
+    },
+    {
+      "id": "review",
+      "title": "Review"
+    },
+    {
+      "id": "blocked",
+      "title": "Blocked"
+    },
+    {
+      "id": "waiting",
+      "title": "Waiting"
+    },
+    {
+      "id": "accepted",
+      "title": "Accepted"
+    },
+    {
+      "id": "synced",
+      "title": "Synced"
+    },
+    {
+      "id": "done",
+      "title": "Done"
+    }
+  ],
+  "telemetry": {
+    "event_types": [
+      "intake",
+      "route",
+      "policy_check",
+      "start",
+      "progress",
+      "approval",
+      "acceptance",
+      "sync",
+      "escalation",
+      "rollback",
+      "review",
+      "eval"
+    ],
+    "statuses": [
+      "queued",
+      "ready",
+      "approved",
+      "running",
+      "blocked",
+      "accepted",
+      "synced",
+      "done",
+      "rolled_back",
+      "reviewed"
+    ],
+    "event_sets": {
+      "intake": [
+        "intake"
+      ],
+      "ready": [
+        "policy_check",
+        "approval",
+        "start"
+      ],
+      "completion": [
+        "acceptance",
+        "sync"
+      ],
+      "acceptance": [
+        "acceptance"
+      ],
+      "sync": [
+        "sync"
+      ],
+      "eval": [
+        "review",
+        "eval"
+      ],
+      "rollback": [
+        "rollback"
+      ],
+      "escalation": [
+        "escalation"
+      ]
+    },
+    "status_sets": {
+      "ready": [
+        "ready",
+        "approved",
+        "running"
+      ],
+      "completion": [
+        "accepted",
+        "synced",
+        "done"
+      ],
+      "accepted": [
+        "accepted"
+      ],
+      "synced": [
+        "synced"
+      ]
+    }
+  },
   "workflows": [
     {
       "id": "intake-to-execution",

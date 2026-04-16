@@ -11,22 +11,35 @@
   ],
   "properties": {
     "id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "created_at": {
-      "type": "string"
+      "type": "string",
+      "format": "date-time"
     },
     "event_type": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "agent": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "task_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
       "type": "string"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
     },
     "workflow": {
       "type": "string"
@@ -42,6 +55,9 @@
       "items": {
         "type": "string"
       }
+    },
+    "metadata": {
+      "type": "object"
     }
   }
 }

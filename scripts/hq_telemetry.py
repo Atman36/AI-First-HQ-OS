@@ -11,6 +11,8 @@ from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft202012Validator, FormatChecker
+
 REPO_ROOT = Path(
     os.environ.get("HQ_TELEMETRY_REPO_ROOT", Path(__file__).resolve().parents[1])
 ).resolve()
@@ -21,33 +23,7 @@ ACTIVE_WORK_PATH = CONTROL_PLANE_DIR / "active-work.json"
 AGENT_REGISTRY_PATH = CONTROL_PLANE_DIR / "agent-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
 WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
-
-ALLOWED_EVENT_TYPES = {
-    "intake",
-    "route",
-    "policy_check",
-    "start",
-    "progress",
-    "approval",
-    "acceptance",
-    "sync",
-    "escalation",
-    "rollback",
-    "review",
-    "eval",
-}
-ALLOWED_STATUSES = {
-    "queued",
-    "ready",
-    "approved",
-    "running",
-    "blocked",
-    "accepted",
-    "synced",
-    "done",
-    "rolled_back",
-    "reviewed",
-}
+TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "schemas" / "telemetry-event.schema.json"
 VALID_COMPARISONS = {"<", "<=", "=", ">=", ">"}
 
 
@@ -86,6 +62,16 @@ def ensure_runtime() -> None:
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def normalize_contract_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {
+        str(value).strip()
+        for value in values
+        if str(value).strip()
+    }
 
 
 def parse_date(value: str) -> date:
@@ -234,6 +220,49 @@ def build_workflow_registry() -> dict[str, dict[str, Any]]:
     return workflows
 
 
+def build_telemetry_contract() -> dict[str, Any]:
+    registry = load_json(WORKFLOW_REGISTRY_PATH)
+    telemetry = registry.get("telemetry", {})
+    if not isinstance(telemetry, dict):
+        return {"event_types": set(), "statuses": set(), "event_sets": {}, "status_sets": {}}
+    return {
+        "event_types": normalize_contract_set(telemetry.get("event_types", [])),
+        "statuses": normalize_contract_set(telemetry.get("statuses", [])),
+        "event_sets": {
+            str(name).strip(): normalize_contract_set(values)
+            for name, values in (telemetry.get("event_sets", {}) or {}).items()
+            if str(name).strip()
+        },
+        "status_sets": {
+            str(name).strip(): normalize_contract_set(values)
+            for name, values in (telemetry.get("status_sets", {}) or {}).items()
+            if str(name).strip()
+        },
+    }
+
+
+def event_type_in(event: dict[str, Any], set_name: str) -> bool:
+    event_type = str(event.get("event_type") or "").strip()
+    contract = build_telemetry_contract()
+    return event_type in contract["event_sets"].get(set_name, set())
+
+
+def status_in(event: dict[str, Any], set_name: str) -> bool:
+    status = str(event.get("status") or "").strip()
+    contract = build_telemetry_contract()
+    return status in contract["status_sets"].get(set_name, set())
+
+
+def validate_event_payload(payload: dict[str, Any]) -> None:
+    schema = load_json(TELEMETRY_SCHEMA_PATH)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(payload), key=lambda item: list(item.absolute_path))
+    if errors:
+        error = errors[0]
+        path = ".".join(str(item) for item in error.absolute_path)
+        raise ValueError(f"event payload failed schema validation at {path or '<root>'}: {error.message}")
+
+
 def bool_from_metadata(metadata: dict[str, Any], *keys: str) -> bool:
     for key in keys:
         if metadata.get(key):
@@ -267,20 +296,16 @@ def task_risk(task_id: str, grouped_events: dict[str, list[dict[str, Any]]], act
 
 
 def is_completed_event(event: dict[str, Any]) -> bool:
-    event_type = str(event.get("event_type") or "").strip()
-    status = str(event.get("status") or "").strip()
-    return event_type in {"acceptance", "sync"} or status in {"accepted", "synced", "done"}
+    return event_type_in(event, "completion") or status_in(event, "completion")
 
 
 def is_ready_event(event: dict[str, Any]) -> bool:
-    event_type = str(event.get("event_type") or "").strip()
-    status = str(event.get("status") or "").strip()
-    return event_type in {"policy_check", "approval", "start"} or status in {"ready", "approved", "running"}
+    return event_type_in(event, "ready") or status_in(event, "ready")
 
 
 def is_eval_signal(event: dict[str, Any]) -> bool:
     metadata = event.get("metadata", {}) if isinstance(event.get("metadata"), dict) else {}
-    return str(event.get("event_type") or "").strip() in {"review", "eval"} or bool_from_metadata(
+    return event_type_in(event, "eval") or bool_from_metadata(
         metadata,
         "acceptance_check",
         "eval_id",
@@ -369,7 +394,7 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         task_id
         for task_id in eligible_autonomous_tasks
         if not any(
-            str(event.get("event_type") or "").strip() == "rollback"
+            event_type_in(event, "rollback")
             or bool_from_metadata(
                 event.get("metadata", {}) if isinstance(event.get("metadata"), dict) else {},
                 "human_rework",
@@ -382,7 +407,7 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         task_id
         for task_id, task_events in grouped_events.items()
         if any(
-            str(event.get("event_type") or "").strip() == "escalation"
+            event_type_in(event, "escalation")
             or bool_from_metadata(
                 event.get("metadata", {}) if isinstance(event.get("metadata"), dict) else {},
                 "human_escalation",
@@ -395,7 +420,7 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         task_id
         for task_id, task_events in grouped_events.items()
         if any(
-            str(event.get("event_type") or "").strip() == "rollback"
+            event_type_in(event, "rollback")
             or bool_from_metadata(
                 event.get("metadata", {}) if isinstance(event.get("metadata"), dict) else {},
                 "human_rework",
@@ -422,14 +447,14 @@ def build_review_payload(since: date, until: date) -> dict[str, Any]:
         sync_time: datetime | None = None
         for event in task_events:
             timestamp = parse_timestamp(str(event.get("created_at") or ""))
-            if str(event.get("event_type") or "").strip() == "intake" and intake_time is None:
+            if event_type_in(event, "intake") and intake_time is None:
                 intake_time = timestamp
             if is_ready_event(event) and ready_time is None:
                 ready_time = timestamp
-            if str(event.get("event_type") or "").strip() == "acceptance" or str(event.get("status") or "").strip() == "accepted":
+            if event_type_in(event, "acceptance") or status_in(event, "accepted"):
                 if acceptance_time is None:
                     acceptance_time = timestamp
-            if str(event.get("event_type") or "").strip() == "sync" or str(event.get("status") or "").strip() == "synced":
+            if event_type_in(event, "sync") or status_in(event, "synced"):
                 if sync_time is None:
                     sync_time = timestamp
             if is_eval_signal(event):
@@ -734,15 +759,16 @@ def build_task_cycle_report(
 
 
 def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
+    contract = build_telemetry_contract()
     event_type = str(args.event_type or "").strip()
     status = str(args.status or "").strip()
     actor = str(args.actor or "").strip()
     task_id = str(args.task_id or "").strip()
     summary = str(args.summary or "").strip()
-    if event_type not in ALLOWED_EVENT_TYPES:
-        raise ValueError("event_type must be one of: " + ", ".join(sorted(ALLOWED_EVENT_TYPES)))
-    if status not in ALLOWED_STATUSES:
-        raise ValueError("status must be one of: " + ", ".join(sorted(ALLOWED_STATUSES)))
+    if event_type not in contract["event_types"]:
+        raise ValueError("event_type must be one of: " + ", ".join(sorted(contract["event_types"])))
+    if status not in contract["statuses"]:
+        raise ValueError("status must be one of: " + ", ".join(sorted(contract["statuses"])))
     if not actor:
         raise ValueError("actor is required")
     if not task_id:
@@ -766,6 +792,7 @@ def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
         "touched_files": normalize_list(args.touched_file),
         "metadata": args.metadata or {},
     }
+    validate_event_payload(payload)
     return payload
 
 
@@ -836,15 +863,16 @@ def task_cycle_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    contract = build_telemetry_contract()
     parser = argparse.ArgumentParser(description="Write structured telemetry events for HQ.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     event = subparsers.add_parser("event", help="Write one event into .hq/telemetry.")
-    event.add_argument("--event-type", required=True, choices=sorted(ALLOWED_EVENT_TYPES))
+    event.add_argument("--event-type", required=True, choices=sorted(contract["event_types"]))
     event.add_argument("--actor", required=True, help="Actor or agent that produced the event.")
     event.add_argument("--role", help="Optional role label.")
     event.add_argument("--task-id", required=True, help="Task identifier from active-work.json.")
-    event.add_argument("--status", required=True, choices=sorted(ALLOWED_STATUSES))
+    event.add_argument("--status", required=True, choices=sorted(contract["statuses"]))
     event.add_argument("--summary", required=True, help="Short event summary.")
     event.add_argument("--workflow", help="Workflow identifier.")
     event.add_argument("--risk-tier", help="Optional risk tier.")

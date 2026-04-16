@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft202012Validator, FormatChecker
+
 REPO_ROOT = Path(
     os.environ.get("HQ_CONTROL_PLANE_REPO_ROOT", Path(__file__).resolve().parents[1])
 ).resolve()
@@ -19,34 +21,13 @@ POLICIES_PATH = CONTROL_PLANE_DIR / "operating-policies.json"
 WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
-
-COLUMN_ORDER = [
-    "intake",
-    "triage",
-    "policy_check",
-    "scheduled",
-    "this_week",
-    "executing",
-    "review",
-    "blocked",
-    "waiting",
-    "accepted",
-    "synced",
-    "done",
-]
-COLUMN_TITLES = {
-    "intake": "Intake",
-    "triage": "Triage",
-    "policy_check": "Policy Check",
-    "scheduled": "Scheduled",
-    "this_week": "This Week",
-    "executing": "Executing",
-    "review": "Review",
-    "blocked": "Blocked",
-    "waiting": "Waiting",
-    "accepted": "Accepted",
-    "synced": "Synced",
-    "done": "Done",
+SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
+SCHEMA_PATHS = {
+    "active_work": SCHEMA_DIR / "active-work.schema.json",
+    "agent_registry": SCHEMA_DIR / "agent-registry.schema.json",
+    "policies": SCHEMA_DIR / "operating-policies.schema.json",
+    "workflow_registry": SCHEMA_DIR / "workflow-registry.schema.json",
+    "metrics_registry": SCHEMA_DIR / "metrics-registry.schema.json",
 }
 SPECIAL_TRANSITION_OWNERS = {"task_owner", "task_manager", "accepting_role"}
 VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
@@ -147,10 +128,62 @@ def get_metric_ids(metrics: dict[str, Any]) -> set[str]:
     return metric_ids
 
 
+def format_issue_path(root: str, parts: list[Any]) -> str:
+    path = root
+    for part in parts:
+        if isinstance(part, int):
+            path += f"[{part}]"
+        else:
+            path += f".{part}"
+    return path
+
+
+def validate_schema(
+    payload: dict[str, Any],
+    schema_path: Path,
+    root_label: str,
+    context: ValidationContext,
+) -> None:
+    schema = load_json(schema_path)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.absolute_path)):
+        context.add(format_issue_path(root_label, list(error.absolute_path)), error.message)
+
+
+def get_board_columns(workflow_registry: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+    ordered_columns: list[str] = []
+    column_titles: dict[str, str] = {}
+    for item in workflow_registry.get("board_columns", []) or []:
+        if not isinstance(item, dict):
+            continue
+        column_id = normalize_text(item.get("id"))
+        if not column_id:
+            continue
+        ordered_columns.append(column_id)
+        column_titles[column_id] = normalize_text(item.get("title")) or column_id.title()
+    return ordered_columns, column_titles
+
+
+def get_telemetry_contract(workflow_registry: dict[str, Any]) -> tuple[set[str], set[str]]:
+    telemetry = workflow_registry.get("telemetry", {})
+    if not isinstance(telemetry, dict):
+        return set(), set()
+    event_types = {
+        normalize_text(item)
+        for item in telemetry.get("event_types", []) or []
+        if normalize_text(item)
+    }
+    statuses = {
+        normalize_text(item)
+        for item in telemetry.get("statuses", []) or []
+        if normalize_text(item)
+    }
+    return event_types, statuses
+
+
 def validate_role_registry(agent_registry: dict[str, Any], context: ValidationContext) -> None:
     roles = agent_registry.get("roles")
-    if not isinstance(roles, list) or not roles:
-        context.add("agent-registry.json", "roles must be a non-empty list")
+    if not isinstance(roles, list):
         return
 
     seen: set[str] = set()
@@ -192,21 +225,27 @@ def validate_metrics(
 ) -> None:
     role_ids = get_role_ids(agent_registry)
     primary = metrics.get("primary_metrics")
-    if not isinstance(primary, list) or len(primary) < 5:
-        context.add("metrics-registry.json", "primary_metrics should contain at least 5 metrics")
+    if not isinstance(primary, list):
         return
+    if len(primary) < 5:
+        context.add("metrics-registry.json", "primary_metrics should contain at least 5 metrics")
     for collection_name in ("primary_metrics", "secondary_metrics"):
         collection = metrics.get(collection_name, []) or []
         if not isinstance(collection, list):
-            context.add(f"metrics-registry.json.{collection_name}", "metrics collection must be a list")
             continue
+        seen_ids: set[str] = set()
         for index, metric in enumerate(collection):
             path = f"metrics-registry.json.{collection_name}[{index}]"
             if not isinstance(metric, dict):
                 context.add(path, "metric must be an object")
                 continue
-            if not normalize_text(metric.get("id")):
+            metric_id = normalize_text(metric.get("id"))
+            if not metric_id:
                 context.add(path, "metric id is required")
+            elif metric_id in seen_ids:
+                context.add(path, f"duplicate metric id: {metric_id}")
+            else:
+                seen_ids.add(metric_id)
             if not normalize_text(metric.get("definition")):
                 context.add(path, "definition is required")
             sources = metric.get("source")
@@ -235,9 +274,40 @@ def validate_workflows(
     agent_registry: dict[str, Any],
     context: ValidationContext,
 ) -> None:
+    ordered_columns, _ = get_board_columns(workflow_registry)
+    allowed_columns = set(ordered_columns)
+    seen_columns: set[str] = set()
+    for index, item in enumerate(workflow_registry.get("board_columns", []) or []):
+        if not isinstance(item, dict):
+            continue
+        column_id = normalize_text(item.get("id"))
+        if column_id in seen_columns:
+            context.add(f"workflow-registry.json.board_columns[{index}]", f"duplicate board column id: {column_id}")
+        elif column_id:
+            seen_columns.add(column_id)
+
+    allowed_event_types, allowed_statuses = get_telemetry_contract(workflow_registry)
+    telemetry = workflow_registry.get("telemetry", {})
+    if isinstance(telemetry, dict):
+        for set_name, items in (telemetry.get("event_sets", {}) or {}).items():
+            for index, item in enumerate(items or []):
+                event_type = normalize_text(item)
+                if event_type and event_type not in allowed_event_types:
+                    context.add(
+                        f"workflow-registry.json.telemetry.event_sets.{set_name}[{index}]",
+                        f"unknown telemetry event type: {event_type}",
+                    )
+        for set_name, items in (telemetry.get("status_sets", {}) or {}).items():
+            for index, item in enumerate(items or []):
+                status = normalize_text(item)
+                if status and status not in allowed_statuses:
+                    context.add(
+                        f"workflow-registry.json.telemetry.status_sets.{set_name}[{index}]",
+                        f"unknown telemetry status: {status}",
+                    )
+
     workflows = workflow_registry.get("workflows")
-    if not isinstance(workflows, list) or not workflows:
-        context.add("workflow-registry.json", "workflows must be a non-empty list")
+    if not isinstance(workflows, list):
         return
 
     role_ids = get_role_ids(agent_registry)
@@ -254,16 +324,18 @@ def validate_workflows(
             context.add(path, f"duplicate workflow id: {workflow_id}")
         else:
             seen.add(workflow_id)
-        states = workflow.get("states")
-        if not isinstance(states, list) or not states:
-            context.add(path, "states must be a non-empty list")
-        required_task_fields = workflow.get("required_task_fields")
-        if not isinstance(required_task_fields, list) or not required_task_fields:
-            context.add(path, "required_task_fields must be a non-empty list")
+        states = workflow.get("states", []) or []
+        if not isinstance(states, list):
+            states = []
+        if states:
+            state_set = {normalize_text(item) for item in states if normalize_text(item)}
+            if len(state_set) != len(states):
+                context.add(path, "states must not contain duplicates")
+            if allowed_columns and state_set & allowed_columns and not state_set <= allowed_columns:
+                missing = sorted(state_set - allowed_columns)
+                context.add(path, f"workflow states mix board and non-board states: {', '.join(missing)}")
         transition_owners = workflow.get("transition_owners")
-        if not isinstance(transition_owners, dict) or not transition_owners:
-            context.add(path, "transition_owners must be a non-empty object")
-        else:
+        if isinstance(transition_owners, dict):
             for transition, owner in transition_owners.items():
                 owner_id = normalize_text(owner)
                 if owner_id not in role_ids and owner_id not in SPECIAL_TRANSITION_OWNERS:
@@ -277,6 +349,15 @@ def validate_workflows(
                 continue
             if not isinstance(value, list) or not value:
                 context.add(f"{path}.{key}", f"{key} must be a non-empty list when provided")
+                continue
+            if key == "required_telemetry_events":
+                for event_index, event_type in enumerate(value):
+                    normalized = normalize_text(event_type)
+                    if normalized and normalized not in allowed_event_types:
+                        context.add(
+                            f"{path}.{key}[{event_index}]",
+                            f"unknown telemetry event type: {normalized}",
+                        )
 
 
 def validate_policies(
@@ -350,32 +431,14 @@ def validate_active_work(
     context: ValidationContext,
 ) -> None:
     tasks = active_work.get("tasks")
-    if not isinstance(tasks, list) or not tasks:
-        context.add("active-work.json", "tasks must be a non-empty list")
+    if not isinstance(tasks, list):
         return
 
     role_ids = get_role_ids(agent_registry)
     autonomy_tiers, risk_tiers = get_policy_sets(policies)
     workflows = get_workflows(workflow_registry)
-    objective = active_work.get("objective")
-    if not isinstance(objective, dict):
-        context.add("active-work.json.objective", "objective must be an object")
-    else:
-        if not normalize_text(objective.get("id")):
-            context.add("active-work.json.objective", "objective.id is required")
-        if not normalize_text(objective.get("title")):
-            context.add("active-work.json.objective", "objective.title is required")
-        window = objective.get("window")
-        if not isinstance(window, dict):
-            context.add("active-work.json.objective.window", "objective.window must be an object")
-        else:
-            if not normalize_text(window.get("start")):
-                context.add("active-work.json.objective.window.start", "objective.window.start is required")
-            if not normalize_text(window.get("target_end")):
-                context.add(
-                    "active-work.json.objective.window.target_end",
-                    "objective.window.target_end is required",
-                )
+    ordered_columns, _ = get_board_columns(workflow_registry)
+    allowed_columns = set(ordered_columns)
 
     seen_task_ids: set[str] = set()
     for index, task in enumerate(tasks):
@@ -435,10 +498,8 @@ def validate_active_work(
             context.add(f"{path}.autonomy_tier", f"unknown autonomy tier: {autonomy_tier}")
 
         column = normalize_text(task.get("column"))
-        if column not in COLUMN_ORDER:
+        if column not in allowed_columns:
             context.add(f"{path}.column", f"unsupported column: {column}")
-        if column == "done" and not normalize_text(task.get("completed_at")):
-            context.add(f"{path}.completed_at", "done tasks must include completed_at")
 
         primary_update_file = normalize_text(task.get("primary_update_file"))
         if primary_update_file:
@@ -447,19 +508,6 @@ def validate_active_work(
             align_text = normalize_text(align_path)
             if align_text:
                 ensure_file_exists(context, align_text, f"{path}.align_files[{align_index}]")
-
-
-        if not normalize_text(task.get("done_when")):
-            context.add(f"{path}.done_when", "done_when must not be empty")
-        if not normalize_text(task.get("next_step")):
-            context.add(f"{path}.next_step", "next_step must not be empty")
-
-
-        project = normalize_text(task.get("project"))
-        if not project:
-            context.add(f"{path}.project", "project is required")
-
-
 def load_control_plane() -> dict[str, Any]:
     return {
         "active_work": load_json(ACTIVE_WORK_PATH),
@@ -473,6 +521,14 @@ def load_control_plane() -> dict[str, Any]:
 def validate_control_plane() -> dict[str, Any]:
     bundle = load_control_plane()
     context = ValidationContext()
+    for key, root_label in (
+        ("active_work", "active-work.json"),
+        ("agent_registry", "agent-registry.json"),
+        ("policies", "operating-policies.json"),
+        ("workflow_registry", "workflow-registry.json"),
+        ("metrics_registry", "metrics-registry.json"),
+    ):
+        validate_schema(bundle[key], SCHEMA_PATHS[key], root_label, context)
     validate_role_registry(bundle["agent_registry"], context)
     validate_metrics(bundle["metrics_registry"], bundle["agent_registry"], context)
     validate_workflows(bundle["workflow_registry"], bundle["agent_registry"], context)
@@ -525,8 +581,9 @@ def task_lines(task: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_board(active_work: dict[str, Any]) -> str:
+def render_board(active_work: dict[str, Any], workflow_registry: dict[str, Any]) -> str:
     objective = active_work.get("objective", {})
+    column_order, column_titles = get_board_columns(workflow_registry)
     lines = [
         "# Task Board",
         "",
@@ -545,11 +602,11 @@ def render_board(active_work: dict[str, Any]) -> str:
         lines.append("- None")
 
     tasks = active_work.get("tasks", [])
-    for column in COLUMN_ORDER:
+    for column in column_order:
         column_tasks = [task for task in tasks if normalize_text(task.get("column")) == column]
         if not column_tasks:
             continue
-        lines.extend(["", f"## {COLUMN_TITLES.get(column, column.title())}"])
+        lines.extend(["", f"## {column_titles.get(column, column.title())}"])
         for task in column_tasks:
             lines.extend(task_lines(task))
     return "\n".join(lines) + "\n"
@@ -566,7 +623,10 @@ def validate_command(_: argparse.Namespace) -> int:
 def sync_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
     TASK_BOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TASK_BOARD_PATH.write_text(render_board(bundle["active_work"]), encoding="utf-8")
+    TASK_BOARD_PATH.write_text(
+        render_board(bundle["active_work"], bundle["workflow_registry"]),
+        encoding="utf-8",
+    )
     print(f"validation=ok")
     print(f"board_written={TASK_BOARD_PATH}")
     return 0
@@ -574,7 +634,7 @@ def sync_command(_: argparse.Namespace) -> int:
 
 def render_board_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
-    print(render_board(bundle["active_work"]), end="")
+    print(render_board(bundle["active_work"], bundle["workflow_registry"]), end="")
     return 0
 
 

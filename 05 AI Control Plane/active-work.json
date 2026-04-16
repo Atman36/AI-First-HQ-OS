@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-04-15",
+  "updated_at": "2026-04-16",
   "operating_mode": "ai-first-stage-2-foundation",
   "objective": {
     "id": "hq-ai-first-stage-2-foundation",
@@ -253,6 +253,45 @@
         "04 Projects/HQ Bootstrap.md"
       ],
       "accepts_result": "ceo",
+      "risk_tier": "medium",
+      "autonomy_tier": "A2",
+      "workflow": "intake-to-execution"
+    },
+    {
+      "id": "harden-control-plane-contracts-and-gates",
+      "title": "Harden control-plane contracts, deep-research coverage, and validation gates from the 2026-04-15 audit",
+      "column": "done",
+      "completed_at": "2026-04-16",
+      "manager": "ai_operations_lead",
+      "owner": "delivery",
+      "project": "HQ Bootstrap",
+      "support": [
+        "ai_operations_lead",
+        "governor",
+        "documentation"
+      ],
+      "next_step": "Split weekly review aggregation and telemetry IO boundaries into narrower runtime modules in the next sprint.",
+      "done_when": "Control-plane structural validation is schema-driven, deep-research has happy-path and error-path coverage, and one local plus CI gate runs the same checks.",
+      "primary_update_file": "scripts/hq_control_plane.py",
+      "align_files": [
+        "05 AI Control Plane/workflow-registry.json",
+        "05 AI Control Plane/schemas/active-work.schema.json",
+        "05 AI Control Plane/schemas/agent-registry.schema.json",
+        "05 AI Control Plane/schemas/metrics-registry.schema.json",
+        "05 AI Control Plane/schemas/operating-policies.schema.json",
+        "05 AI Control Plane/schemas/workflow-registry.schema.json",
+        "05 AI Control Plane/schemas/telemetry-event.schema.json",
+        "scripts/hq_telemetry.py",
+        "scripts/parallel_deep_research.py",
+        "scripts/hq_gate.py",
+        ".github/workflows/hq-gate.yml",
+        "requirements-dev.txt",
+        "tests/__init__.py",
+        "tests/test_hq_control_plane.py",
+        "tests/test_hq_telemetry.py",
+        "tests/test_parallel_deep_research.py"
+      ],
+      "accepts_result": "governor",
       "risk_tier": "medium",
       "autonomy_tier": "A2",
       "workflow": "intake-to-execution"
