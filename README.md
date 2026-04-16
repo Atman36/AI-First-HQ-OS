@@ -23,6 +23,7 @@ This repository packages the reusable public shell of an AI-first company operat
 
 - AI-first control plane for governed delegation
 - role-based agent prompts
+- shared role-prompt skeleton with generator-backed normalization
 - reusable skills with UI metadata
 - machine-readable workflow and policy layer
 - telemetry and runtime helper scripts
@@ -39,6 +40,8 @@ This repository packages the reusable public shell of an AI-first company operat
 - `tests/` automated coverage for core behavior
 - `agents/*/AGENTS.md` role prompts safe for publication
 - `skills/` agent skills safe for publication
+- `scripts/hq_role_prompt_scaffold.py` shared role-prompt generator for `agents/*/AGENTS.md`
+- `scripts/hq_private_prompt_lint.py` local lint for private `.hq/prompts/`
 
 ## Quick Start
 
@@ -48,8 +51,10 @@ python3 scripts/hq_runtime.py bootstrap
 python3 scripts/hq_runtime.py spec --task "Example large task" --goal "Define the next narrow slice"
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_control_plane.py sync
+python3 scripts/hq_role_prompt_scaffold.py --check
 python3 -m unittest
 python3 scripts/hq_public_safety.py
+python3 scripts/hq_private_prompt_lint.py
 python3 scripts/hq_gate.py
 ```
 
@@ -62,12 +67,18 @@ python3 scripts/hq_runtime.py bootstrap
 python3 scripts/hq_runtime.py spec --task "Example large task"
 python3 scripts/hq_runtime.py handoff --task "Example large task" --spec-file .hq/specs/example-large-task/LATEST.md
 python3 scripts/hq_control_plane.py validate
+python3 scripts/hq_role_prompt_scaffold.py --check
 python3 -m unittest
 python3 scripts/hq_public_safety.py
+python3 scripts/hq_private_prompt_lint.py
 python3 scripts/hq_gate.py
 ```
 
 Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
+
+Tracked role prompts are generated from the shared skeleton. After changing the scaffold, run `python3 scripts/hq_role_prompt_scaffold.py --write` and then `python3 scripts/hq_role_prompt_scaffold.py --check`.
+
+When `.hq/prompts/` exists locally, run `python3 scripts/hq_private_prompt_lint.py` to catch broken local paths, invalid absolute references, and weak audit-prompt feedback loops before relying on those prompts in a new session.
 
 ## Public GitHub Boundary
 

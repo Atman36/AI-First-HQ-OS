@@ -5,18 +5,30 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 
-COMMANDS = [
-    ("public-safety", [sys.executable, "scripts/hq_public_safety.py"]),
-    ("instruction-lint", [sys.executable, "scripts/hq_instruction_lint.py"]),
-    ("tests", [sys.executable, "-m", "unittest", "discover", "tests"]),
-    ("control-plane", [sys.executable, "scripts/hq_control_plane.py", "validate"]),
-]
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def build_commands() -> list[tuple[str, list[str]]]:
+    commands = [
+        ("public-safety", [sys.executable, "scripts/hq_public_safety.py"]),
+        ("instruction-lint", [sys.executable, "scripts/hq_instruction_lint.py"]),
+    ]
+    if (REPO_ROOT / ".hq" / "prompts").exists():
+        commands.append(("private-prompt-lint", [sys.executable, "scripts/hq_private_prompt_lint.py"]))
+    commands.extend(
+        [
+            ("tests", [sys.executable, "-m", "unittest", "discover", "tests"]),
+            ("control-plane", [sys.executable, "scripts/hq_control_plane.py", "validate"]),
+        ]
+    )
+    return commands
 
 
 def main() -> int:
-    for name, command in COMMANDS:
+    for name, command in build_commands():
         print(f"[run] {name}: {' '.join(command)}", flush=True)
         completed = subprocess.run(command, check=False)
         if completed.returncode != 0:
