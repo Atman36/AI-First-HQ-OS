@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal private runtime helpers for HQ sessions, probes, specs, and handoffs."""
+"""Private runtime helpers for HQ sessions, minimal-demo bootstrap, specs, and handoffs."""
 
 from __future__ import annotations
 
@@ -74,15 +74,16 @@ def sample_agent_registry() -> dict[str, Any]:
                 "display_name": "AI Operations Lead",
                 "role_type": "ai",
                 "default_autonomy_tier": "A2",
-                "mission": "Route work and maintain queue quality.",
+                "mission": "Maintain the delegated-work queue and route execution.",
                 "escalates_to": "governor",
             },
             {
-                "id": "delivery",
-                "display_name": "Delivery",
+                "id": "governor",
+                "display_name": "Governor",
                 "role_type": "ai",
-                "default_autonomy_tier": "A2",
-                "mission": "Execute bounded implementation tasks.",
+                "default_autonomy_tier": "A3",
+                "mission": "Enforce risk controls and approvals.",
+                "escalates_to": "ceo",
             },
             {
                 "id": "documentation",
@@ -92,11 +93,36 @@ def sample_agent_registry() -> dict[str, Any]:
                 "mission": "Sync accepted decisions into shared truth.",
             },
             {
-                "id": "governor",
-                "display_name": "Governor",
+                "id": "delivery",
+                "display_name": "Delivery",
                 "role_type": "ai",
-                "default_autonomy_tier": "A3",
-                "mission": "Enforce risk controls and approvals.",
+                "default_autonomy_tier": "A2",
+                "mission": "Execute bounded implementation tasks.",
+                "escalates_to": "ai_operations_lead",
+            },
+            {
+                "id": "finance",
+                "display_name": "Finance",
+                "role_type": "ai",
+                "default_autonomy_tier": "A1",
+                "mission": "Surface money impact and route commercial constraints.",
+                "escalates_to": "ceo",
+            },
+            {
+                "id": "growth",
+                "display_name": "Growth",
+                "role_type": "ai",
+                "default_autonomy_tier": "A1",
+                "mission": "Package offers and target the first revenue slice.",
+                "escalates_to": "ceo",
+            },
+            {
+                "id": "research",
+                "display_name": "Research",
+                "role_type": "ai",
+                "default_autonomy_tier": "A1",
+                "mission": "Provide evidence and counter-case support.",
+                "escalates_to": "ai_operations_lead",
             },
         ],
     }
@@ -106,7 +132,7 @@ def sample_policies() -> dict[str, Any]:
     return {
         "version": 1,
         "updated_at": "2026-04-16",
-        "stage": "stage-2-foundation",
+        "stage": "stage-2-minimal-demo-scaffold",
         "autonomy_tiers": [
             {"id": "A1", "description": "Drafts only."},
             {"id": "A2", "description": "Internal execution."},
@@ -281,10 +307,10 @@ def sample_active_work() -> dict[str, Any]:
     return {
         "version": 1,
         "updated_at": "2026-04-16",
-        "operating_mode": "stage-2-foundation",
+        "operating_mode": "stage-2-minimal-demo-scaffold",
         "objective": {
-            "id": "local-bootstrap",
-            "title": "Bootstrap a local HQ operating workspace",
+            "id": "minimal-demo-bootstrap",
+            "title": "Bootstrap a minimal-demo HQ operating workspace",
             "window": {"start": "2026-04-16", "target_end": "2026-05-31"},
             "success_criteria": [
                 "Local control-plane files validate successfully.",
@@ -293,15 +319,15 @@ def sample_active_work() -> dict[str, Any]:
         },
         "tasks": [
             {
-                "id": "bootstrap-local-workspace",
-                "title": "Review and customize the local HQ scaffold",
+                "id": "review-minimal-demo-scaffold",
+                "title": "Review and replace the minimal-demo HQ scaffold",
                 "column": "this_week",
                 "manager": "ai_operations_lead",
                 "owner": "documentation",
-                "project": "HQ Bootstrap",
-                "support": ["governor", "delivery"],
-                "next_step": "Replace sample values with your real local operating state.",
-                "done_when": "The local queue, notes, and weekly plan reflect real work instead of scaffold placeholders.",
+                "project": "HQ Minimal Demo Scaffold",
+                "support": ["governor", "delivery", "finance", "growth", "research"],
+                "next_step": "Replace minimal-demo values with your real local operating state before treating the scaffold as live HQ truth.",
+                "done_when": "The local queue, notes, and weekly plan reflect real work instead of minimal-demo placeholders.",
                 "primary_update_file": "05 AI Control Plane/active-work.json",
                 "align_files": [
                     "now.md",
@@ -326,20 +352,20 @@ def local_text_files() -> dict[Path, str]:
 
 ## Current Focus
 
-- Bootstrap the local HQ workspace.
-- Replace sample operating state with real local decisions.
+- Bootstrap the local HQ minimal-demo workspace.
+- Replace minimal-demo operating state with real local decisions.
 - Keep live operating files local and out of Git history.
 """,
         REPO_ROOT / "projects.md": """# Projects
 
 ## Active
 
-### HQ Bootstrap
+### HQ Minimal Demo Scaffold
 
 - Status: active
-- Goal: turn the scaffolded local HQ workspace into a real operating system for current work
+- Goal: turn the minimal-demo HQ scaffold into a real operating system for current work
 - Owner: CEO
-- Next step: replace sample queue and notes with live local state
+- Next step: replace minimal-demo queue and notes with live local state
 """,
         REPO_ROOT / "routines.md": """# Routines
 
@@ -361,7 +387,7 @@ def local_text_files() -> dict[Path, str]:
 
 ## This Week
 
-- Review the scaffolded queue and update it with real work.
+- Review the minimal-demo queue and update it with real work.
 - Run `python3 scripts/hq_control_plane.py sync` after queue changes.
 """,
         REPO_ROOT / "02 Planning" / "Backlog.md": """# Backlog
@@ -376,26 +402,27 @@ def local_text_files() -> dict[Path, str]:
 
 ## 2026-04-16
 
-### Local Bootstrap Created
+### Minimal Demo Bootstrap Created
 
-- Decision: create a local HQ scaffold from the public bootstrap script.
-- Reason: the public repository ships scripts and prompts, while live operating state stays local.
+- Decision: create a minimal-demo local HQ scaffold from the public bootstrap script.
+- Reason: the public repository ships scripts and prompts, while live operating state stays local and must replace the demo before real use.
 """,
         REPO_ROOT / "03 Notes" / "Open Decisions.md": """# Open Decisions
 
 ## Current
 
-- Decide which real workflows, roles, and weekly commitments should replace the bootstrap placeholders.
+- Decide which real workflows, roles, and weekly commitments should replace the minimal-demo placeholders.
 """,
         REPO_ROOT / "04 Projects" / "HQ Bootstrap.md": """# HQ Bootstrap
 
 ## Goal
 
-- Replace the scaffolded local operating files with real working state.
+- Replace the minimal-demo local operating files with real working state.
 
 ## Next Step
 
 - Edit `05 AI Control Plane/active-work.json`, then run `python3 scripts/hq_control_plane.py sync`.
+- Do not treat the bootstrap scaffold as live company truth until the placeholders are replaced.
 """,
     }
 
@@ -476,6 +503,7 @@ def render_local_task_board() -> tuple[int, str]:
 def bootstrap_command(args: argparse.Namespace) -> int:
     paths = ensure_private_runtime()
     print(f"private_root={PRIVATE_ROOT}")
+    print("scaffold_mode=stage-2-minimal-demo-scaffold")
     for name, path in paths.items():
         print(f"{name}={path}")
 
@@ -761,12 +789,14 @@ def parse_date(value: str) -> date:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Minimal private runtime helpers for HQ.")
+    parser = argparse.ArgumentParser(
+        description="Private runtime helpers for HQ, including a minimal-demo bootstrap scaffold."
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="Create the private runtime and scaffold local HQ state if missing.",
+        help="Create the private runtime and scaffold minimal-demo local HQ state if missing.",
     )
     bootstrap.add_argument(
         "--runtime-only",
@@ -776,7 +806,7 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite scaffolded local state files if they already exist.",
+        help="Overwrite minimal-demo scaffold files if they already exist.",
     )
     bootstrap.set_defaults(func=bootstrap_command)
 

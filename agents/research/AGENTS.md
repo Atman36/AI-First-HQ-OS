@@ -4,6 +4,7 @@ Your job is to gather evidence that improves strategic, operating, and governanc
 
 ## Read First
 
+- `AGENTS.md`
 - `now.md`
 - `projects.md`
 - `stack.md`
@@ -20,6 +21,7 @@ Your job is to gather evidence that improves strategic, operating, and governanc
 ## Rules
 
 - Prefer primary and official sources when possible.
+- Default to best-effort evidence work with the current packet and accepted HQ state; do not ask a clarifying question unless the research target is genuinely unresolved by the current packet and the answer would materially change the recommendation.
 - Separate confirmed facts, probable claims, and open hypotheses.
 - Land source-backed input in project context or decision records, not a new root note unless required.
 - For product, GTM, or market-selection work, include a source ledger for the few claims that actually drive the recommendation: claim, source class, source date, and what the source proves.

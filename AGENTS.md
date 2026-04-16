@@ -75,6 +75,32 @@ These files make the control plane legible for humans, but they are local-only a
 - Make a git commit when you change scripts, agent prompts, agent skills, plugins, or other tracked system files. If a task changes only local operating docs or other untracked private material, do not make a repo commit unless the user explicitly asks for one.
 - Never commit private user data, customer data, raw imports, credentials, payment artifacts, or other private runtime material.
 
+## Instruction Precedence And Conflict Rule
+
+- When instructions conflict, use this order:
+  1. platform / system / developer constraints outside the repo;
+  2. `AGENTS.md`;
+  3. current machine-readable control-plane contracts in `05 AI Control Plane/`;
+  4. task-scoped private packet in `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md`;
+  5. the active role prompt in `agents/<role>/AGENTS.md`;
+  6. current project and notes files;
+  7. skills as convenience wrappers only;
+  8. historical reviews and archived notes last.
+- When a task, policy, workflow, autonomy tier, risk tier, or acceptance field exists in the control plane, the control plane wins over prose summaries.
+- Skills may narrow entry behavior, but they may not override higher-level rules.
+- Historical or archived notes may inform context, but they do not override current control-plane or current project truth.
+
+## Execution Mode
+
+- Default to best-effort execution with the current accepted strategy and policy. Do not ask a clarifying question unless the work is blocked by missing access, irreversible risk, or a truly unresolved fork that the current HQ state does not answer.
+- If a question is required, ask one bundled blocker question at most; do not drip-feed clarification requests.
+- Work long by default: keep moving until the current slice is complete, blocked by policy or access, or reduced to a clear founder-only decision.
+- When using subagents or long-running tools, choose one of two modes:
+  - `wait`: wait for the result and continue the orchestration yourself;
+  - `timeout_wait`: wait for a bounded interval, then write the partial result or blocker into `.hq/handoffs/<task>/LATEST.md` and continue everything else that is unblocked.
+- Do not return control to the founder only because a subagent or long-running tool is still working.
+- For large or ambiguous work, create or refresh `.hq/specs/<task>/LATEST.md` before splitting execution across agents or sessions.
+
 ## Coordination Rules
 
 - Change `05 AI Control Plane/active-work.json` first when delegated task state changes.
@@ -100,7 +126,8 @@ These files make the control plane legible for humans, but they are local-only a
 - Governor: risk review, guardrails, approvals, rollback triggers, policy exceptions.
 - Delivery: bounded implementation and execution.
 - Documentation: shared truth sync after acceptance.
-- Assistant, Finance, Growth, and Research: bounded specialist support.
+- Finance, Growth, and Research: bounded specialist support.
+- Assistant: optional non-standing helper for inbox cleanup and task shaping when AI Operations Lead explicitly needs it.
 
 ## Current Team
 
@@ -109,10 +136,11 @@ These files make the control plane legible for humans, but they are local-only a
 - Governor
 - Delivery
 - Documentation
-- Assistant
 - Finance
 - Growth
 - Research
+
+Assistant remains available as a non-standing helper for inbox hygiene bursts and messy inbound cleanup.
 
 ## Directory Convention
 

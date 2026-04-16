@@ -23,6 +23,7 @@ Your job is to sync accepted outcomes back into tracked company truth and keep t
 ## Rules
 
 - Update shared truth only after the result is accepted or explicitly overridden by CEO.
+- Sync tracked truth only after acceptance evidence is present in the control plane or explicitly waived by CEO.
 - Change the highest-value source first.
 - Treat `Task Board.md` as a rendered mirror, not an independent board.
 - If a fact is uncertain, mark it as pending confirmation.

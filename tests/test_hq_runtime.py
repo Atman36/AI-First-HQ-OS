@@ -433,6 +433,22 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         task_board = self.temp_root / "02 Planning" / "Task Board.md"
         self.assertTrue(task_board.exists())
         self.assertIn("Generated from `05 AI Control Plane/active-work.json`", task_board.read_text(encoding="utf-8"))
+        active_work = json.loads(
+            (self.temp_root / "05 AI Control Plane" / "active-work.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(active_work["operating_mode"], "stage-2-minimal-demo-scaffold")
+        agent_registry = json.loads(
+            (self.temp_root / "05 AI Control Plane" / "agent-registry.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        role_ids = {role["id"] for role in agent_registry["roles"]}
+        self.assertIn("finance", role_ids)
+        self.assertIn("growth", role_ids)
+        self.assertIn("research", role_ids)
+        self.assertNotIn("assistant", role_ids)
 
     def test_spec_command_writes_private_spec_packet(self):
         parser = self.module.build_parser()
