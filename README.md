@@ -1,160 +1,62 @@
-# HQ
+# AI-First HQ OS
 
-Shared HQ workspace for the company. It now operates as a hybrid of:
+AI-First operating system for running a small company with Markdown source of truth, agent prompts, governance rules, and Python scripts for control-plane workflows, telemetry, and safe delegation.
 
-- human-readable company truth in Markdown
-- a machine-readable AI control plane for delegated work
-- a private runtime for telemetry, handoffs, reflections, evals, and releases
+## Suggested GitHub Metadata
 
-## Goal
+- Name: `AI-First HQ OS`
+- Repository slug: `ai-first-hq-os`
+- Description: `AI-First operating system for running a small company with Markdown truth, agent prompts, governance rules, and Python scripts for control-plane workflows, telemetry, and safe delegation.`
 
-Turn HQ into an AI-first company operating system where AI is the default operator for low- and medium-risk work, and humans stay in strategic, financial, legal, public, and escalation roles.
+## What This Repository Contains
 
-## Quick Routing
+- reusable AI-first operating model docs
+- machine-readable control-plane examples in `05 AI Control Plane/`
+- agent prompts in `agents/`
+- local automation and validation scripts in `scripts/`
+- tests for the control plane, runtime helpers, telemetry, and publication guardrails
+- public-safe example planning and decision files
 
-Start with the file that matches the question:
+## What Must Stay Private
 
-- Current company focus: `now.md`
-- Active projects and owners: `projects.md`
-- Operating cadence: `routines.md`
-- Tooling and execution boundaries: `stack.md`
-- Machine-readable queue and agent authority: `05 AI Control Plane/`
-- Human-readable live board: `02 Planning/Task Board.md`
-- Weekly commitments and review: `02 Planning/Weekly Plan.md`
-- Durable decisions: `03 Notes/Decisions.md`
-- Explicit unresolved choices: `03 Notes/Open Decisions.md`
-- Project-local detail: `04 Projects/`
+These paths and artifact types are intentionally excluded from public git history:
 
-## AI-First Operating Model In One Screen
+- `.hq/` runtime state, telemetry, handoffs, evals, reflections, releases, and local prompts
+- raw customer or prospect data
+- personal notes, journals, archives, and imported research dumps
+- credentials, API keys, private keys, payment exports, and banking material
+- temporary datasets and local environment files
 
-Each role now works through five operating objects:
+If a file contains personal data, customer data, raw imports, credentials, payment artifacts, or private working memory, keep it under `.hq/` or outside this repository.
 
-- Task state: `05 AI Control Plane/active-work.json`
-- Rules: `AGENTS.md` plus `agents/*/AGENTS.md`
-- Policies: `05 AI Control Plane/operating-policies.json`
-- Workflow: `05 AI Control Plane/workflow-registry.json`
-- Telemetry: `.hq/telemetry/`
+## Repository Layout
 
-`02 Planning/Task Board.md` is the human-readable mirror of the machine-readable queue.
+- `AGENTS.md`: shared operating rules for the repository
+- `agents/*/AGENTS.md`: role-specific prompts
+- `05 AI Control Plane/`: queue, workflow, policy, metric, and schema examples
+- `scripts/`: validation, runtime, telemetry, and publication-safety tools
+- `tests/`: automated coverage for core behavior
+- `02 Planning/`, `03 Notes/`, `04 Projects/`: public-safe example state that shows how HQ is meant to be used
 
-## How To Use
-
-- Run Codex from this directory when you want repo-scoped instructions.
-- Open this folder in Obsidian if you want a readable company vault.
-- Use the root `AGENTS.md` as the common policy layer.
-- Use `agents/*/AGENTS.md` as role prompts for specialized runs.
-- Use `python3 scripts/hq_control_plane.py sync` after changing `05 AI Control Plane/active-work.json`.
-- Use `python3 scripts/hq_control_plane.py validate` before accepting structural changes to the control plane.
-- Use `python3 scripts/hq_telemetry.py event ...` to log task, approval, escalation, or sync events into `.hq/telemetry/`.
-- Use `python3 scripts/hq_telemetry.py weekly-metrics ...` to generate the weekly metric review from telemetry instead of reconstructing it from chat memory.
-- Use `python3 scripts/hq_runtime.py bootstrap` to create the local runtime scaffold and `python3 scripts/hq_runtime.py probe ...` before routing work through a local CLI.
-- Keep private runtime state under `.hq/`; keep durable company truth in tracked files.
-
-## Founder Path
-
-- CEO sets direction and approves high-risk changes.
-- AI Operations Lead converts work into machine-readable tasks, keeps the queue healthy, and owns weekly metric review discipline.
-- Governor checks risk, approvals, and guardrails.
-- Delivery or a specialist role executes.
-- Documentation syncs accepted outcomes back into shared truth.
-
-## Source Of Truth
-
-### Strategic truth
-
-- `now.md`
-- `projects.md`
-- `routines.md`
-- `stack.md`
-- `agents/`
-- `03 Notes/Decisions.md`
-- `03 Notes/Open Decisions.md`
-
-### AI control plane
-
-- `05 AI Control Plane/active-work.json`
-- `05 AI Control Plane/agent-registry.json`
-- `05 AI Control Plane/operating-policies.json`
-- `05 AI Control Plane/workflow-registry.json`
-- `05 AI Control Plane/metrics-registry.json`
-
-### Working layer
-
-- `02 Planning/Task Board.md`
-- `02 Planning/Weekly Plan.md`
-- `04 Projects/`
-
-## Private Runtime
-
-Use `.hq/` for private, inspectable, non-git-tracked runtime artifacts:
-
-- `.hq/handoffs/` for task-scoped continuity
-- `.hq/state/` for capability probe results and lightweight runtime state
-- `.hq/telemetry/` for structured event logs
-- `.hq/reflections/` for per-task lessons
-- `.hq/improvements/` for weekly synthesis and manual-first promotion backlogs
-- `.hq/evals/` for eval runs and artifacts
-- `.hq/releases/` for rollout and rollback notes
-
-## Task Contract
-
-Delegated work is explicit about three roles:
-
-- `manager`: routes the task, coordinates handoffs, and owns operating follow-through
-- `owner`: executes the current task slice
-- `accepts_result`: reviews and accepts the outcome before shared-truth sync
-
-`AI Operations Lead` remains the default task manager in Stage 2 unless a narrower manager is assigned intentionally.
-
-## Runtime Commands
-
-Bootstrap and probe commands:
+## Quick Start
 
 ```bash
-python3 scripts/hq_runtime.py bootstrap
-python3 scripts/hq_runtime.py probe codex claude
+python3 -m pip install -r requirements-dev.txt
+python3 scripts/hq_control_plane.py validate
+python3 scripts/hq_control_plane.py sync
+python3 scripts/hq_public_safety.py
+python3 scripts/hq_gate.py
 ```
 
-Write a handoff:
+## Public GitHub Boundary
 
-```bash
-python3 scripts/hq_runtime.py handoff \
-  --task HQ-bootstrap-runtime \
-  --owner Delivery \
-  --status ready_for_handoff \
-  --continue-from "04 Projects/HQ Bootstrap.md" \
-  --primary-file "04 Projects/HQ Bootstrap.md" \
-  --important-file "stack.md" \
-  --important-file "01 Operating System/Agent Routing.md" \
-  --done "Added the private runtime scaffold" \
-  --next "Validate the next acceptance slice" \
-  --risk "Do not move private notes back into shared docs"
-```
+The public repository is for the system itself:
 
-Write a reflection and run a weekly review:
+- prompts
+- agents
+- scripts
+- schemas
+- tests
+- safe example docs
 
-```bash
-python3 scripts/hq_runtime.py reflection \
-  --agent Delivery \
-  --task "weekly-agent-self-improvement" \
-  --session "2026-04-14-delivery-1" \
-  --summary "Missed a repo-specific instruction" \
-  --observation "Started coding before reading AGENTS.md in full" \
-  --issue "Instruction loading happened too late" \
-  --lesson "Read repo instructions before editing code" \
-  --proposed-rule "Add a startup checklist for repo instructions" \
-  --issue-key instruction-loading \
-  --tag instructions
-
-python3 scripts/hq_runtime.py weekly-review \
-  --since 2026-04-07 \
-  --until 2026-04-14
-```
-
-The review output is a safe artifact only:
-
-- `.hq/improvements/LATEST.json` for machine-readable grouped observations
-- `.hq/improvements/LATEST.md` for a human review note with candidate improvements
-- `.hq/improvements/skill-candidates.json` for improvements that are explicit candidates for manual skill promotion
-- No shared Markdown files or `AGENTS.md` files are edited automatically by this flow
-- Skill promotion remains manual-first and does not update shared truth or agent prompts automatically
+The public repository is not for live operating data. Before pushing, run `python3 scripts/hq_public_safety.py` or the full `python3 scripts/hq_gate.py`.

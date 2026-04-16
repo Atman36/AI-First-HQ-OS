@@ -5,7 +5,7 @@
 ### Lean HQ Structure
 
 - Decision: keep shared company state in the HQ repository and keep private runtime under `.hq/`.
-- Reason: the company needs one inspectable shared truth and one private runtime, not mixed memory.
+- Reason: the system needs one inspectable shared truth and one private runtime, not mixed memory.
 
 ### Single Primary Update File
 
@@ -21,82 +21,42 @@
 
 ### HQ Must Become AI-First, Not AI-Themed
 
-- Decision: treat HQ as the future operating system of the company, not as a note vault with AI around it.
-- Reason: the current structure is good for clarity but not yet strong enough for delegated authority, AI routing, or scalable operations.
+- Decision: treat HQ as an AI-first operating system, not as a note vault with AI around it.
+- Reason: the structure should support delegated authority, clear boundaries, and repeatable operations.
 
 ### Install A Machine-Readable Control Plane
 
-- Decision: add `05 AI Control Plane/` as the tracked machine-readable layer for active work, authority, workflows, policies, and metrics.
+- Decision: keep `05 AI Control Plane/` as the tracked machine-readable layer for active work, authority, workflows, policies, and metrics.
 - Reason: AI cannot operate reliably from free-form Markdown alone.
 
 ### Machine-Readable Queue Becomes Primary For Delegated Work
 
 - Decision: use `05 AI Control Plane/active-work.json` as the primary queue for delegated work and render `02 Planning/Task Board.md` from it.
-- Reason: the old board was readable but not executable.
+- Reason: the board should stay readable without becoming a second source of truth.
 
 ### Add Governor As A Standing Role
 
-- Decision: add Governor as the role responsible for policy enforcement, approval gates, kill switches, and rollback triggers.
-- Reason: without a control role, the system would have routing but no governed autonomy.
+- Decision: keep Governor responsible for policy enforcement, approval gates, kill switches, and rollback triggers.
+- Reason: governed autonomy needs a standing control role.
 
-### Introduce Autonomy And Risk Tiers
-
-- Decision: every delegated task must carry both a risk tier and an autonomy tier.
-- Reason: AI-first execution needs explicit boundaries, not implied trust.
-
-### Humans Stay In Strategy And Risk-Sensitive Control
-
-- Decision: keep CEO and human reviewers in strategy, budget, legal/public commitments, destructive actions, hiring, and overrides.
-- Reason: the project is early; full autonomy here would be reckless and unnecessary.
-
-### Add Telemetry Before External Connectors
-
-- Decision: do not connect external write surfaces until telemetry, approval policy, and rollback rules exist.
-- Reason: external autonomy without logging and intervention paths would create hidden operational risk.
-
-### Replace Stage-1 AI COO With AI Operations Lead
-
-- Decision: replace the stage-1 AI COO role with `AI Operations Lead` as the one standing operating role for orchestration, observability, eval discipline, memory hygiene, escalation thresholds, and runtime quality.
-- Reason: the system needs one explicit operating owner for Stage 2, not duplicated routing authority between a generic COO label and a new operations role.
-
-### Weekly Metric Review Must Come From Telemetry
-
-- Decision: run the weekly metric review from `.hq/telemetry/` and control-plane state instead of reconstructing the week from chat memory.
-- Reason: Stage 2 discipline requires inspectable evidence, threshold breaches, and carry-forward actions grounded in runtime data.
-
-### Stage 2 Internal Writes Stay Inside HQ
-
-- Decision: in Stage 2, AI may write only to tracked files in this repository and private runtime artifacts under `.hq/` when the task is scoped and accepted.
-- Reason: the first governed loop proved repo-internal execution and documentation sync; broader write autonomy still lacks surface-specific audit and rollback rules.
-
-### External And Customer-Facing Writes Stay Blocked
-
-- Decision: email, calendar, CRM, and other customer-facing or external sends stay draft-only and require human review before execution.
-- Reason: internal operating proof is enough to run the loop inside HQ, but it is not evidence for asymmetric external-message risk.
-
-### Deployment Authority Stays Human-Only In Stage 2
-
-- Decision: Delivery may prepare code, PRs, release notes, and rollback plans, but production-affecting deploys remain human-only.
-- Reason: the new operating loop improves internal execution, not the safety of autonomous production changes.
-
-### Runtime Memory Boundary Is Good Enough For Stage 2
+### Runtime Memory Boundary
 
 - Decision: telemetry, handoffs, reflections, evals, and other runtime continuity stay under `.hq/`; only accepted conclusions move into tracked truth.
-- Reason: the first live governed loop confirmed that this split keeps shared state clean without adding a second memory layer.
-
-### Autonomous Spend Envelope Stays At EUR 0 In Stage 2 Foundation
-
-- Decision: keep the autonomous spend envelope at `EUR 0` for the whole Stage 2 foundation; any company spend or money movement still needs fresh CEO approval.
-- Reason: the first telemetry-backed weekly review did not justify non-zero autonomous spend, and there is still no connector-specific audit or rollback path that would make autonomous spend safe.
+- Reason: this keeps shared state clean and public-safe.
 
 ## 2026-04-16
 
-### First Revenue Must Come From Existing Assets, Not A Net-New Build
-
-- Decision: pursue the first external revenue through productized pilots, service wrappers, and redesign offers around the current portfolio instead of starting another new product.
-- Reason: the portfolio already contains near-sellable assets, and the immediate problem is proving demand and collecting money, not creating more unfinished surface area.
-
 ### Public Git History Must Exclude User And Customer Data
 
-- Decision: keep tracked HQ history limited to system files, agent instructions, skills, scripts, and accepted shared truth; user data, customer data, raw imports, credentials, and payment artifacts must stay under `.hq/` or outside the repo.
-- Reason: HQ is intended for future public GitHub publication, so privacy boundaries must be explicit before more operating infrastructure is added.
+- Decision: keep tracked HQ history limited to system files, agent instructions, scripts, tests, and public-safe example docs; user data, customer data, raw imports, credentials, payment artifacts, and local runtime memory must stay under `.hq/` or outside the repo.
+- Reason: HQ is intended for public GitHub publication, so privacy boundaries must be explicit and enforceable.
+
+### Public Repo Ships Examples, Not Live Internal State
+
+- Decision: tracked planning, project, and decision files in the public repository should demonstrate the HQ format without carrying live company strategy, customer context, or private working memory.
+- Reason: the public repo should teach the system, not publish the operator's internal state.
+
+### Publication Safety Must Be Automated
+
+- Decision: add a publication-safety check to local and CI validation so blocked paths, sensitive local artifacts, and obvious secrets fail before push.
+- Reason: repository privacy should depend on automation, not on manual memory during commits.

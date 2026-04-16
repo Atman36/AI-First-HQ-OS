@@ -8,6 +8,7 @@ import sys
 
 
 COMMANDS = [
+    ("public-safety", [sys.executable, "scripts/hq_public_safety.py"]),
     ("tests", [sys.executable, "-m", "unittest", "discover", "tests"]),
     ("control-plane", [sys.executable, "scripts/hq_control_plane.py", "validate"]),
 ]

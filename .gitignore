@@ -46,6 +46,9 @@ __pycache__/
 .env.parallel
 .env.local
 .env.*.local
+.python-version
+.venv/
+venv/
 
 # HQ private runtime
 .hq/
@@ -61,6 +64,28 @@ __pycache__/
 /customer-data/
 /imports/raw/
 /uploads/
+/exports/
+/datasets/
+/billing/
+/banking/
+/contracts/
+/prospects/
+/customers/
+
+# Sensitive local artifacts
+*.sqlite
+*.sqlite3
+*.db
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.numbers
+*.pem
+*.key
+*.p12
+*.pfx
+*.har
 
 # Agent-specific (Paperclip private data should stay outside this repo)
 # But if accidentally created here:

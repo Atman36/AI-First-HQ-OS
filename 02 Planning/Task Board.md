@@ -4,134 +4,58 @@
 
 - Updated At: 2026-04-16
 - Operating Mode: ai-first-stage-2-foundation
-- Objective: Keep the Stage 2 operating discipline stable while standing up the first founder revenue sprint
+- Objective: Prepare HQ for public GitHub publication without leaking private runtime or live operating data
 
 ## Success Criteria
-- AI Operations Lead replaces the stage-1 AI COO role across docs and control-plane contracts
-- two real tasks run through AI Operations Lead -> Governor -> specialist -> Documentation
-- the queue stays current in active-work.json and Task Board.md is rendered from it
-- weekly metrics can be generated from telemetry and active-work state
-- telemetry captures routing, execution, acceptance, sync, and lightweight eval signals
-- weekly review requires a passing local task-cycle signal on repeated AI-Operations-led internal execution slices
-- one commercial portfolio plan exists with a 30/90/365-day revenue path and a prioritized first offer
-- no tracked Git history is used for private user or customer data
-
-## This Week
-- [ ] Package the first paid offer from the existing portfolio
-  - ID: package-first-paid-offer-from-existing-portfolio | Manager: ai_operations_lead | Owner: growth | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: Founder Revenue Sprint
-  - Support: research, finance, delivery, documentation
-  - Next: Turn the recommended wedge into one-page offer copy, pricing logic, pilot scope, qualification questions, and proof gaps.
-  - Done when: One recommended offer has ICP, outcome promise, scope, price floor, delivery model, and proof gaps documented.
-  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
-  - Align: `projects.md`, `02 Planning/Weekly Plan.md`
-
-## Waiting
-- [ ] Connect email, calendar, and CRM writes only behind explicit Governor-reviewed connectors
-  - ID: connect-external-systems-under-governance | Manager: ai_operations_lead | Owner: delivery | Accepts: ceo | Risk: high | Autonomy: A3
-  - Project: HQ Bootstrap
-  - Support: ai_operations_lead, governor, assistant, finance, growth
-  - Next: Keep external write surfaces blocked while the autonomous spend envelope stays at EUR 0, then revisit one narrow connector only after another stable weekly review and connector-specific rollback notes.
-  - Done when: At least one external connector is enabled with audit logging, review, and rollback notes.
-  - Primary update file: `stack.md`
-  - Align: `05 AI Control Plane/operating-policies.json`, `04 Projects/HQ Bootstrap.md`
-- [ ] Prepare the cross-border billing and legal route for US/EU sales
-  - ID: prepare-cross-border-billing-route | Manager: ai_operations_lead | Owner: finance | Accepts: ceo | Risk: high | Autonomy: A1
-  - Project: Founder Revenue Sprint
-  - Support: research, governor, documentation
-  - Next: Compare Merchant of Record, foreign partner or entity, and Russia-only billing paths; then bring a decision-ready brief to CEO.
-  - Done when: There is a decision-ready comparison covering payment provider options, compliance assumptions, blocked actions, and the recommended first route.
-  - Primary update file: `03 Notes/Open Decisions.md`
-  - Align: `04 Projects/Founder Revenue Sprint.md`, `stack.md`
+- README explains the public AI-first project clearly
+- tracked example docs are public-safe and reusable
+- Task Board.md is rendered from active-work.json
+- local and CI validation fail on blocked private paths, sensitive local artifacts, and obvious secrets
+- no tracked git history contains private runtime, customer data, personal data, or credentials
 
 ## Done
 - [x] Install the machine-readable AI control plane and generated board
   - ID: install-control-plane | Manager: ai_operations_lead | Owner: delivery | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
+  - Project: AI-First HQ OS
   - Support: ai_operations_lead, documentation
-  - Next: Use the control plane on live work instead of treating it as architecture-only.
+  - Next: Use the control plane as the primary queue instead of treating it as architecture-only.
   - Done when: `05 AI Control Plane/` exists, validates, and `Task Board.md` is rendered from it.
   - Primary update file: `05 AI Control Plane/active-work.json`
   - Align: `02 Planning/Task Board.md`, `AGENTS.md`, `01 Operating System/AI-First Operating Model.md`
   - Completed at: 2026-04-15
 - [x] Add telemetry, validation, and tests for the HQ runtime
   - ID: install-telemetry-and-validation | Manager: ai_operations_lead | Owner: delivery | Accepts: governor | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
+  - Project: AI-First HQ OS
   - Support: ai_operations_lead, governor, documentation
-  - Next: Start writing real events from live work into `.hq/telemetry/`.
-  - Done when: Validation passes, telemetry events can be written, and tests cover the new runtime surfaces.
+  - Next: Keep runtime data under `.hq/` and out of tracked history.
+  - Done when: Validation passes, telemetry events can be written, and tests cover the runtime surfaces.
   - Primary update file: `scripts/hq_control_plane.py`
   - Align: `scripts/hq_telemetry.py`, `tests/test_hq_control_plane.py`, `tests/test_hq_telemetry.py`
   - Completed at: 2026-04-15
 - [x] Replace the stage-1 AI COO role with AI Operations Lead and tighten Stage 2 operating contracts
   - ID: embed-ai-operations-lead-and-stage-2-foundation | Manager: ai_operations_lead | Owner: delivery | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
+  - Project: AI-First HQ OS
   - Support: ai_operations_lead, governor, documentation
-  - Next: Run a real work item through the updated routing and weekly-review discipline.
-  - Done when: Operating docs, role prompts, control-plane contracts, and runtime review contracts all reference AI Operations Lead consistently.
+  - Next: Keep the public operating contract consistent across docs and prompts.
+  - Done when: Operating docs, role prompts, control-plane contracts, and review contracts reference AI Operations Lead consistently.
   - Primary update file: `05 AI Control Plane/agent-registry.json`
   - Align: `01 Operating System/AI-First Operating Model.md`, `01 Operating System/Agent Routing.md`, `05 AI Control Plane/workflow-registry.json`, `05 AI Control Plane/metrics-registry.json`, `05 AI Control Plane/operating-policies.json`
   - Completed at: 2026-04-15
-- [x] Run one real company task through AI Operations Lead -> Governor -> specialist -> Documentation
-  - ID: run-first-governed-loop | Manager: ai_operations_lead | Owner: ai_operations_lead | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
-  - Support: governor, delivery, documentation
-  - Next: Repeat the same governed route on the next founder request and use the telemetry baseline to tighten the remaining thresholds.
-  - Done when: One task completes with queue state, acceptance, board sync, telemetry coverage, and a weekly metric-review entry.
-  - Primary update file: `05 AI Control Plane/active-work.json`
-  - Align: `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
-  - Completed at: 2026-04-15
-- [x] Run the first weekly metric review from telemetry and threshold rules
-  - ID: start-weekly-metric-review-from-telemetry | Manager: ai_operations_lead | Owner: ai_operations_lead | Accepts: governor | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
-  - Support: governor, documentation, finance
-  - Next: Use weekly review breaches as operating follow-through, not as a second reporting layer.
-  - Done when: A weekly telemetry review is generated and used as the metric layer of the weekly operating review.
-  - Primary update file: `05 AI Control Plane/metrics-registry.json`
-  - Align: `routines.md`, `02 Planning/Weekly Plan.md`, `scripts/hq_telemetry.py`
-  - Completed at: 2026-04-15
-- [x] Lock the remaining autonomous spend envelope after the first live weekly review
-  - ID: calibrate-approval-thresholds | Manager: ai_operations_lead | Owner: governor | Accepts: ceo | Risk: high | Autonomy: A1
-  - Project: HQ Bootstrap
-  - Support: ceo, finance, ai_operations_lead
-  - Next: Re-open only if a specific connector or operating need justifies non-zero spend and another stable telemetry-backed review supports it.
-  - Done when: The spend envelope is explicitly approved or intentionally held at zero in policies and Notes.
-  - Primary update file: `03 Notes/Open Decisions.md`
-  - Align: `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`
-  - Completed at: 2026-04-15
-- [x] Run a second live governed loop and verify the full task cycle locally
-  - ID: verify-second-governed-loop | Manager: ai_operations_lead | Owner: ai_operations_lead | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
-  - Support: governor, delivery, documentation
-  - Next: Use this second live proof to choose one smallest practical repeated-work verification slice without changing spend or connector policy.
-  - Done when: The second live item completes with queue state, Governor review, execution, acceptance, documentation sync, telemetry coverage, and a local task-cycle verification result.
-  - Primary update file: `05 AI Control Plane/active-work.json`
-  - Align: `scripts/hq_telemetry.py`, `tests/test_hq_telemetry.py`, `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
-  - Completed at: 2026-04-15
-- [x] Require task-cycle coverage in weekly review for repeated internal governed work
-  - ID: require-task-cycle-on-repeated-internal-work | Manager: ai_operations_lead | Owner: ai_operations_lead | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
-  - Support: governor, delivery, documentation
-  - Next: Keep this check attached to repeated internal governed slices while spend stays at EUR 0 and connectors remain blocked.
-  - Done when: Weekly review reports a repeated internal task-cycle coverage signal and breaches if a repeated governed internal slice lacks a passing local check.
-  - Primary update file: `05 AI Control Plane/metrics-registry.json`
-  - Align: `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, `scripts/hq_telemetry.py`, `tests/test_hq_telemetry.py`, `02 Planning/Weekly Plan.md`, `04 Projects/HQ Bootstrap.md`
-  - Completed at: 2026-04-15
-- [x] Harden control-plane contracts, deep-research coverage, and validation gates from the 2026-04-15 audit
-  - ID: harden-control-plane-contracts-and-gates | Manager: ai_operations_lead | Owner: delivery | Accepts: governor | Risk: medium | Autonomy: A2
-  - Project: HQ Bootstrap
-  - Support: ai_operations_lead, governor, documentation
-  - Next: Split weekly review aggregation and telemetry IO boundaries into narrower runtime modules in the next sprint.
-  - Done when: Control-plane structural validation is schema-driven, deep-research has happy-path and error-path coverage, and one local plus CI gate runs the same checks.
-  - Primary update file: `scripts/hq_control_plane.py`
-  - Align: `05 AI Control Plane/workflow-registry.json`, `05 AI Control Plane/schemas/active-work.schema.json`, `05 AI Control Plane/schemas/agent-registry.schema.json`, `05 AI Control Plane/schemas/metrics-registry.schema.json`, `05 AI Control Plane/schemas/operating-policies.schema.json`, `05 AI Control Plane/schemas/workflow-registry.schema.json`, `05 AI Control Plane/schemas/telemetry-event.schema.json`, `scripts/hq_telemetry.py`, `scripts/parallel_deep_research.py`, `scripts/hq_gate.py`, `.github/workflows/hq-gate.yml`, `requirements-dev.txt`, `tests/__init__.py`, `tests/test_hq_control_plane.py`, `tests/test_hq_telemetry.py`, `tests/test_parallel_deep_research.py`
+- [x] Rewrite the README and example state for public GitHub readers
+  - ID: rewrite-public-readme-and-example-state | Manager: ai_operations_lead | Owner: documentation | Accepts: governor | Risk: medium | Autonomy: A2
+  - Project: Public GitHub Hardening
+  - Support: governor, delivery
+  - Next: Keep example state public-safe as the project evolves.
+  - Done when: README, planning docs, project docs, and notes explain the framework without exposing live private operations.
+  - Primary update file: `README.md`
+  - Align: `now.md`, `projects.md`, `02 Planning/Weekly Plan.md`, `03 Notes/Decisions.md`, `03 Notes/Open Decisions.md`, `04 Projects/Founder Revenue Sprint.md`
   - Completed at: 2026-04-16
-- [x] Stand up the founder revenue sprint and commercial portfolio plan
-  - ID: stand-up-founder-revenue-sprint | Manager: ai_operations_lead | Owner: growth | Accepts: ceo | Risk: medium | Autonomy: A2
-  - Project: Founder Revenue Sprint
-  - Support: research, finance, documentation
-  - Next: Package the first sellable offer and validate one decision-ready billing route before any external launch.
-  - Done when: The portfolio is triaged, a 30/90/365-day revenue plan exists in tracked truth, privacy boundaries are explicit, and the next commercial tasks are in the queue.
-  - Primary update file: `04 Projects/Founder Revenue Sprint.md`
-  - Align: `now.md`, `projects.md`, `03 Notes/Decisions.md`, `03 Notes/Open Decisions.md`, `02 Planning/Weekly Plan.md`, `AGENTS.md`
+- [x] Add a publication-safety gate for blocked paths, sensitive local artifacts, and secrets
+  - ID: add-publication-safety-gate | Manager: ai_operations_lead | Owner: delivery | Accepts: governor | Risk: medium | Autonomy: A2
+  - Project: Public GitHub Hardening
+  - Support: ai_operations_lead, governor, documentation
+  - Next: Keep the blocked-path rules and secret patterns aligned with real repository usage.
+  - Done when: Local and CI validation fail if blocked private paths, sensitive local artifacts, or obvious secrets are tracked.
+  - Primary update file: `scripts/hq_gate.py`
+  - Align: `scripts/hq_public_safety.py`, `.github/workflows/hq-gate.yml`, `tests/test_hq_public_safety.py`, `.gitignore`
   - Completed at: 2026-04-16
