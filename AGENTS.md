@@ -69,7 +69,8 @@ These files make the control plane legible for humans:
 - Shared docs describe company state, not private scratchpads.
 - Keep tracked Git history limited to system files, instructions, skills, scripts, and accepted shared truth; do not commit private user or customer data.
 - Use `.hq/handoffs/` for task-scoped private continuity.
-- If you change tracked Markdown files here, make a git commit unless the user explicitly asks not to.
+- Make a git commit when you change system files, scripts, or agent prompts; ordinary source-of-truth Markdown updates do not require a commit unless the user explicitly asks for one.
+- Never commit private user data, customer data, raw imports, credentials, payment artifacts, or other private runtime material.
 
 ## Coordination Rules
 
