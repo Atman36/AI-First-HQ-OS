@@ -57,6 +57,23 @@ venv/
 /SESSION.md
 /SESSION-*.md
 
+# Live operating state must stay local, not on public GitHub
+/00 Home.md
+/now.md
+/projects.md
+/routines.md
+/stack.md
+/01 Operating System/
+/02 Planning/
+/03 Notes/
+/04 Projects/
+/05 AI Control Plane/*
+!/05 AI Control Plane/schemas/
+!/05 AI Control Plane/schemas/*.json
+/90 Templates/
+/reports/
+/agents/README.md
+
 # Public repo safety: raw user/customer data must never be tracked
 /private/
 /private-data/

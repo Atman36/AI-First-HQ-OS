@@ -34,11 +34,37 @@ class HqPublicSafetyTests(unittest.TestCase):
         tracked_files = [
             self.write_file("README.md", "# AI-First HQ OS\n"),
             self.write_file("scripts/tool.py", "print('ok')\n"),
+            self.write_file("agents/delivery/AGENTS.md", "# Delivery\n"),
+            self.write_file("05 AI Control Plane/schemas/active-work.schema.json", "{}\n"),
         ]
 
         violations = self.module.find_violations(self.temp_root, tracked_files)
 
         self.assertEqual(violations, [])
+
+    def test_live_operating_state_path_fails(self):
+        tracked_files = [
+            self.write_file("03 Notes/Decisions.md", "# Decisions\n"),
+            self.write_file("04 Projects/Founder Revenue Sprint.md", "# Project\n"),
+            self.write_file("now.md", "# Now\n"),
+        ]
+
+        violations = self.module.find_violations(self.temp_root, tracked_files)
+
+        self.assertEqual(len(violations), 3)
+        self.assertTrue(all("blocked live operating state" in item for item in violations))
+
+    def test_non_allowlisted_public_path_fails(self):
+        tracked_files = [
+            self.write_file("01 Operating System/How To Operate HQ.md", "# Doc\n"),
+            self.write_file("05 AI Control Plane/active-work.json", "{}\n"),
+            self.write_file("90 Templates/Task Template.md", "# Template\n"),
+        ]
+
+        violations = self.module.find_violations(self.temp_root, tracked_files)
+
+        self.assertEqual(len(violations), 3)
+        self.assertTrue(all("public GitHub allowlist" in item for item in violations))
 
     def test_blocked_private_runtime_path_fails(self):
         tracked_files = [
@@ -64,7 +90,7 @@ class HqPublicSafetyTests(unittest.TestCase):
     def test_obvious_secret_fails(self):
         simulated_secret = "sk-" + "1234567890abcdefghijklmnop"
         tracked_files = [
-            self.write_file("docs/example.md", f"token={simulated_secret}\n"),
+            self.write_file("scripts/example.py", f"token = '{simulated_secret}'\n"),
         ]
 
         violations = self.module.find_violations(self.temp_root, tracked_files)

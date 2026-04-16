@@ -37,6 +37,48 @@ BLOCKED_PATH_PREFIXES = (
     "03 Notes/Session Logs/",
 )
 
+BLOCKED_EXACT_PATHS = {
+    "00 Home.md",
+    "now.md",
+    "projects.md",
+    "routines.md",
+    "stack.md",
+}
+
+BLOCKED_LIVE_STATE_DIRS = {
+    "02 Planning": {"README.md"},
+    "03 Notes": {"README.md"},
+    "04 Projects": {"README.md"},
+}
+
+ALLOWED_EXACT_PATHS = {
+    ".gitignore",
+    "README.md",
+    "AGENTS.md",
+    "requirements-dev.txt",
+}
+
+ALLOWED_PATH_PREFIXES = (
+    ".github/workflows/",
+    "scripts/",
+    "tests/",
+    "05 AI Control Plane/schemas/",
+)
+
+
+def is_allowed_public_path(normalized: str) -> bool:
+    if normalized in ALLOWED_EXACT_PATHS:
+        return True
+
+    if normalized.startswith(ALLOWED_PATH_PREFIXES):
+        return True
+
+    path_obj = PurePosixPath(normalized)
+    if len(path_obj.parts) >= 3 and path_obj.parts[0] == "agents" and path_obj.name == "AGENTS.md":
+        return True
+
+    return False
+
 BLOCKED_SUFFIXES = {
     ".sqlite",
     ".sqlite3",
@@ -83,11 +125,26 @@ def path_violations(relative_path: Path | str) -> list[str]:
     normalized = normalize_relative_path(relative_path)
     violations: list[str] = []
 
+    if normalized in BLOCKED_EXACT_PATHS:
+        violations.append(f"{normalized}: blocked live operating state for public git history")
+
+    path_obj = PurePosixPath(normalized)
+    parent = str(path_obj.parent)
+    if (
+        parent in BLOCKED_LIVE_STATE_DIRS
+        and path_obj.suffix.lower() == ".md"
+        and path_obj.name not in BLOCKED_LIVE_STATE_DIRS[parent]
+    ):
+        violations.append(f"{normalized}: blocked live operating state for public git history")
+
     if any(
         normalized == prefix.rstrip("/") or normalized.startswith(prefix)
         for prefix in BLOCKED_PATH_PREFIXES
     ):
         violations.append(f"{normalized}: blocked private path for public git history")
+
+    if not violations and not is_allowed_public_path(normalized):
+        violations.append(f"{normalized}: path is outside the public GitHub allowlist")
 
     suffix = PurePosixPath(normalized).suffix.lower()
     if suffix in BLOCKED_SUFFIXES:

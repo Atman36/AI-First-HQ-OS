@@ -4,7 +4,7 @@ This repository is the shared root for the HQ system.
 
 It now has three operating layers:
 
-1. human-readable company truth in Markdown;
+1. human-readable company truth in local Markdown;
 2. a machine-readable AI control plane under `05 AI Control Plane/`;
 3. a private runtime under `.hq/`.
 
@@ -12,7 +12,7 @@ It now has three operating layers:
 
 ### Strategic truth
 
-These files define the current company truth for humans:
+These files define the current company truth for humans, but they are local-only and must not be pushed to public GitHub:
 
 1. `now.md`
 2. `projects.md`
@@ -24,7 +24,7 @@ These files define the current company truth for humans:
 
 ### Machine-readable control plane
 
-These files define delegated authority and active AI-executable work:
+These files define delegated authority and active AI-executable work locally. In public GitHub, only schemas belong in tracked history:
 
 1. `05 AI Control Plane/active-work.json`
 2. `05 AI Control Plane/agent-registry.json`
@@ -34,7 +34,7 @@ These files define delegated authority and active AI-executable work:
 
 ### Human-readable working layer
 
-These files make the control plane legible for humans:
+These files make the control plane legible for humans, but they are local-only and must not be pushed to public GitHub:
 
 1. `02 Planning/Task Board.md` - rendered mirror of `active-work.json`
 2. `02 Planning/Weekly Plan.md` - weekly commitments, review, and carry-forward
@@ -43,7 +43,7 @@ These files make the control plane legible for humans:
 ### Support material
 
 - `reports/` is support input, not source of truth.
-- Reports change company state only after the conclusion is summarized into a tracked source-of-truth file.
+- Reports change company state only after the conclusion is summarized into the local source-of-truth files.
 - Private runtime artifacts stay only under `.hq/`.
 - User or customer data is never valid tracked source of truth in this repository.
 - If a file contains personal data, customer data, imported workspace data, credentials, payment exports, or raw transcripts, it must stay under `.hq/` or outside this repository.
@@ -67,9 +67,9 @@ These files make the control plane legible for humans:
 - AI Operations Lead owns orchestration quality: queue health, telemetry discipline, weekly metric review, eval follow-through, memory hygiene, and runtime-quality escalation.
 - Do not let two agents edit the same file at the same time.
 - Shared docs describe company state, not private scratchpads.
-- Keep tracked Git history limited to system files, instructions, skills, scripts, and accepted shared truth; do not commit private user or customer data.
+- Keep tracked Git history limited to prompts, scripts, tests, CI files, schemas, and minimal repo metadata. Everything else is local-only unless explicitly approved for publication.
 - Use `.hq/handoffs/` for task-scoped private continuity.
-- Make a git commit when you change system files, scripts, or agent prompts; ordinary source-of-truth Markdown updates do not require a commit unless the user explicitly asks for one.
+- Make a git commit when you change scripts, agent prompts, agent skills, plugins, or other tracked system files. If a task changes only local operating docs or other untracked private material, do not make a repo commit unless the user explicitly asks for one.
 - Never commit private user data, customer data, raw imports, credentials, payment artifacts, or other private runtime material.
 
 ## Coordination Rules
@@ -113,9 +113,9 @@ These files make the control plane legible for humans:
 
 ## Directory Convention
 
-- Root files describe company state and operating rhythm.
+- Root files describe company state and operating rhythm locally; public Git history should not include the live root state files.
 - `05 AI Control Plane/` holds machine-readable state, workflows, policies, and metrics.
 - `agents/<role>/AGENTS.md` contains the role prompt.
 - `.hq/` is the only repo-local private runtime path and must remain git-ignored.
 - User files, customer files, raw imports, and private operating data stay only under `.hq/` or outside the repo; they do not belong in future public GitHub history.
-- `reports/` remains reference material only until summarized into tracked truth.
+- `reports/` remains reference material only until summarized into local truth.

@@ -9,13 +9,13 @@ AI-First operating system for running a small company with Markdown source of tr
 
 ## Overview
 
-This repository packages a reusable AI-first company operating system:
+This repository packages the reusable public shell of an AI-first company operating system:
 
-- Markdown files hold human-readable operating truth
-- `05 AI Control Plane/` holds machine-readable workflows, policies, metrics, and task state
+- Live operating state stays local and out of git history
+- `05 AI Control Plane/schemas/` holds reusable schemas for the local control plane
 - `agents/` contains role prompts for specialized execution
 - `scripts/` provides validation, telemetry, runtime helpers, and publication guardrails
-- `.hq/` is reserved for private local runtime artifacts and must never enter public git history
+- `.hq/` is reserved for private local runtime artifacts and live operating state; it must never enter public git history
 
 ## Features
 
@@ -24,52 +24,53 @@ This repository packages a reusable AI-first company operating system:
 - machine-readable workflow and policy layer
 - telemetry and runtime helper scripts
 - public-safety validation for GitHub publication
-- public-safe example planning and decision files
+- allowlist-based publication guardrails for GitHub
 
 ## Repository Structure
 
 - `AGENTS.md` shared repository rules
 - `agents/*/AGENTS.md` role-specific prompts
-- `05 AI Control Plane/` queue, workflow, policy, metric, and schema examples
+- `05 AI Control Plane/schemas/` reusable schema definitions
 - `scripts/` validation, runtime, telemetry, and publication-safety tools
 - `tests/` automated coverage for core behavior
-- `02 Planning/`, `03 Notes/`, `04 Projects/` public-safe example state
+- `agents/*/AGENTS.md` role prompts safe for publication
 
 ## Quick Start
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 scripts/hq_control_plane.py validate
-python3 scripts/hq_control_plane.py sync
+python3 -m unittest
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_gate.py
 ```
 
+Local control-plane state such as `active-work.json` is intentionally not published. Create it locally before running `python3 scripts/hq_control_plane.py validate` or `python3 scripts/hq_control_plane.py sync`.
+
 ## Core Commands
 
 ```bash
-python3 scripts/hq_control_plane.py validate
-python3 scripts/hq_control_plane.py sync
+python3 -m unittest
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_gate.py
 ```
 
 ## Public GitHub Boundary
 
-The public repository is for the system itself:
+The public repository is allowlist-only. These path classes are allowed:
 
-- prompts
-- agents
-- scripts
-- schemas
-- tests
-- safe example docs
+- `README.md`, `AGENTS.md`, `.gitignore`, `requirements-dev.txt`
+- `.github/workflows/`
+- `agents/*/AGENTS.md`
+- `scripts/`
+- `tests/`
+- `05 AI Control Plane/schemas/`
 
-The public repository is not for live operating data.
+Everything else is local-only and must not be tracked.
 
 Keep these private:
 
 - `.hq/` runtime state, telemetry, handoffs, evals, reflections, releases, and local prompts
+- live operating docs such as `now.md`, `projects.md`, `routines.md`, `stack.md`, and Markdown work under `02 Planning/`, `03 Notes/`, and `04 Projects/`
 - raw customer or prospect data
 - personal notes, journals, archives, and imported research dumps
 - credentials, API keys, private keys, payment exports, and banking material
