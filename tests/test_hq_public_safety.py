@@ -62,8 +62,9 @@ class HqPublicSafetyTests(unittest.TestCase):
         self.assertTrue(any("blocked sensitive local artifact type" in item for item in violations))
 
     def test_obvious_secret_fails(self):
+        simulated_secret = "sk-" + "1234567890abcdefghijklmnop"
         tracked_files = [
-            self.write_file("docs/example.md", "token=sk-1234567890abcdefghijklmnop\n"),
+            self.write_file("docs/example.md", f"token={simulated_secret}\n"),
         ]
 
         violations = self.module.find_violations(self.temp_root, tracked_files)
