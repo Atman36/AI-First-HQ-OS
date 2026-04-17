@@ -31,6 +31,7 @@
             "enum": [
               "session_start",
               "run_queued",
+              "run_dispatched",
               "run_started",
               "run_checkpointed",
               "agent_started",

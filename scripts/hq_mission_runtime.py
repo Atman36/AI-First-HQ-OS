@@ -990,6 +990,25 @@ def queued_runs_for_thread(thread_id: str) -> list[dict[str, Any]]:
     return queued_runs
 
 
+def summarize_queued_run(run: dict[str, Any]) -> dict[str, Any]:
+    queue_metadata = run.get("metadata", {}).get("queue", {})
+    if not isinstance(queue_metadata, dict):
+        queue_metadata = {}
+    return {
+        "run_id": run["id"],
+        "mission_id": run["mission_id"],
+        "thread_id": run["thread_id"],
+        "actor": run["actor"],
+        "loop": run["loop"],
+        "status": run["status"],
+        "created_at": run["created_at"],
+        "updated_at": run["updated_at"],
+        "queued_at": str(queue_metadata.get("queued_at") or "").strip(),
+        "queued_after_run_id": str(queue_metadata.get("queued_after_run_id") or "").strip(),
+        "strategy": str(queue_metadata.get("strategy") or "").strip(),
+    }
+
+
 def emit_run_lifecycle(
     *,
     event_type: str,
@@ -1085,6 +1104,17 @@ def activate_queued_run(
         status="active",
         execution_context=run["execution_context"],
         trace_state=run["trace_state"],
+    )
+    emit_run_lifecycle(
+        event_type="run_dispatched",
+        status=run["status"],
+        summary=f"Dispatched queued run for mission '{mission['title']}'.",
+        action=["hq", "run", "dispatch"],
+        hook_event="run_dispatched",
+        run=run,
+        mission=mission,
+        thread=thread,
+        metadata={"queue_activated_by": activated_by},
     )
     emit_run_lifecycle(
         event_type="run_started",
@@ -1219,6 +1249,27 @@ def start_run_command(args: argparse.Namespace) -> int:
     print(f"run_id={payload['id']}")
     print(f"status={payload['status']}")
     print(f"run_file={run_path(payload['id'])}")
+    return 0
+
+
+def list_queued_runs_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    if args.limit < 1:
+        print("error=limit must be >= 1")
+        return 2
+    try:
+        thread = require_file(thread_path(args.thread_id), "thread", "thread")
+        queued_runs = queued_runs_for_thread(thread["id"])
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    payload = {
+        "thread_id": thread["id"],
+        "active_run_id": str(thread.get("active_run_id") or "").strip(),
+        "queued_run_count": len(queued_runs),
+        "queued_runs": [summarize_queued_run(run) for run in queued_runs[: args.limit]],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -2534,6 +2585,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Actor activating the queued run.",
     )
     dispatch_queued_run_parser.set_defaults(func=dispatch_queued_run)
+
+    list_queued_runs_parser = subparsers.add_parser(
+        "list-queued-runs",
+        help="List queued runs for one thread in queue order.",
+    )
+    list_queued_runs_parser.add_argument("--thread-id", required=True, help="Thread identifier.")
+    list_queued_runs_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of queued runs to return.",
+    )
+    list_queued_runs_parser.set_defaults(func=list_queued_runs_command)
 
     checkpoint_step_parser = subparsers.add_parser(
         "checkpoint-step",
