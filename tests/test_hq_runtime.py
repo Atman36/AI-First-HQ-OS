@@ -470,6 +470,141 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertTrue((runtime_root / "missions").exists())
         self.assertTrue((runtime_root / "runs").exists())
 
+    def test_route_next_slice_writes_private_packets_from_active_work(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        active_work_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-17",
+                    "operating_mode": "test",
+                    "objective": {
+                        "id": "objective",
+                        "title": "Objective",
+                        "window": {"start": "2026-04-17", "target_end": "2026-04-30"},
+                    },
+                    "tasks": [
+                        {
+                            "id": "review-trust",
+                            "title": "Review trust wording",
+                            "column": "review",
+                            "manager": "ai_operations_lead",
+                            "owner": "governor",
+                            "project": "Founder Revenue Sprint",
+                            "next_step": "Lock the live review wording.",
+                            "done_when": "Wording is founder-reviewed.",
+                            "primary_update_file": "04 Projects/Founder Revenue Sprint.md",
+                            "align_files": ["03 Notes/Open Decisions.md"],
+                            "accepts_result": "ceo",
+                            "risk_tier": "high",
+                            "autonomy_tier": "A1",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
+                            "id": "work-ready-accounts",
+                            "title": "Work ready accounts",
+                            "column": "executing",
+                            "manager": "ai_operations_lead",
+                            "owner": "growth",
+                            "project": "Founder Revenue Sprint",
+                            "next_step": "Work the ready accounts first.",
+                            "done_when": "Accounts are worked.",
+                            "primary_update_file": "04 Projects/Founder Revenue Sprint.md",
+                            "align_files": ["projects.md"],
+                            "accepts_result": "ceo",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
+                            "id": "future-task",
+                            "title": "Future task",
+                            "column": "this_week",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "AI-First HQ OS",
+                            "next_step": "Handle later.",
+                            "done_when": "Handled later.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["route-next-slice", "--session", "autopilot-test"])
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        spec_path = self.temp_root / ".hq" / "specs" / "route-next-slice" / "LATEST.md"
+        handoff_path = self.temp_root / ".hq" / "handoffs" / "route-next-slice" / "LATEST.md"
+        self.assertTrue(spec_path.exists())
+        self.assertTrue(handoff_path.exists())
+        spec_text = spec_path.read_text(encoding="utf-8")
+        handoff_text = handoff_path.read_text(encoding="utf-8")
+        self.assertIn("Review trust wording", spec_text)
+        self.assertIn("Work ready accounts", spec_text)
+        self.assertIn("Founder review", spec_text)
+        self.assertIn(".hq/specs/route-next-slice/LATEST.md", handoff_text)
+        self.assertIn("Continue now: [Founder Revenue Sprint] Review trust wording", handoff_text)
+        self.assertIn("Move in parallel: [Founder Revenue Sprint] Work ready accounts", handoff_text)
+
+    def test_route_next_slice_errors_when_no_actionable_tasks_exist(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        active_work_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-17",
+                    "operating_mode": "test",
+                    "objective": {
+                        "id": "objective",
+                        "title": "Objective",
+                        "window": {"start": "2026-04-17", "target_end": "2026-04-30"},
+                    },
+                    "tasks": [
+                        {
+                            "id": "done-task",
+                            "title": "Done task",
+                            "column": "done",
+                            "completed_at": "2026-04-17",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "AI-First HQ OS",
+                            "next_step": "None.",
+                            "done_when": "Done.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["route-next-slice"])
+
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 2)
+
     def test_founder_weekly_review_completes_without_founder_attention_items(self):
         parser = self.module.build_parser()
         args = parser.parse_args(

@@ -871,6 +871,237 @@ def normalize_cli_list(values: list[str] | None) -> list[str]:
     return items
 
 
+AUTOPILOT_COLUMN_PRIORITY = (
+    "review",
+    "executing",
+    "this_week",
+    "scheduled",
+    "policy_check",
+    "triage",
+    "intake",
+)
+
+
+def load_active_work_payload() -> dict[str, Any]:
+    active_work_path = REPO_ROOT / "05 AI Control Plane" / "active-work.json"
+    if not active_work_path.exists():
+        raise FileNotFoundError(f"active work file not found: {active_work_path}")
+    payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list):
+        raise ValueError("active-work.json must contain a tasks array")
+    return payload
+
+
+def actionable_tasks(
+    tasks: list[dict[str, Any]],
+    *,
+    project: str = "",
+) -> list[dict[str, Any]]:
+    priority = {column: index for index, column in enumerate(AUTOPILOT_COLUMN_PRIORITY)}
+    filtered: list[dict[str, Any]] = []
+    for task in tasks:
+        column = str(task.get("column") or "").strip()
+        task_project = str(task.get("project") or "").strip()
+        if project and task_project != project:
+            continue
+        if column in {"blocked", "waiting", "accepted", "synced", "done"}:
+            continue
+        filtered.append(task)
+    return sorted(
+        filtered,
+        key=lambda task: (
+            priority.get(str(task.get("column") or "").strip(), len(priority)),
+            str(task.get("project") or "").strip(),
+            str(task.get("title") or "").strip(),
+        ),
+    )
+
+
+def founder_attention_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for task in tasks:
+        if str(task.get("column") or "").strip() != "review":
+            continue
+        accepts_result = str(task.get("accepts_result") or "").strip()
+        risk_tier = str(task.get("risk_tier") or "").strip()
+        autonomy_tier = str(task.get("autonomy_tier") or "").strip()
+        if accepts_result == "ceo" or risk_tier == "high" or autonomy_tier == "A1":
+            items.append(task)
+    return items
+
+
+def choose_parallel_support_task(
+    primary: dict[str, Any],
+    tasks: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    primary_id = str(primary.get("id") or "").strip()
+    primary_column = str(primary.get("column") or "").strip()
+    for task in tasks:
+        if str(task.get("id") or "").strip() == primary_id:
+            continue
+        if primary_column == "review" and str(task.get("column") or "").strip() == "executing":
+            return task
+    for task in tasks:
+        if str(task.get("id") or "").strip() != primary_id:
+            return task
+    return None
+
+
+def relative_read_first_for_task(task: dict[str, Any]) -> list[str]:
+    items = ["05 AI Control Plane/active-work.json"]
+    primary_file = str(task.get("primary_update_file") or "").strip()
+    if primary_file:
+        items.append(primary_file)
+    for align_file in task.get("align_files") or []:
+        text = str(align_file).strip()
+        if text:
+            items.append(text)
+    project_name = str(task.get("project") or "").strip()
+    if project_name:
+        candidate = REPO_ROOT / "04 Projects" / f"{project_name}.md"
+        if candidate.exists():
+            items.append(candidate.relative_to(REPO_ROOT).as_posix())
+    return normalize_cli_list(items)
+
+
+def task_route_line(label: str, task: dict[str, Any]) -> str:
+    return (
+        f"{label}: [{task.get('project')}] {task.get('title')} "
+        f"({task.get('owner')} / {task.get('column')}) -> {task.get('next_step')}"
+    )
+
+
+def route_next_slice_command(args: argparse.Namespace) -> int:
+    ensure_private_runtime()
+    try:
+        payload = load_active_work_payload()
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error={exc}")
+        return 2
+
+    tasks = actionable_tasks(payload["tasks"], project=args.project or "")
+    if not tasks:
+        if args.project:
+            print(f"error=no actionable tasks for project '{args.project}'")
+        else:
+            print("error=no actionable tasks in active-work.json")
+        return 2
+
+    primary = tasks[0]
+    support = choose_parallel_support_task(primary, tasks)
+    founder_items = founder_attention_tasks(payload["tasks"])
+    founder_lines = [task_route_line("Founder review", task) for task in founder_items]
+    spec_task_name = args.task_name or "Route next slice"
+    session = args.session or f"session-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    read_first = relative_read_first_for_task(primary)
+    if support:
+        read_first.extend(relative_read_first_for_task(support))
+        read_first = normalize_cli_list(read_first)
+
+    spec_args = argparse.Namespace(
+        task=spec_task_name,
+        session=session,
+        owner=args.owner or "AI Operations Lead",
+        thread_id=args.thread_id or "",
+        status="ready",
+        goal=(
+            f"Keep HQ moving without a manual 'what next' prompt by routing the next slice from "
+            f"active-work.json. Current primary task: {primary.get('title')}."
+        ),
+        primary_file=str(primary.get("primary_update_file") or "").strip(),
+        why=[
+            "The founder should not need to relaunch Codex and restate the next move.",
+            f"The highest-priority actionable task is currently '{primary.get('title')}' in column "
+            f"'{primary.get('column')}'.",
+            (
+                f"Founder-only review is pending on {len(founder_items)} item(s)."
+                if founder_items
+                else "No founder-only review items are currently queued."
+            ),
+        ],
+        in_scope=[
+            task_route_line("Primary move", primary),
+            (
+                task_route_line("Parallel support", support)
+                if support
+                else "No separate parallel support track is currently available."
+            ),
+            "Refresh this private packet before handing control back.",
+        ],
+        out_of_scope=[
+            "Do not introduce a new general multi-agent framework.",
+            "Do not move private runtime state into tracked repo files.",
+        ],
+        read_file=read_first,
+        constraint=[
+            "Keep runtime artifacts private under .hq/.",
+            "Use active-work.json as the queue source of truth before ad hoc chat memory.",
+            "Surface founder-only review items explicitly instead of burying them in narrative.",
+        ],
+        acceptance=[
+            "A future wake-up can identify the primary move, one support track, and founder-only review items from this packet alone.",
+            "The selected task aligns with the highest-priority actionable column ordering.",
+        ],
+        question=[
+            "Should the heartbeat stay daily or move to a tighter interval after the loop proves stable?"
+        ],
+        note=founder_lines or ["No founder-only review lines were generated from the current queue."],
+    )
+    spec_exit = spec_command(spec_args)
+    if spec_exit != 0:
+        return spec_exit
+
+    spec_latest = (
+        RUNTIME_DIRS["specs"] / slugify(spec_task_name) / "LATEST.md"
+    ).relative_to(REPO_ROOT).as_posix()
+    handoff_args = argparse.Namespace(
+        task=spec_task_name,
+        session=session,
+        owner=args.owner or str(primary.get("owner") or "AI Operations Lead").strip(),
+        thread_id=args.thread_id or "",
+        status="ready_for_handoff",
+        continue_from=str(primary.get("primary_update_file") or "").strip(),
+        spec_file=spec_latest,
+        primary_file=str(primary.get("primary_update_file") or "").strip(),
+        accepting_role=str(primary.get("accepts_result") or "").strip(),
+        done=[
+            "Reviewed the active-work queue and selected the next slice automatically.",
+            f"Primary task locked: {primary.get('id')}.",
+        ],
+        next=[
+            task_route_line("Continue now", primary),
+            (
+                task_route_line("Move in parallel", support)
+                if support
+                else "No parallel support track is currently available."
+            ),
+            "Refresh `.hq/handoffs/route-next-slice/LATEST.md` before ending the session.",
+        ],
+        important_file=read_first,
+        read_first=[spec_latest],
+        risk=founder_lines,
+        blocker=[],
+        note=[
+            f"Queue updated_at: {payload.get('updated_at', '')}",
+            (
+                "Founder review is pending on narrow operational surfaces."
+                if founder_items
+                else "No founder-only review items are pending from the queue snapshot."
+            ),
+        ],
+    )
+    handoff_exit = handoff_command(handoff_args)
+    if handoff_exit != 0:
+        return handoff_exit
+
+    print(f"primary_task_id={primary.get('id')}")
+    if support:
+        print(f"parallel_task_id={support.get('id')}")
+    print(f"founder_review_items={len(founder_items)}")
+    return 0
+
+
 def mission_runtime_command(args: argparse.Namespace) -> int:
     ensure_private_runtime()
     hq_mission_runtime.ensure_runtime()
@@ -1171,6 +1402,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print JSON instead of plain text.",
     )
     probe.set_defaults(func=probe_command)
+
+    route_next_slice = subparsers.add_parser(
+        "route-next-slice",
+        help="Derive the next HQ slice from active-work.json and write private resume packets.",
+    )
+    route_next_slice.add_argument(
+        "--session",
+        default=f"session-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        help="Session identifier used for the generated spec and handoff packets.",
+    )
+    route_next_slice.add_argument(
+        "--task-name",
+        default="Route next slice",
+        help="Private packet task name. Defaults to 'Route next slice'.",
+    )
+    route_next_slice.add_argument(
+        "--owner",
+        default="AI Operations Lead",
+        help="Owner written into the generated packets. Defaults to AI Operations Lead.",
+    )
+    route_next_slice.add_argument(
+        "--project",
+        help="Optional project filter; only actionable tasks for this project are considered.",
+    )
+    route_next_slice.add_argument(
+        "--thread-id",
+        help="Optional durable execution thread identifier to keep packet pointers synced.",
+    )
+    route_next_slice.set_defaults(func=route_next_slice_command)
 
     spec = subparsers.add_parser(
         "spec",
