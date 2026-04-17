@@ -73,7 +73,9 @@ ALLOWED_STEP_STATUSES = {
 }
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
-ALLOWED_VERIFICATION_STATUSES = {"pending", "verified", "failed"}
+ALLOWED_VERIFICATION_STATUSES = {"pending", "changes_requested", "verified", "failed"}
+ALLOWED_VERIFICATION_STAGE_TYPES = {"review", "approval"}
+ALLOWED_VERIFICATION_DECISIONS = {"", "approved", "changes_requested"}
 ALLOWED_INTERRUPTION_STATUSES = {"none", "interrupted"}
 ALLOWED_THREAD_STATUSES = {"active", "idle", "paused", "interrupted", "archived"}
 ALLOWED_HANDOFF_STATUSES = {
@@ -127,6 +129,29 @@ def parse_json_object(value: str | None) -> dict[str, Any]:
     return payload
 
 
+def parse_verification_stage(value: str) -> dict[str, str]:
+    text = str(value or "").strip()
+    if not text:
+        raise argparse.ArgumentTypeError("verification stage must not be empty")
+    if text.startswith("{"):
+        payload = parse_json_object(text)
+        stage_type = str(payload.get("type") or "").strip()
+        participant = str(payload.get("participant") or "").strip()
+        stage_id = str(payload.get("id") or "").strip()
+    else:
+        stage_type, separator, participant = text.partition(":")
+        if not separator:
+            raise argparse.ArgumentTypeError(
+                "verification stage must use TYPE:PARTICIPANT, e.g. review:documentation"
+            )
+        stage_type = stage_type.strip()
+        participant = participant.strip()
+        stage_id = ""
+    if not stage_type or not participant:
+        raise argparse.ArgumentTypeError("verification stage requires both type and participant")
+    return {"id": stage_id, "type": stage_type, "participant": participant}
+
+
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -171,9 +196,64 @@ def normalize_string_list(values: list[str] | None) -> list[str]:
     return items
 
 
-def normalize_verification_state(payload: dict[str, Any] | None) -> dict[str, Any]:
+def normalize_verification_stages(payload: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for index, raw_stage in enumerate(payload or [], start=1):
+        if not isinstance(raw_stage, dict):
+            raise ValueError("verification stages must be objects")
+        stage_type = str(raw_stage.get("type") or "").strip()
+        participant = str(raw_stage.get("participant") or "").strip()
+        stage_id = str(raw_stage.get("id") or f"{stage_type}-{index}").strip()
+        if stage_type not in ALLOWED_VERIFICATION_STAGE_TYPES:
+            raise ValueError(
+                "verification stage type must be one of: "
+                + ", ".join(sorted(ALLOWED_VERIFICATION_STAGE_TYPES))
+            )
+        if not participant:
+            raise ValueError("verification stage participant is required")
+        if not stage_id:
+            raise ValueError("verification stage id is required")
+        if stage_id in seen_ids:
+            raise ValueError(f"duplicate verification stage id: {stage_id}")
+        seen_ids.add(stage_id)
+        normalized.append(
+            {
+                "id": stage_id,
+                "type": stage_type,
+                "participant": participant,
+            }
+        )
+    return normalized
+
+
+def verification_stage_by_id(
+    stages: list[dict[str, str]],
+    stage_id: str,
+) -> dict[str, str] | None:
+    return next((stage for stage in stages if stage["id"] == stage_id), None)
+
+
+def next_verification_stage(
+    stages: list[dict[str, str]],
+    completed_stage_ids: list[str],
+) -> dict[str, str] | None:
+    completed = set(completed_stage_ids)
+    return next((stage for stage in stages if stage["id"] not in completed), None)
+
+
+def normalize_verification_state(
+    payload: dict[str, Any] | None,
+    *,
+    stages: list[dict[str, Any]] | None = None,
+    default_return_target: str = "",
+) -> dict[str, Any]:
     raw = payload or {}
+    normalized_stages = normalize_verification_stages(stages)
     metadata = raw.get("metadata", {})
+    completed_stage_ids = normalize_string_list(
+        raw.get("completed_stage_ids") if isinstance(raw.get("completed_stage_ids"), list) else []
+    )
     normalized = {
         "status": str(raw.get("status") or "pending").strip(),
         "step_id": str(raw.get("step_id") or "").strip(),
@@ -183,6 +263,13 @@ def normalize_verification_state(payload: dict[str, Any] | None) -> dict[str, An
         ),
         "verified_at": str(raw.get("verified_at") or "").strip(),
         "verified_by": str(raw.get("verified_by") or "").strip(),
+        "current_stage_id": str(raw.get("current_stage_id") or "").strip(),
+        "current_stage_type": str(raw.get("current_stage_type") or "").strip(),
+        "current_participant": str(raw.get("current_participant") or "").strip(),
+        "return_target": str(raw.get("return_target") or default_return_target).strip(),
+        "completed_stage_ids": completed_stage_ids,
+        "last_decision": str(raw.get("last_decision") or "").strip(),
+        "last_decision_note": str(raw.get("last_decision_note") or "").strip(),
         "metadata": metadata if isinstance(metadata, dict) else {},
     }
     if normalized["status"] not in ALLOWED_VERIFICATION_STATUSES:
@@ -190,6 +277,61 @@ def normalize_verification_state(payload: dict[str, Any] | None) -> dict[str, An
             "verification status must be one of: "
             + ", ".join(sorted(ALLOWED_VERIFICATION_STATUSES))
         )
+    if normalized["last_decision"] not in ALLOWED_VERIFICATION_DECISIONS:
+        raise ValueError(
+            "verification decision must be one of: "
+            + ", ".join(sorted(ALLOWED_VERIFICATION_DECISIONS))
+        )
+    if normalized_stages:
+        valid_stage_ids = {stage["id"] for stage in normalized_stages}
+        invalid_completed_stage_ids = [
+            stage_id
+            for stage_id in normalized["completed_stage_ids"]
+            if stage_id not in valid_stage_ids
+        ]
+        if invalid_completed_stage_ids:
+            raise ValueError(
+                "verification completed_stage_ids reference unknown stages: "
+                + ", ".join(invalid_completed_stage_ids)
+            )
+
+        current_stage = verification_stage_by_id(
+            normalized_stages,
+            normalized["current_stage_id"],
+        )
+        if normalized["current_stage_id"] and current_stage is None:
+            raise ValueError(
+                f"verification current_stage_id references unknown stage: {normalized['current_stage_id']}"
+            )
+        if current_stage is None and normalized["status"] in {"pending", "changes_requested"}:
+            current_stage = next_verification_stage(
+                normalized_stages,
+                normalized["completed_stage_ids"],
+            )
+            if current_stage is not None:
+                normalized["current_stage_id"] = current_stage["id"]
+        if current_stage is not None:
+            normalized["current_stage_type"] = current_stage["type"]
+            if normalized["status"] == "changes_requested":
+                normalized["current_participant"] = (
+                    normalized["current_participant"] or normalized["return_target"]
+                )
+            else:
+                normalized["current_participant"] = (
+                    normalized["current_participant"] or current_stage["participant"]
+                )
+        else:
+            normalized["current_stage_id"] = ""
+            normalized["current_stage_type"] = ""
+            if normalized["status"] != "changes_requested":
+                normalized["current_participant"] = ""
+    else:
+        normalized["current_stage_id"] = ""
+        normalized["current_stage_type"] = ""
+        normalized["current_participant"] = ""
+        normalized["completed_stage_ids"] = []
+        normalized["last_decision"] = ""
+        normalized["last_decision_note"] = ""
     validate_payload_against_schema(
         normalized,
         VERIFICATION_STATE_SCHEMA_PATH,
@@ -598,6 +740,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
         )
     elif entity_type == "run":
         upgraded.setdefault("handoff_ids", [])
+        upgraded["verification_stages"] = normalize_verification_stages(
+            upgraded.get("verification_stages", [])
+        )
         upgraded["interruption_state"] = normalize_interruption_state(
             upgraded.get("interruption_state", {})
         )
@@ -605,7 +750,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
             upgraded.get("execution_context", {})
         )
         upgraded["verification_state"] = normalize_verification_state(
-            upgraded.get("verification_state", {})
+            upgraded.get("verification_state", {}),
+            stages=upgraded["verification_stages"],
+            default_return_target=str(upgraded.get("actor") or "").strip(),
         )
         upgraded["trace_state"] = normalize_trace_state(
             upgraded.get("trace_state", {}),
@@ -1179,6 +1326,12 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         parent_session_id=str(getattr(args, "parent_session_id", None) or "").strip(),
         blocked_tool_classes=getattr(args, "blocked_tool_class", None) or [],
     )
+    verification_stages = normalize_verification_stages(
+        getattr(args, "verification_stage", None) or []
+    )
+    actor = str(args.actor or "").strip()
+    if verification_stages and not actor:
+        raise ValueError("verification stages require a run actor to set the return target")
     run_status = "running"
     metadata = dict(args.metadata or {})
     if active_run is not None and active_run["status"] in ACTIVE_RUN_STATUSES:
@@ -1195,7 +1348,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "thread_id": mission["thread_id"],
         "mission_id": mission["id"],
         "status": run_status,
-        "actor": str(args.actor or "").strip(),
+        "actor": actor,
         "loop": str(args.loop or "").strip(),
         "current_step_id": "",
         "resume_from_step_id": "",
@@ -1204,10 +1357,15 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "approval_ids": [],
         "handoff_ids": [],
         "artifact_ids": [],
+        "verification_stages": verification_stages,
         "checkpoint_count": 0,
         "interruption_state": normalize_interruption_state({}),
         "execution_context": execution_context,
-        "verification_state": normalize_verification_state({}),
+        "verification_state": normalize_verification_state(
+            {},
+            stages=verification_stages,
+            default_return_target=actor,
+        ),
         "trace_state": normalize_trace_state(
             {
                 "trace_id": run_id,
@@ -2083,30 +2241,142 @@ def attach_artifact_command(args: argparse.Namespace) -> int:
 
 def verify_run(args: argparse.Namespace) -> dict[str, Any]:
     verification_status = str(args.status or "verified").strip()
-    if verification_status not in {"verified", "failed"}:
-        raise ValueError("verification status must be one of: failed, verified")
+    if verification_status not in {"verified", "failed", "changes_requested"}:
+        raise ValueError(
+            "verification status must be one of: changes_requested, failed, verified"
+        )
+    run = require_file(run_path(args.run_id), "run", "run")
+    verification_stages = normalize_verification_stages(run.get("verification_stages", []))
+    verification_state = normalize_verification_state(
+        run.get("verification_state", {}),
+        stages=verification_stages,
+        default_return_target=run["actor"],
+    )
+    actor = str(args.actor or "").strip()
+    summary = str(args.summary or "").strip()
+    evidence = getattr(args, "evidence", []) or []
+    metadata = args.metadata or {}
+
+    step_key = "verification"
+    step_status = "completed" if verification_status != "failed" else "failed"
+    next_state_payload: dict[str, Any]
+
+    if not verification_stages:
+        if verification_status == "changes_requested":
+            raise ValueError("changes_requested requires a configured verification stage workflow")
+        next_state_payload = {
+            "status": verification_status,
+            "last_decision": "",
+            "last_decision_note": "",
+        }
+    else:
+        current_stage = verification_stage_by_id(
+            verification_stages,
+            verification_state["current_stage_id"],
+        )
+        if current_stage is None:
+            raise ValueError("verification workflow has no active stage")
+
+        if (
+            verification_state["status"] == "changes_requested"
+            and actor == verification_state["return_target"]
+        ):
+            if verification_status != "verified":
+                raise ValueError("changes-requested work must be resubmitted with status 'verified'")
+            step_key = "verification-resubmission"
+            next_state_payload = {
+                "status": "pending",
+                "current_stage_id": current_stage["id"],
+                "current_stage_type": current_stage["type"],
+                "current_participant": current_stage["participant"],
+                "return_target": verification_state["return_target"],
+                "completed_stage_ids": verification_state["completed_stage_ids"],
+                "last_decision": verification_state["last_decision"],
+                "last_decision_note": verification_state["last_decision_note"],
+            }
+        else:
+            if actor != verification_state["current_participant"]:
+                raise ValueError(
+                    "only the active reviewer or approver can advance the current verification stage"
+                )
+            step_key = f"verification-{current_stage['type']}"
+            if verification_status == "changes_requested":
+                if not verification_state["return_target"]:
+                    raise ValueError(
+                        "verification workflow has no return target for changes_requested"
+                    )
+                next_state_payload = {
+                    "status": "changes_requested",
+                    "current_stage_id": current_stage["id"],
+                    "current_stage_type": current_stage["type"],
+                    "current_participant": verification_state["return_target"],
+                    "return_target": verification_state["return_target"],
+                    "completed_stage_ids": verification_state["completed_stage_ids"],
+                    "last_decision": "changes_requested",
+                    "last_decision_note": summary,
+                }
+            elif verification_status == "failed":
+                step_status = "failed"
+                next_state_payload = {
+                    "status": "failed",
+                    "current_stage_id": current_stage["id"],
+                    "current_stage_type": current_stage["type"],
+                    "current_participant": actor,
+                    "return_target": verification_state["return_target"],
+                    "completed_stage_ids": verification_state["completed_stage_ids"],
+                    "last_decision": verification_state["last_decision"],
+                    "last_decision_note": verification_state["last_decision_note"],
+                }
+            else:
+                completed_stage_ids = normalize_string_list(
+                    [
+                        *verification_state["completed_stage_ids"],
+                        current_stage["id"],
+                    ]
+                )
+                next_stage = next_verification_stage(verification_stages, completed_stage_ids)
+                next_state_payload = {
+                    "status": "verified" if next_stage is None else "pending",
+                    "current_stage_id": "" if next_stage is None else next_stage["id"],
+                    "current_stage_type": "" if next_stage is None else next_stage["type"],
+                    "current_participant": "" if next_stage is None else next_stage["participant"],
+                    "return_target": verification_state["return_target"],
+                    "completed_stage_ids": completed_stage_ids,
+                    "last_decision": "approved",
+                    "last_decision_note": summary,
+                }
+
     step = checkpoint_step(
         argparse.Namespace(
             run_id=args.run_id,
-            key="verification",
-            actor=str(args.actor or "").strip(),
-            status="completed" if verification_status == "verified" else "failed",
-            summary=str(args.summary or "").strip(),
-            evidence=getattr(args, "evidence", []) or [],
-            metadata=args.metadata or {},
+            key=step_key,
+            actor=actor,
+            status=step_status,
+            summary=summary,
+            evidence=evidence,
+            metadata=metadata,
         )
     )
     run = require_file(run_path(args.run_id), "run", "run")
     run["verification_state"] = normalize_verification_state(
         {
-            "status": verification_status,
+            "status": next_state_payload["status"],
             "step_id": step["id"],
             "summary": step["summary"],
             "evidence": step["evidence"],
             "verified_at": step["updated_at"],
             "verified_by": step["actor"],
+            "current_stage_id": next_state_payload.get("current_stage_id", ""),
+            "current_stage_type": next_state_payload.get("current_stage_type", ""),
+            "current_participant": next_state_payload.get("current_participant", ""),
+            "return_target": next_state_payload.get("return_target", ""),
+            "completed_stage_ids": next_state_payload.get("completed_stage_ids", []),
+            "last_decision": next_state_payload.get("last_decision", ""),
+            "last_decision_note": next_state_payload.get("last_decision_note", ""),
             "metadata": step["metadata"],
-        }
+        },
+        stages=verification_stages,
+        default_return_target=run["actor"],
     )
     run["updated_at"] = utc_now()
     write_entity(run_path(run["id"]), run)
@@ -2130,9 +2400,21 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
     run = require_file(run_path(args.run_id), "run", "run")
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
     thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
-    verification_state = normalize_verification_state(run.get("verification_state", {}))
+    verification_stages = normalize_verification_stages(run.get("verification_stages", []))
+    verification_state = normalize_verification_state(
+        run.get("verification_state", {}),
+        stages=verification_stages,
+        default_return_target=run["actor"],
+    )
     if args.status == "completed" and verification_state["status"] != "verified":
         raise ValueError("run cannot be completed before a verification stage is recorded")
+    if args.status == "completed" and verification_stages:
+        required_stage_ids = [stage["id"] for stage in verification_stages]
+        if (
+            verification_state["current_stage_id"]
+            or verification_state["completed_stage_ids"] != required_stage_ids
+        ):
+            raise ValueError("run cannot be completed before the verification stage workflow is closed")
     finished_at = utc_now()
     run["status"] = args.status
     run["interruption_state"] = normalize_interruption_state({})
@@ -2638,6 +2920,13 @@ def build_parser() -> argparse.ArgumentParser:
     start_run_parser.add_argument("--work-dir", help="Optional isolated work directory override.")
     start_run_parser.add_argument("--runtime-home", help="Optional scoped runtime home override.")
     start_run_parser.add_argument(
+        "--verification-stage",
+        action="append",
+        type=parse_verification_stage,
+        default=[],
+        help="Repeat as TYPE:PARTICIPANT, e.g. review:documentation or approval:ceo.",
+    )
+    start_run_parser.add_argument(
         "--runtime-home-mode",
         choices=["none", "scoped"],
         default="scoped",
@@ -2722,7 +3011,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_run_parser.add_argument("--actor", required=True, help="Verification actor.")
     verify_run_parser.add_argument(
         "--status",
-        choices=["verified", "failed"],
+        choices=["verified", "failed", "changes_requested"],
         default="verified",
         help="Verification outcome. Defaults to verified.",
     )

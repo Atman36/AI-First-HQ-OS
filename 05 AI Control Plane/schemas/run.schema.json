@@ -2,6 +2,34 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
+  "$defs": {
+    "verificationStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "participant"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "review",
+            "approval"
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
   "required": [
     "schema_version",
     "entity_type",
@@ -104,6 +132,12 @@
       "items": {
         "type": "string",
         "minLength": 1
+      }
+    },
+    "verification_stages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/verificationStage"
       }
     },
     "checkpoint_count": {

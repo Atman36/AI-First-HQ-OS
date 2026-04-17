@@ -9,6 +9,13 @@
     "evidence",
     "verified_at",
     "verified_by",
+    "current_stage_id",
+    "current_stage_type",
+    "current_participant",
+    "return_target",
+    "completed_stage_ids",
+    "last_decision",
+    "last_decision_note",
     "metadata"
   ],
   "properties": {
@@ -16,6 +23,7 @@
       "type": "string",
       "enum": [
         "pending",
+        "changes_requested",
         "verified",
         "failed"
       ]
@@ -37,6 +45,41 @@
       "type": "string"
     },
     "verified_by": {
+      "type": "string"
+    },
+    "current_stage_id": {
+      "type": "string"
+    },
+    "current_stage_type": {
+      "type": "string",
+      "enum": [
+        "",
+        "review",
+        "approval"
+      ]
+    },
+    "current_participant": {
+      "type": "string"
+    },
+    "return_target": {
+      "type": "string"
+    },
+    "completed_stage_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "last_decision": {
+      "type": "string",
+      "enum": [
+        "",
+        "approved",
+        "changes_requested"
+      ]
+    },
+    "last_decision_note": {
       "type": "string"
     },
     "metadata": {

@@ -458,8 +458,199 @@ class HqMissionRuntimeTests(unittest.TestCase):
                 ["finish-run", "--run-id", run["id"], "--status", "completed"]
             )
         )
-        self.assertEqual(finished["status"], "completed")
-        self.assertEqual(finished["verification_state"]["status"], "verified")
+        self.assertEqual(finished["finished_run"]["status"], "completed")
+        self.assertEqual(finished["finished_run"]["verification_state"]["status"], "verified")
+
+    def test_staged_verification_routes_review_then_approval_before_completion(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Staged Verification Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "delivery",
+                    "--verification-stage",
+                    "review:documentation",
+                    "--verification-stage",
+                    "approval:ceo",
+                ]
+            )
+        )
+        self.assertEqual(run["verification_state"]["current_stage_id"], "review-1")
+        self.assertEqual(run["verification_state"]["current_participant"], "documentation")
+        self.assertEqual(run["verification_state"]["return_target"], "delivery")
+
+        reviewed = self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Review passed with expected evidence.",
+                ]
+            )
+        )
+        self.assertEqual(reviewed["verification_state"]["status"], "pending")
+        self.assertEqual(reviewed["verification_state"]["current_stage_id"], "approval-2")
+        self.assertEqual(reviewed["verification_state"]["current_stage_type"], "approval")
+        self.assertEqual(reviewed["verification_state"]["current_participant"], "ceo")
+        self.assertEqual(reviewed["verification_state"]["completed_stage_ids"], ["review-1"])
+        self.assertEqual(reviewed["verification_state"]["last_decision"], "approved")
+        self.assertEqual(
+            reviewed["verification_state"]["last_decision_note"],
+            "Review passed with expected evidence.",
+        )
+
+        approved = self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "ceo",
+                    "--summary",
+                    "Approval granted for completion.",
+                ]
+            )
+        )
+        self.assertEqual(approved["verification_state"]["status"], "verified")
+        self.assertEqual(approved["verification_state"]["current_stage_id"], "")
+        self.assertEqual(approved["verification_state"]["completed_stage_ids"], ["review-1", "approval-2"])
+
+        finished = self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "completed"]
+            )
+        )
+        self.assertEqual(finished["finished_run"]["status"], "completed")
+
+    def test_staged_verification_changes_requested_returns_to_executor_then_rereviews(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Re-review Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "delivery",
+                    "--verification-stage",
+                    "review:documentation",
+                ]
+            )
+        )
+
+        changes_requested = self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--status",
+                    "changes_requested",
+                    "--summary",
+                    "Please fix the missing regression coverage.",
+                ]
+            )
+        )
+        self.assertEqual(changes_requested["verification_state"]["status"], "changes_requested")
+        self.assertEqual(changes_requested["verification_state"]["current_stage_id"], "review-1")
+        self.assertEqual(changes_requested["verification_state"]["current_participant"], "delivery")
+        self.assertEqual(changes_requested["verification_state"]["return_target"], "delivery")
+        self.assertEqual(changes_requested["verification_state"]["last_decision"], "changes_requested")
+
+        resubmitted = self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "delivery",
+                    "--summary",
+                    "Regression coverage added and re-submitted.",
+                ]
+            )
+        )
+        self.assertEqual(resubmitted["verification_state"]["status"], "pending")
+        self.assertEqual(resubmitted["verification_state"]["current_stage_id"], "review-1")
+        self.assertEqual(resubmitted["verification_state"]["current_participant"], "documentation")
+        self.assertEqual(resubmitted["verification_state"]["last_decision"], "changes_requested")
+
+        rereviewed = self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Re-review passed after requested changes.",
+                ]
+            )
+        )
+        self.assertEqual(rereviewed["verification_state"]["status"], "verified")
+        self.assertEqual(rereviewed["verification_state"]["completed_stage_ids"], ["review-1"])
+
+        finished = self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "completed"]
+            )
+        )
+        self.assertEqual(finished["finished_run"]["status"], "completed")
+
+    def test_finish_run_rejects_completion_while_verification_stages_remain_open(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Open Verification Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "delivery",
+                    "--verification-stage",
+                    "review:documentation",
+                    "--verification-stage",
+                    "approval:ceo",
+                ]
+            )
+        )
+        self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Review passed and moved to approval.",
+                ]
+            )
+        )
+
+        with self.assertRaises(ValueError):
+            self.module.finish_run(
+                self.module.build_parser().parse_args(
+                    ["finish-run", "--run-id", run["id"], "--status", "completed"]
+                )
+            )
 
     def test_attach_artifact_and_finish_run_persist_lineage(self):
         mission = self.module.create_mission(
@@ -523,7 +714,7 @@ class HqMissionRuntimeTests(unittest.TestCase):
                 ["finish-run", "--run-id", run["id"], "--status", "completed"]
             )
         )
-        self.assertEqual(finished["status"], "completed")
+        self.assertEqual(finished["finished_run"]["status"], "completed")
         mission_state = json.loads(self.module.mission_path(mission["id"]).read_text(encoding="utf-8"))
         self.assertEqual(mission_state["status"], "completed")
         thread_state = json.loads(
