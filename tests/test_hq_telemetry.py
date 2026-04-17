@@ -176,7 +176,7 @@ class HqTelemetryTests(unittest.TestCase):
     def test_event_command_rotates_daily_jsonl_when_threshold_is_hit(self):
         os.environ["HQ_TELEMETRY_JSONL_MAX_BYTES"] = "256"
         os.environ["HQ_TELEMETRY_JSONL_MAX_RECORDS"] = "1000"
-        telemetry_path = self.temp_root / ".hq" / "telemetry" / "2026-04" / "2026-04-16.jsonl"
+        telemetry_path = self.module.event_file_for_timestamp(self.module.utc_now())
         telemetry_path.parent.mkdir(parents=True, exist_ok=True)
         telemetry_path.write_text(
             json.dumps(
@@ -226,6 +226,17 @@ class HqTelemetryTests(unittest.TestCase):
         current_lines = telemetry_path.read_text(encoding="utf-8").strip().splitlines()
         self.assertEqual(len(current_lines), 1)
         self.assertEqual(json.loads(current_lines[0])["task_id"], "task-1")
+
+    def test_trace_contract_uses_run_as_trace_and_mission_as_thread(self):
+        contract = self.module.build_trace_contract()
+
+        self.assertEqual(contract["canonical_trace_entity"], "run")
+        self.assertEqual(contract["grouping_entity"], "mission")
+        self.assertEqual(contract["join_key"], "task_id")
+        self.assertEqual(contract["entities"]["run"]["otel_role"], "trace")
+        self.assertEqual(contract["entities"]["step"]["otel_role"], "span")
+        self.assertEqual(contract["entities"]["approval"]["parent_entity"], "step")
+        self.assertEqual(contract["entities"]["eval"]["parent_entity"], "run")
 
     def test_weekly_metrics_generates_review_and_flags_breach(self):
         control_plane_dir = self.temp_root / "05 AI Control Plane"

@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +18,21 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 REPO_ROOT = Path(os.environ.get("HQ_EVAL_REPO_ROOT", Path(__file__).resolve().parents[1])).resolve()
+os.environ.setdefault("HQ_TELEMETRY_REPO_ROOT", str(REPO_ROOT))
+os.environ.setdefault("HQ_RUNTIME_PRIVATE_ROOT", str(REPO_ROOT / ".hq"))
+
+from hq_io import write_json
+from hq_telemetry import build_trace_contract
+from hq_telemetry import write_event_payload
+
+
+PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
+EVAL_ROOT = PRIVATE_ROOT / "evals"
 SCHEMA_DIR = REPO_ROOT / "05 AI Control Plane" / "schemas"
 DATASET_SCHEMA_PATH = SCHEMA_DIR / "eval-dataset.schema.json"
 REPORT_SCHEMA_PATH = SCHEMA_DIR / "eval-report.schema.json"
@@ -47,6 +62,21 @@ def load_dataset(path: Path) -> dict[str, Any]:
     return payload
 
 
+def slugify(value: str) -> str:
+    chunks: list[str] = []
+    current: list[str] = []
+    for char in value.lower().strip():
+        if char.isalnum():
+            current.append(char)
+            continue
+        if current:
+            chunks.append("".join(current))
+            current = []
+    if current:
+        chunks.append("".join(current))
+    return "-".join(chunks) or "eval"
+
+
 @dataclass
 class CheckResult:
     name: str
@@ -70,21 +100,48 @@ def run_case(case: dict[str, Any], dataset_path: Path) -> dict[str, Any]:
     if case["kind"] != "command":
         raise ValueError(f"unsupported case kind: {case['kind']}")
 
-    cwd = Path(case.get("cwd") or dataset_path.parent).resolve()
+    cwd_value = str(case.get("cwd") or "").strip()
+    if cwd_value:
+        cwd_path = Path(cwd_value)
+        if not cwd_path.is_absolute():
+            cwd_path = dataset_path.parent / cwd_path
+    else:
+        cwd_path = dataset_path.parent
+    cwd = cwd_path.resolve()
     env = os.environ.copy()
     env.update(case.get("env") or {})
     timeout = float(case.get("timeout_seconds") or 30.0)
 
     started = time.perf_counter()
-    completed = subprocess.run(
-        case["command"],
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            case["command"],
+            cwd=str(cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        duration = time.perf_counter() - started
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        return {
+            "id": case["id"],
+            "status": "failed",
+            "duration_seconds": round(duration, 6),
+            "exit_code": -1,
+            "checks": [
+                {
+                    "name": "timeout",
+                    "passed": False,
+                    "details": f"command exceeded timeout of {timeout} seconds",
+                }
+            ],
+            "stdout": stdout,
+            "stderr": stderr,
+        }
     duration = time.perf_counter() - started
 
     stdout = completed.stdout or ""
@@ -130,15 +187,35 @@ def run_case(case: dict[str, Any], dataset_path: Path) -> dict[str, Any]:
     }
 
 
+def make_eval_run_id(dataset_name: str) -> str:
+    return f"eval-{slugify(dataset_name)}-{uuid.uuid4().hex[:8]}"
+
+
 def build_report(dataset: dict[str, Any], dataset_path: Path) -> dict[str, Any]:
     started = time.perf_counter()
     case_reports = [run_case(case, dataset_path) for case in dataset["cases"]]
     duration = time.perf_counter() - started
     passed = sum(1 for case in case_reports if case["status"] == "passed")
+    telemetry = dataset.get("telemetry", {}) if isinstance(dataset.get("telemetry"), dict) else {}
+    task_id = str(telemetry.get("task_id") or f"eval-{slugify(dataset['name'])}").strip()
+    run_id = make_eval_run_id(dataset["name"])
     report = {
+        "version": 1,
+        "run_id": run_id,
+        "status": "passed" if passed == len(case_reports) else "failed",
+        "dataset_version": dataset["version"],
         "dataset_name": dataset["name"],
         "dataset_path": str(dataset_path),
         "generated_at": utc_now(),
+        "task_id": task_id,
+        "trace": {
+            "trace_contract_version": build_trace_contract()["version"],
+            "trace_entity": "run",
+            "trace_id": run_id,
+            "task_id": task_id,
+            "mission_id": str(telemetry.get("mission_id") or "").strip(),
+            "subject_run_id": str(telemetry.get("subject_run_id") or "").strip(),
+        },
         "summary": {
             "total": len(case_reports),
             "passed": passed,
@@ -149,6 +226,61 @@ def build_report(dataset: dict[str, Any], dataset_path: Path) -> dict[str, Any]:
     }
     validate_payload(report, REPORT_SCHEMA_PATH, "report")
     return report
+
+
+def build_default_report_paths(dataset_name: str, run_id: str) -> tuple[Path, Path]:
+    dataset_dir = EVAL_ROOT / slugify(dataset_name)
+    return dataset_dir / "runs" / f"{run_id}.json", dataset_dir / "LATEST.json"
+
+
+def write_report_artifacts(report: dict[str, Any], write_report: Path | None = None) -> tuple[dict[str, Any], Path]:
+    report_path, latest_path = build_default_report_paths(report["dataset_name"], report["run_id"])
+    report_with_paths = dict(report)
+    report_with_paths["report_path"] = str(report_path)
+    validate_payload(report_with_paths, REPORT_SCHEMA_PATH, "report")
+    write_json(report_path, report_with_paths)
+    write_json(latest_path, report_with_paths)
+    if write_report:
+        write_json(write_report, report_with_paths)
+    return report_with_paths, report_path
+
+
+def emit_eval_telemetry(dataset: dict[str, Any], report: dict[str, Any]) -> tuple[Path, str, Path | None]:
+    telemetry = dataset.get("telemetry", {}) if isinstance(dataset.get("telemetry"), dict) else {}
+    trace_contract = build_trace_contract()
+    payload = {
+        "id": str(uuid.uuid4()),
+        "created_at": report["generated_at"],
+        "event_type": "eval",
+        "agent": str(telemetry.get("actor") or "hq_eval").strip(),
+        "role": str(telemetry.get("role") or "Eval Runner").strip(),
+        "task_id": str(telemetry.get("task_id") or report["task_id"]).strip(),
+        "mission_id": str(telemetry.get("mission_id") or report["trace"].get("mission_id") or "").strip(),
+        "run_id": report["run_id"],
+        "status": "reviewed",
+        "summary": (
+            f"Eval dataset '{report['dataset_name']}' {report['status']} "
+            f"({report['summary']['passed']}/{report['summary']['total']} passed)."
+        ),
+        "workflow": str(telemetry.get("workflow") or "eval-foundation").strip(),
+        "risk_tier": str(telemetry.get("risk_tier") or "").strip(),
+        "autonomy_tier": str(telemetry.get("autonomy_tier") or "").strip(),
+        "metadata": {
+            "outcome": report["status"],
+            "dataset_name": report["dataset_name"],
+            "dataset_version": report["dataset_version"],
+            "report_path": report["report_path"],
+            "cases_total": report["summary"]["total"],
+            "cases_passed": report["summary"]["passed"],
+            "cases_failed": report["summary"]["failed"],
+            "trace_contract_version": trace_contract["version"],
+            "observation_type": "eval",
+            "observation_level": "dataset",
+            **(telemetry.get("metadata") or {}),
+        },
+    }
+    payload = {key: value for key, value in payload.items() if value != "" or key == "metadata"}
+    return write_event_payload(payload)
 
 
 def validate_command(args: argparse.Namespace) -> int:
@@ -171,16 +303,25 @@ def run_command(args: argparse.Namespace) -> int:
         print(f"error={exc}")
         return 2
 
-    if args.write_report:
-        output_path = args.write_report.resolve()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"report={output_path}")
+    custom_report_path = args.write_report.resolve() if args.write_report else None
+    report, report_path = write_report_artifacts(report, custom_report_path)
+    print(f"report={report_path}")
+    print(f"report_latest={(report_path.parent.parent / 'LATEST.json')}")
+    if custom_report_path:
+        print(f"report_copy={custom_report_path}")
+
+    event_path, event_id, archived_event_path = emit_eval_telemetry(dataset, report)
+    if archived_event_path:
+        print(f"archived_event_file={archived_event_path}")
+    print(f"event_file={event_path}")
+    print(f"event_id={event_id}")
 
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(f"dataset={report['dataset_name']}")
+        print(f"run_id={report['run_id']}")
+        print(f"status={report['status']}")
         print(f"cases_total={report['summary']['total']}")
         print(f"cases_passed={report['summary']['passed']}")
         print(f"cases_failed={report['summary']['failed']}")

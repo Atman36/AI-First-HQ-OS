@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "telemetry-task-cycle",
+  "description": "Verify both happy and failing task-cycle telemetry scenarios in a hermetic fixture repo.",
+  "telemetry": {
+    "task_id": "eval-telemetry-task-cycle",
+    "actor": "ai_operations_lead",
+    "role": "AI Operations Lead",
+    "workflow": "eval-foundation",
+    "metadata": {
+      "subject": "telemetry",
+      "scenario_family": "task_cycle"
+    }
+  },
+  "cases": [
+    {
+      "id": "task-cycle-happy",
+      "kind": "command",
+      "cwd": "../../../",
+      "command": [
+        "python3",
+        "tests/fixtures/hq_eval_scenarios.py",
+        "telemetry-task-cycle-happy"
+      ],
+      "expectations": {
+        "exit_code": 0,
+        "stdout_contains": [
+          "status=ok",
+          "queue_state_ok=true",
+          "missing_required_events=none"
+        ]
+      }
+    },
+    {
+      "id": "task-cycle-failure",
+      "kind": "command",
+      "cwd": "../../../",
+      "command": [
+        "python3",
+        "tests/fixtures/hq_eval_scenarios.py",
+        "telemetry-task-cycle-failure"
+      ],
+      "expectations": {
+        "exit_code": 1,
+        "stdout_contains": [
+          "status=failed",
+          "missing_required_events=policy_check,acceptance,sync"
+        ]
+      }
+    }
+  ]
+}

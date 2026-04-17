@@ -77,6 +77,70 @@ def validate_event_payload(payload: dict[str, Any]) -> None:
         raise ValueError(f"event payload failed schema validation at {path or '<root>'}: {error.message}")
 
 
+def write_event_payload(payload: dict[str, Any]) -> tuple[Path, str, Path | None]:
+    ensure_runtime()
+    validate_event_payload(payload)
+    path = event_file_for_timestamp(str(payload["created_at"]))
+    archive_path = append_event(path, payload)
+    return path, str(payload["id"]), archive_path
+
+
+def build_trace_contract() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "canonical_trace_entity": "run",
+        "grouping_entity": "mission",
+        "join_key": "task_id",
+        "entities": {
+            "task": {
+                "role": "cross_run_join_key",
+                "description": "Control-plane work item or eval target lineage key.",
+            },
+            "mission": {
+                "role": "thread",
+                "otel_role": "session",
+                "description": "Durable execution thread that can contain multiple runs.",
+            },
+            "run": {
+                "role": "execution_instance",
+                "otel_role": "trace",
+                "parent_entity": "mission",
+                "description": "Canonical trace root for one bounded execution or eval run.",
+            },
+            "step": {
+                "role": "execution_step",
+                "otel_role": "span",
+                "parent_entity": "run",
+                "description": "Primary observation for a checkpointed runtime step.",
+            },
+            "approval": {
+                "role": "approval_observation",
+                "otel_role": "span",
+                "parent_entity": "step",
+                "description": "Child observation for approval requests and decisions tied to a step.",
+            },
+            "eval": {
+                "role": "evaluation_observation",
+                "otel_role": "span",
+                "parent_entity": "run",
+                "description": "Observation for one dataset-level eval run, optionally linked to a subject run.",
+            },
+            "artifact": {
+                "role": "linked_output",
+                "otel_role": "event",
+                "parent_entity": "run",
+                "description": "Output artifact attached to a run or step.",
+            },
+        },
+        "export_mapping": {
+            "trace_id": "run_id",
+            "session_id": "mission_id",
+            "observation_id": "step_id|approval_id|metadata.eval_observation_id",
+            "tags": ["task_id", "workflow"],
+        },
+    }
+
+
 def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
     contract = build_telemetry_contract()
     event_type = str(args.event_type or "").strip()
@@ -115,18 +179,16 @@ def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def event_command(args: argparse.Namespace) -> int:
-    ensure_runtime()
     try:
         payload = build_event_payload(args)
     except ValueError as exc:
         print(f"error={exc}")
         return 2
-    path = event_file_for_timestamp(payload["created_at"])
-    archive_path = append_event(path, payload)
+    path, event_id, archive_path = write_event_payload(payload)
     if archive_path:
         print(f"archived_event_file={archive_path}")
     print(f"event_file={path}")
-    print(f"event_id={payload['id']}")
+    print(f"event_id={event_id}")
     return 0
 
 
@@ -175,6 +237,11 @@ def task_cycle_command(args: argparse.Namespace) -> int:
     )
     print(f"status={report['status']}")
     return 0 if report["status"] == "ok" else 1
+
+
+def trace_contract_command(_: argparse.Namespace) -> int:
+    print(json.dumps(build_trace_contract(), ensure_ascii=False, indent=2))
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -243,6 +310,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional inclusive end date in ISO format.",
     )
     task_cycle.set_defaults(func=task_cycle_command)
+
+    trace_contract = subparsers.add_parser(
+        "trace-contract",
+        help="Print the canonical HQ trace hierarchy contract.",
+    )
+    trace_contract.set_defaults(func=trace_contract_command)
     return parser
 
 

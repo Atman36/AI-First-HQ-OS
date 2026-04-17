@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "control-plane-validate-happy",
+  "description": "Validate the live HQ control plane against tracked schemas and references.",
+  "telemetry": {
+    "task_id": "eval-control-plane-validate",
+    "actor": "ai_operations_lead",
+    "role": "AI Operations Lead",
+    "workflow": "eval-foundation",
+    "metadata": {
+      "subject": "control-plane",
+      "scenario": "happy_path"
+    }
+  },
+  "cases": [
+    {
+      "id": "control-plane-validate",
+      "kind": "command",
+      "cwd": "../../../",
+      "command": [
+        "python3",
+        "scripts/hq_control_plane.py",
+        "validate"
+      ],
+      "expectations": {
+        "exit_code": 0,
+        "stdout_contains": [
+          "validation=ok",
+          "board=02 Planning/Task Board.md"
+        ]
+      }
+    }
+  ]
+}

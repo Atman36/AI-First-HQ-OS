@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "mission-runtime-happy",
+  "description": "Exercise the mission runtime nucleus through mission creation, run start, checkpoint and completion.",
+  "telemetry": {
+    "task_id": "eval-mission-runtime",
+    "actor": "ai_operations_lead",
+    "role": "AI Operations Lead",
+    "workflow": "eval-foundation",
+    "metadata": {
+      "subject": "mission-runtime",
+      "scenario": "happy_path"
+    }
+  },
+  "cases": [
+    {
+      "id": "mission-runtime-happy",
+      "kind": "command",
+      "cwd": "../../../",
+      "command": [
+        "python3",
+        "tests/fixtures/hq_eval_scenarios.py",
+        "mission-runtime-happy"
+      ],
+      "expectations": {
+        "exit_code": 0,
+        "stdout_contains": [
+          "runtime_status=ok",
+          "mission_status=completed",
+          "run_status=completed",
+          "telemetry_events=4"
+        ]
+      }
+    }
+  ]
+}

@@ -2,13 +2,38 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
+    "version",
+    "run_id",
+    "status",
+    "dataset_version",
     "dataset_name",
     "dataset_path",
     "generated_at",
+    "task_id",
+    "trace",
     "summary",
     "cases"
   ],
   "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "dataset_version": {
+      "type": "integer",
+      "minimum": 1
+    },
     "dataset_name": {
       "type": "string",
       "minLength": 1
@@ -20,6 +45,50 @@
     "generated_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "report_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace": {
+      "type": "object",
+      "required": [
+        "trace_contract_version",
+        "trace_entity",
+        "trace_id",
+        "task_id"
+      ],
+      "properties": {
+        "trace_contract_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "trace_entity": {
+          "type": "string",
+          "enum": [
+            "run"
+          ]
+        },
+        "trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mission_id": {
+          "type": "string"
+        },
+        "subject_run_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "summary": {
       "type": "object",
