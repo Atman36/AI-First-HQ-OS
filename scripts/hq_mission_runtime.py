@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -40,6 +41,7 @@ RUNTIME_DIRS = {
     "runs": RUNTIME_ROOT / "runs",
     "steps": RUNTIME_ROOT / "steps",
     "approvals": RUNTIME_ROOT / "approvals",
+    "handoffs": RUNTIME_ROOT / "handoffs",
     "artifacts": RUNTIME_ROOT / "artifacts",
     "events": RUNTIME_ROOT / "events",
 }
@@ -49,9 +51,12 @@ ENTITY_SCHEMA_PATHS = {
     "run": CONTROL_PLANE_DIR / "run.schema.json",
     "step": CONTROL_PLANE_DIR / "step.schema.json",
     "approval": CONTROL_PLANE_DIR / "approval.schema.json",
+    "handoff": CONTROL_PLANE_DIR / "handoff.schema.json",
     "artifact": CONTROL_PLANE_DIR / "artifact.schema.json",
 }
 TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "telemetry-event.schema.json"
+TRACE_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "trace-state.schema.json"
+APPROVAL_KEY_SCHEMA_PATH = CONTROL_PLANE_DIR / "approval-key.schema.json"
 ALLOWED_STEP_STATUSES = {
     "planned",
     "running",
@@ -64,6 +69,14 @@ ALLOWED_STEP_STATUSES = {
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
 ALLOWED_THREAD_STATUSES = {"active", "idle", "paused", "archived"}
+ALLOWED_HANDOFF_STATUSES = {
+    "ready_for_handoff",
+    "in_progress",
+    "paused",
+    "completed",
+    "blocked",
+    "cancelled",
+}
 
 
 def utc_now() -> str:
@@ -130,6 +143,82 @@ def validate_telemetry_payload(payload: dict[str, Any]) -> None:
     validate_payload_against_schema(payload, TELEMETRY_SCHEMA_PATH, label="telemetry_event")
 
 
+def normalize_string_list(values: list[str] | None) -> list[str]:
+    items: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        items.append(text)
+    return items
+
+
+def build_resume_fingerprint(payload: dict[str, Any]) -> str:
+    fingerprint_payload = {
+        "trace_entity": str(payload.get("trace_entity") or "").strip(),
+        "trace_id": str(payload.get("trace_id") or "").strip(),
+        "grouping_entity": str(payload.get("grouping_entity") or "").strip(),
+        "grouping_id": str(payload.get("grouping_id") or "").strip(),
+        "current_step_id": str(payload.get("current_step_id") or "").strip(),
+        "resume_from_step_id": str(payload.get("resume_from_step_id") or "").strip(),
+        "handoff_id": str(payload.get("handoff_id") or "").strip(),
+        "handoff_path": str(payload.get("handoff_path") or "").strip(),
+        "resume_packet_path": str(payload.get("resume_packet_path") or "").strip(),
+    }
+    return hashlib.sha256(
+        json.dumps(fingerprint_payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def normalize_trace_state(
+    payload: dict[str, Any] | None,
+    *,
+    grouping_id: str,
+    default_trace_id: str = "",
+    snapshot_at: str | None = None,
+) -> dict[str, Any]:
+    raw = payload or {}
+    metadata = raw.get("metadata", {})
+    normalized = {
+        "trace_entity": str(raw.get("trace_entity") or "run").strip(),
+        "trace_id": str(raw.get("trace_id") or default_trace_id).strip(),
+        "grouping_entity": str(raw.get("grouping_entity") or "thread").strip(),
+        "grouping_id": str(raw.get("grouping_id") or grouping_id).strip(),
+        "current_step_id": str(raw.get("current_step_id") or "").strip(),
+        "resume_from_step_id": str(raw.get("resume_from_step_id") or "").strip(),
+        "handoff_id": str(raw.get("handoff_id") or "").strip(),
+        "handoff_path": str(raw.get("handoff_path") or "").strip(),
+        "resume_packet_path": str(
+            raw.get("resume_packet_path") or raw.get("handoff_path") or ""
+        ).strip(),
+        "snapshot_at": str(raw.get("snapshot_at") or snapshot_at or utc_now()).strip(),
+        "resume_fingerprint": "",
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+    normalized["resume_fingerprint"] = build_resume_fingerprint(normalized)
+    validate_payload_against_schema(normalized, TRACE_STATE_SCHEMA_PATH, label="trace_state")
+    return normalized
+
+
+def normalize_approval_key(payload: dict[str, Any] | None) -> dict[str, Any]:
+    raw = payload or {}
+    metadata = raw.get("metadata", {})
+    normalized = {
+        "kind": str(raw.get("kind") or "runtime_action").strip(),
+        "namespace": str(raw.get("namespace") or "hq.runtime").strip(),
+        "name": str(raw.get("name") or "runtime").strip(),
+        "call_id": str(raw.get("call_id") or "").strip(),
+        "action": normalize_string_list(raw.get("action") if isinstance(raw.get("action"), list) else []),
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+    if not normalized["action"]:
+        normalized["action"] = ["allow"]
+    validate_payload_against_schema(normalized, APPROVAL_KEY_SCHEMA_PATH, label="approval_key")
+    return normalized
+
+
 def ensure_runtime() -> None:
     for path in RUNTIME_DIRS.values():
         path.mkdir(parents=True, exist_ok=True)
@@ -154,6 +243,10 @@ def step_path(step_id: str) -> Path:
 
 def approval_path(approval_id: str) -> Path:
     return RUNTIME_DIRS["approvals"] / f"{approval_id}.json"
+
+
+def handoff_path(handoff_id: str) -> Path:
+    return RUNTIME_DIRS["handoffs"] / f"{handoff_id}.json"
 
 
 def artifact_path(artifact_id: str) -> Path:
@@ -198,6 +291,7 @@ def emit_runtime_telemetry(
     run_id: str = "",
     step_id: str = "",
     approval_id: str = "",
+    handoff_id: str = "",
     artifact_id: str = "",
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -214,6 +308,7 @@ def emit_runtime_telemetry(
         "run_id": run_id,
         "step_id": step_id,
         "approval_id": approval_id,
+        "handoff_id": handoff_id,
         "artifact_id": artifact_id,
         "status": status,
         "summary": summary,
@@ -226,8 +321,50 @@ def emit_runtime_telemetry(
 
 
 def write_entity(path: Path, payload: dict[str, Any]) -> None:
+    trace_state = payload.get("trace_state")
+    if trace_state is not None:
+        validate_payload_against_schema(trace_state, TRACE_STATE_SCHEMA_PATH, label="trace_state")
+    if str(payload.get("entity_type") or "").strip() == "approval":
+        validate_payload_against_schema(
+            payload.get("approval_key", {}),
+            APPROVAL_KEY_SCHEMA_PATH,
+            label="approval_key",
+        )
     validate_entity_payload(payload, str(payload.get("entity_type") or "").strip())
     write_json(path, payload)
+
+
+def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[str, Any]:
+    upgraded = dict(payload)
+    snapshot_at = str(upgraded.get("updated_at") or upgraded.get("created_at") or utc_now()).strip()
+    if entity_type == "thread":
+        upgraded.setdefault("latest_handoff_id", "")
+        upgraded["trace_state"] = normalize_trace_state(
+            upgraded.get("trace_state", {}),
+            grouping_id=str(upgraded.get("id") or "").strip(),
+            default_trace_id=str(upgraded.get("active_run_id") or "").strip(),
+            snapshot_at=snapshot_at,
+        )
+    elif entity_type == "run":
+        upgraded.setdefault("handoff_ids", [])
+        upgraded["trace_state"] = normalize_trace_state(
+            upgraded.get("trace_state", {}),
+            grouping_id=str(upgraded.get("thread_id") or "").strip(),
+            default_trace_id=str(upgraded.get("id") or "").strip(),
+            snapshot_at=snapshot_at,
+        )
+    elif entity_type == "approval":
+        upgraded["approval_key"] = normalize_approval_key(
+            upgraded.get("approval_key", {})
+            or {
+                "kind": "runtime_action",
+                "namespace": "hq.runtime",
+                "name": str(upgraded.get("policy_action") or "approval").strip(),
+                "call_id": "",
+                "action": [str(upgraded.get("policy_action") or "allow").strip()],
+            }
+        )
+    return upgraded
 
 
 def require_file(path: Path, label: str, expected_entity_type: str | None = None) -> dict[str, Any]:
@@ -235,6 +372,7 @@ def require_file(path: Path, label: str, expected_entity_type: str | None = None
         raise ValueError(f"{label} not found: {path.stem}")
     payload = load_json(path)
     entity_type = expected_entity_type or str(payload.get("entity_type") or label).strip()
+    payload = upgrade_entity_payload(payload, entity_type)
     validate_entity_payload(payload, entity_type)
     if expected_entity_type and payload.get("entity_type") != expected_entity_type:
         raise ValueError(f"{label} has unexpected entity_type: {payload.get('entity_type')}")
@@ -261,13 +399,16 @@ def create_thread_record(
         "mission_ids": [],
         "active_mission_id": "",
         "active_run_id": "",
+        "latest_handoff_id": "",
         "latest_spec_path": "",
         "latest_handoff_path": "",
         "resume_packet_path": "",
+        "trace_state": {},
         "created_at": created_at,
         "updated_at": created_at,
         "metadata": metadata or {},
     }
+    payload["trace_state"] = normalize_trace_state({}, grouping_id=payload["id"], snapshot_at=created_at)
     write_entity(thread_path(payload["id"]), payload)
     record_event(
         event_type="thread_created",
@@ -291,10 +432,12 @@ def update_thread_context(
     *,
     mission_id: str | None = None,
     run_id: str | None = None,
+    handoff_id: str | None = None,
     spec_path: str | None = None,
     handoff_path: str | None = None,
     resume_packet_path: str | None = None,
     status: str | None = None,
+    trace_state: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     thread = require_file(thread_path(thread_id), "thread", "thread")
@@ -307,6 +450,9 @@ def update_thread_context(
     if run_id is not None:
         thread["active_run_id"] = run_id
         change_summary.append(f"run={run_id or 'cleared'}")
+    if handoff_id is not None:
+        thread["latest_handoff_id"] = handoff_id
+        change_summary.append(f"handoff_id={handoff_id or 'cleared'}")
     if spec_path:
         thread["latest_spec_path"] = spec_path
         change_summary.append("spec")
@@ -321,6 +467,35 @@ def update_thread_context(
             raise ValueError("thread status must be one of: " + ", ".join(sorted(ALLOWED_THREAD_STATUSES)))
         thread["status"] = status
         change_summary.append(f"status={status}")
+    if trace_state is not None:
+        thread["trace_state"] = normalize_trace_state(
+            trace_state,
+            grouping_id=thread["id"],
+            default_trace_id=thread.get("active_run_id", ""),
+            snapshot_at=updated_at,
+        )
+        change_summary.append("trace_state")
+    elif change_summary:
+        current_trace_state = normalize_trace_state(
+            thread.get("trace_state", {}),
+            grouping_id=thread["id"],
+            default_trace_id=thread.get("active_run_id", ""),
+            snapshot_at=updated_at,
+        )
+        if handoff_id is not None:
+            current_trace_state["handoff_id"] = thread["latest_handoff_id"]
+        if handoff_path:
+            current_trace_state["handoff_path"] = handoff_path
+        if resume_packet_path:
+            current_trace_state["resume_packet_path"] = resume_packet_path
+        current_trace_state["snapshot_at"] = updated_at
+        current_trace_state["resume_fingerprint"] = build_resume_fingerprint(current_trace_state)
+        thread["trace_state"] = normalize_trace_state(
+            current_trace_state,
+            grouping_id=thread["id"],
+            default_trace_id=current_trace_state.get("trace_id", ""),
+            snapshot_at=updated_at,
+        )
     if metadata:
         merged_metadata = dict(thread.get("metadata", {}))
         merged_metadata.update(metadata)
@@ -337,6 +512,7 @@ def update_thread_context(
             payload={
                 "mission_id": mission_id or "",
                 "run_id": run_id or "",
+                "handoff_id": handoff_id or "",
                 "spec_path": spec_path or "",
                 "handoff_path": handoff_path or "",
             },
@@ -349,7 +525,8 @@ def update_thread_context(
             thread_id=thread["id"],
             mission_id=thread["active_mission_id"],
             run_id=thread["active_run_id"],
-            metadata={"entity_type": "thread"},
+            handoff_id=thread["latest_handoff_id"],
+            metadata={"entity_type": "thread", "resume_fingerprint": thread["trace_state"]["resume_fingerprint"]},
         )
     return thread
 
@@ -492,8 +669,15 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "last_successful_step_id": "",
         "step_ids": [],
         "approval_ids": [],
+        "handoff_ids": [],
         "artifact_ids": [],
         "checkpoint_count": 0,
+        "trace_state": normalize_trace_state(
+            {"trace_id": run_id},
+            grouping_id=thread["id"],
+            default_trace_id=run_id,
+            snapshot_at=created_at,
+        ),
         "started_at": created_at,
         "finished_at": "",
         "created_at": created_at,
@@ -511,6 +695,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         mission_id=mission["id"],
         run_id=run_id,
         status="active",
+        trace_state=payload["trace_state"],
     )
     record_event(
         event_type="run_started",
@@ -584,7 +769,25 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
     else:
         run["status"] = "running"
     run["updated_at"] = created_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["current_step_id"] = step_id
+    trace_state["resume_from_step_id"] = run["resume_from_step_id"]
+    trace_state["snapshot_at"] = created_at
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=created_at,
+    )
     write_entity(run_path(run["id"]), run)
+    update_thread_context(
+        run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        status="paused" if run["status"] == "waiting_approval" else "active",
+        trace_state=run["trace_state"],
+    )
     record_event(
         event_type="step_checkpointed",
         entity_id=step_id,
@@ -631,6 +834,15 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("step does not belong to the provided run")
     approval_id = make_id("approval", f"{step['key']}-{args.requested_by or 'requester'}")
     created_at = utc_now()
+    approval_key = normalize_approval_key(
+        {
+            "kind": str(getattr(args, "approval_kind", None) or "runtime_action").strip(),
+            "namespace": str(getattr(args, "approval_namespace", None) or "hq.runtime").strip(),
+            "name": str(getattr(args, "approval_name", None) or step["key"]).strip(),
+            "call_id": str(getattr(args, "approval_call_id", None) or "").strip(),
+            "action": getattr(args, "approval_action", None) or [args.policy_action],
+        }
+    )
     payload = {
         "schema_version": 1,
         "entity_type": "approval",
@@ -642,6 +854,7 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         "requested_by": str(args.requested_by or "").strip(),
         "requested_for": str(args.requested_for or "founder").strip(),
         "policy_action": args.policy_action,
+        "approval_key": approval_key,
         "status": "pending",
         "decision": "",
         "summary": str(args.summary or "").strip(),
@@ -656,6 +869,16 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
     run["approval_ids"] = list(dict.fromkeys([*run.get("approval_ids", []), approval_id]))
     run["status"] = "waiting_approval"
     run["updated_at"] = created_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["current_step_id"] = step["id"]
+    trace_state["snapshot_at"] = created_at
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=created_at,
+    )
     write_entity(run_path(run["id"]), run)
     if step["status"] != "waiting_approval":
         step["status"] = "waiting_approval"
@@ -684,7 +907,20 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         run_id=run["id"],
         step_id=step["id"],
         approval_id=payload["id"],
-        metadata={"entity_type": "approval", "policy_action": payload["policy_action"]},
+        metadata={
+            "entity_type": "approval",
+            "policy_action": payload["policy_action"],
+            "approval_namespace": approval_key["namespace"],
+            "approval_name": approval_key["name"],
+            "approval_call_id": approval_key["call_id"],
+        },
+    )
+    update_thread_context(
+        run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        status="paused",
+        trace_state=run["trace_state"],
     )
     return payload
 
@@ -725,6 +961,16 @@ def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
     else:
         run["status"] = "blocked"
     run["updated_at"] = decided_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["current_step_id"] = step["id"]
+    trace_state["snapshot_at"] = decided_at
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=decided_at,
+    )
     write_entity(run_path(run["id"]), run)
     step["metadata"] = step.get("metadata", {})
     step["metadata"]["approval_decision"] = args.decision
@@ -750,7 +996,129 @@ def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
         approval_id=approval["id"],
         metadata={"entity_type": "approval"},
     )
+    update_thread_context(
+        run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        status="paused" if run["status"] == "blocked" else "active",
+        trace_state=run["trace_state"],
+    )
     return approval
+
+
+def create_handoff_record(
+    *,
+    thread_id: str,
+    task: str,
+    session: str,
+    handoff_file: str,
+    owner: str = "",
+    status: str = "ready_for_handoff",
+    accepting_role: str = "",
+    continue_from: str = "",
+    spec_file: str = "",
+    primary_file: str = "",
+    read_first: list[str] | None = None,
+    done_items: list[str] | None = None,
+    next_steps: list[str] | None = None,
+    important_files: list[str] | None = None,
+    risks: list[str] | None = None,
+    blockers: list[str] | None = None,
+    notes: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if status not in ALLOWED_HANDOFF_STATUSES:
+        raise ValueError("handoff status must be one of: " + ", ".join(sorted(ALLOWED_HANDOFF_STATUSES)))
+    thread = require_file(thread_path(thread_id), "thread", "thread")
+    mission_id = thread.get("active_mission_id", "")
+    run_id = thread.get("active_run_id", "")
+    created_at = utc_now()
+    handoff_id = make_id("handoff", f"{task}-{session}")
+    payload = {
+        "schema_version": 1,
+        "entity_type": "handoff",
+        "id": handoff_id,
+        "thread_id": thread_id,
+        "mission_id": str(mission_id or "").strip(),
+        "run_id": str(run_id or "").strip(),
+        "task": task.strip(),
+        "session": session.strip(),
+        "owner": str(owner or "").strip(),
+        "status": status,
+        "accepting_role": str(accepting_role or "").strip(),
+        "continue_from": str(continue_from or "").strip(),
+        "spec_file": str(spec_file or "").strip(),
+        "primary_file": str(primary_file or "").strip(),
+        "handoff_path": handoff_file.strip(),
+        "read_first": normalize_string_list(read_first),
+        "done_items": normalize_string_list(done_items),
+        "next_steps": normalize_string_list(next_steps),
+        "important_files": normalize_string_list(important_files),
+        "risks": normalize_string_list(risks),
+        "blockers": normalize_string_list(blockers),
+        "notes": normalize_string_list(notes),
+        "created_at": created_at,
+        "updated_at": created_at,
+        "metadata": metadata or {},
+    }
+    write_entity(handoff_path(handoff_id), payload)
+    if run_id:
+        run = require_file(run_path(run_id), "run", "run")
+        run["handoff_ids"] = list(dict.fromkeys([*run.get("handoff_ids", []), handoff_id]))
+        trace_state = dict(run.get("trace_state", {}))
+        trace_state["handoff_id"] = handoff_id
+        trace_state["handoff_path"] = handoff_file
+        trace_state["resume_packet_path"] = handoff_file
+        trace_state["snapshot_at"] = created_at
+        run["trace_state"] = normalize_trace_state(
+            trace_state,
+            grouping_id=thread_id,
+            default_trace_id=run["id"],
+            snapshot_at=created_at,
+        )
+        run["updated_at"] = created_at
+        write_entity(run_path(run["id"]), run)
+        trace_state_payload = run["trace_state"]
+    else:
+        trace_state_payload = dict(thread.get("trace_state", {}))
+        trace_state_payload["handoff_id"] = handoff_id
+        trace_state_payload["handoff_path"] = handoff_file
+        trace_state_payload["resume_packet_path"] = handoff_file
+        trace_state_payload["snapshot_at"] = created_at
+        trace_state_payload = normalize_trace_state(
+            trace_state_payload,
+            grouping_id=thread_id,
+            default_trace_id=str(trace_state_payload.get("trace_id") or ""),
+            snapshot_at=created_at,
+        )
+    update_thread_context(
+        thread_id,
+        mission_id=mission_id,
+        run_id=run_id,
+        handoff_id=handoff_id,
+        handoff_path=handoff_file,
+        resume_packet_path=handoff_file,
+        status="paused" if payload["blockers"] else "active",
+        trace_state=trace_state_payload,
+    )
+    record_event(
+        event_type="handoff_recorded",
+        entity_id=handoff_id,
+        summary=f"Recorded handoff for task '{payload['task']}'.",
+        payload={"thread_id": thread_id, "run_id": run_id, "handoff_path": handoff_file},
+    )
+    emit_runtime_telemetry(
+        event_type="handoff_recorded",
+        status=payload["status"],
+        summary=f"Recorded handoff for task '{payload['task']}'.",
+        actor=payload["owner"] or "runtime",
+        thread_id=thread_id,
+        mission_id=payload["mission_id"],
+        run_id=payload["run_id"],
+        handoff_id=handoff_id,
+        metadata={"entity_type": "handoff", "handoff_path": handoff_file},
+    )
+    return payload
 
 
 def decide_approval_command(args: argparse.Namespace) -> int:
@@ -840,6 +1208,15 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
     run["status"] = args.status
     run["finished_at"] = finished_at
     run["updated_at"] = finished_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["snapshot_at"] = finished_at
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=thread["id"],
+        default_trace_id=run["id"],
+        snapshot_at=finished_at,
+    )
     write_entity(run_path(run["id"]), run)
     mission["status"] = "completed" if args.status == "completed" else args.status
     mission["updated_at"] = finished_at
@@ -849,6 +1226,7 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         mission_id=mission["id"],
         run_id="",
         status="idle" if args.status == "completed" else "paused",
+        trace_state=run["trace_state"],
     )
     record_event(
         event_type="run_finished",
@@ -1037,6 +1415,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Policy action that triggered the approval.",
     )
     request_approval_parser.add_argument("--summary", help="Approval summary.")
+    request_approval_parser.add_argument(
+        "--approval-kind",
+        help="Stable approval target kind. Defaults to runtime_action.",
+    )
+    request_approval_parser.add_argument(
+        "--approval-namespace",
+        help="Stable namespace for the approval target. Defaults to hq.runtime.",
+    )
+    request_approval_parser.add_argument(
+        "--approval-name",
+        help="Stable target name inside the namespace. Defaults to the step key.",
+    )
+    request_approval_parser.add_argument(
+        "--approval-call-id",
+        help="Optional call-scoped identifier for one approvalable action.",
+    )
+    request_approval_parser.add_argument(
+        "--approval-action",
+        action="append",
+        default=[],
+        help="Repeat for each action token describing the target identity.",
+    )
     request_approval_parser.add_argument(
         "--metadata",
         type=parse_json_object,

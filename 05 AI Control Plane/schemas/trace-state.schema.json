@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "trace_entity",
+    "trace_id",
+    "grouping_entity",
+    "grouping_id",
+    "current_step_id",
+    "resume_from_step_id",
+    "handoff_id",
+    "handoff_path",
+    "resume_packet_path",
+    "snapshot_at",
+    "resume_fingerprint",
+    "metadata"
+  ],
+  "properties": {
+    "trace_entity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "grouping_entity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "grouping_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_step_id": {
+      "type": "string"
+    },
+    "resume_from_step_id": {
+      "type": "string"
+    },
+    "handoff_id": {
+      "type": "string"
+    },
+    "handoff_path": {
+      "type": "string"
+    },
+    "resume_packet_path": {
+      "type": "string"
+    },
+    "snapshot_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resume_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

@@ -673,6 +673,7 @@ class HqRuntimeReflectionTests(unittest.TestCase):
             ],
         )
         self.assertEqual(manifest["thread_id"], thread["id"])
+        self.assertTrue(manifest["handoff_id"])
         thread_state = json.loads(
             self.module.hq_mission_runtime.thread_path(thread["id"]).read_text(encoding="utf-8")
         )
@@ -680,10 +681,18 @@ class HqRuntimeReflectionTests(unittest.TestCase):
             thread_state["latest_handoff_path"],
             ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
         )
+        self.assertEqual(thread_state["latest_handoff_id"], manifest["handoff_id"])
         self.assertEqual(
             thread_state["resume_packet_path"],
             ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
         )
+        handoff_state = json.loads(
+            self.module.hq_mission_runtime.handoff_path(manifest["handoff_id"]).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(handoff_state["handoff_path"], ".hq/handoffs/launch-scheduler-hardening/LATEST.md")
+        self.assertEqual(handoff_state["thread_id"], thread["id"])
 
 
 if __name__ == "__main__":

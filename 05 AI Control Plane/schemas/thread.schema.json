@@ -12,9 +12,11 @@
     "mission_ids",
     "active_mission_id",
     "active_run_id",
+    "latest_handoff_id",
     "latest_spec_path",
     "latest_handoff_path",
     "resume_packet_path",
+    "trace_state",
     "created_at",
     "updated_at",
     "metadata"
@@ -61,6 +63,9 @@
     "active_run_id": {
       "type": "string"
     },
+    "latest_handoff_id": {
+      "type": "string"
+    },
     "latest_spec_path": {
       "type": "string"
     },
@@ -69,6 +74,9 @@
     },
     "resume_packet_path": {
       "type": "string"
+    },
+    "trace_state": {
+      "type": "object"
     },
     "created_at": {
       "type": "string",

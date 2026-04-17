@@ -101,12 +101,15 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(run["mission_id"], mission["id"])
         self.assertEqual(run["status"], "running")
         self.assertEqual(run["thread_id"], mission["thread_id"])
+        self.assertEqual(run["trace_state"]["trace_id"], run["id"])
 
         mission = json.loads(mission_files[0].read_text(encoding="utf-8"))
         self.assertEqual(mission["latest_run_id"], run["id"])
         self.assertEqual(mission["run_ids"], [run["id"]])
         thread = json.loads(thread_files[0].read_text(encoding="utf-8"))
         self.assertEqual(thread["active_run_id"], run["id"])
+        self.assertEqual(thread["trace_state"]["trace_id"], run["id"])
+        self.assertTrue(thread["trace_state"]["resume_fingerprint"])
 
     def test_checkpoint_step_tracks_resume_pointer_and_waiting_step(self):
         mission = self.module.create_mission(
@@ -168,6 +171,8 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(current_run["resume_from_step_id"], planner_step["id"])
         self.assertEqual(current_run["current_step_id"], gate_step["id"])
         self.assertEqual(current_run["status"], "waiting_approval")
+        self.assertEqual(current_run["trace_state"]["current_step_id"], gate_step["id"])
+        self.assertEqual(current_run["trace_state"]["resume_from_step_id"], planner_step["id"])
         self.assertEqual(planner_step["thread_id"], mission["thread_id"])
         self.assertEqual(gate_step["thread_id"], mission["thread_id"])
 
@@ -213,6 +218,8 @@ class HqMissionRuntimeTests(unittest.TestCase):
         run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
         self.assertEqual(run_state["status"], "waiting_approval")
         self.assertEqual(run_state["approval_ids"], [approval["id"]])
+        self.assertEqual(approval["approval_key"]["namespace"], "hq.runtime")
+        self.assertEqual(approval["approval_key"]["name"], "policy_gate")
 
         decided = self.module.decide_approval(
             self.module.build_parser().parse_args(
@@ -237,6 +244,40 @@ class HqMissionRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(approval_state["status"], "decided")
         self.assertEqual(approval_state["thread_id"], mission["thread_id"])
+
+    def test_create_handoff_record_links_thread_run_and_resume_state(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Handoff Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        handoff = self.module.create_handoff_record(
+            thread_id=mission["thread_id"],
+            task="Handoff Mission",
+            session="session-1",
+            handoff_file=".hq/handoffs/handoff-mission/LATEST.md",
+            owner="delivery",
+            status="ready_for_handoff",
+            next_steps=["Resume from the last checkpoint."],
+        )
+
+        self.assertEqual(handoff["thread_id"], mission["thread_id"])
+        self.assertEqual(handoff["run_id"], run["id"])
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["handoff_ids"], [handoff["id"]])
+        self.assertEqual(run_state["trace_state"]["handoff_id"], handoff["id"])
+        thread_state = json.loads(
+            self.module.thread_path(mission["thread_id"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(thread_state["latest_handoff_id"], handoff["id"])
+        self.assertEqual(
+            thread_state["trace_state"]["resume_packet_path"],
+            ".hq/handoffs/handoff-mission/LATEST.md",
+        )
 
     def test_attach_artifact_and_finish_run_persist_lineage(self):
         mission = self.module.create_mission(
@@ -294,6 +335,7 @@ class HqMissionRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(thread_state["status"], "idle")
         self.assertEqual(thread_state["active_run_id"], "")
+        self.assertEqual(thread_state["trace_state"]["trace_id"], run["id"])
 
         event_files = sorted(self.module.RUNTIME_DIRS["events"].glob("**/*.jsonl"))
         self.assertTrue(event_files)

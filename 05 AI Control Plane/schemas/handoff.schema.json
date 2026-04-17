@@ -8,20 +8,23 @@
     "id",
     "thread_id",
     "mission_id",
+    "run_id",
+    "task",
+    "session",
+    "owner",
     "status",
-    "actor",
-    "loop",
-    "current_step_id",
-    "resume_from_step_id",
-    "last_successful_step_id",
-    "step_ids",
-    "approval_ids",
-    "handoff_ids",
-    "artifact_ids",
-    "checkpoint_count",
-    "trace_state",
-    "started_at",
-    "finished_at",
+    "accepting_role",
+    "continue_from",
+    "spec_file",
+    "primary_file",
+    "handoff_path",
+    "read_first",
+    "done_items",
+    "next_steps",
+    "important_files",
+    "risks",
+    "blockers",
+    "notes",
     "created_at",
     "updated_at",
     "metadata"
@@ -33,7 +36,7 @@
     },
     "entity_type": {
       "type": "string",
-      "const": "run"
+      "const": "handoff"
     },
     "id": {
       "type": "string",
@@ -44,76 +47,97 @@
       "minLength": 1
     },
     "mission_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "task": {
       "type": "string",
       "minLength": 1
+    },
+    "session": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner": {
+      "type": "string"
     },
     "status": {
       "type": "string",
       "enum": [
-        "running",
-        "waiting_approval",
+        "ready_for_handoff",
+        "in_progress",
+        "paused",
         "completed",
-        "failed",
         "blocked",
         "cancelled"
       ]
     },
-    "actor": {
+    "accepting_role": {
       "type": "string"
     },
-    "loop": {
+    "continue_from": {
       "type": "string"
     },
-    "current_step_id": {
+    "spec_file": {
       "type": "string"
     },
-    "resume_from_step_id": {
+    "primary_file": {
       "type": "string"
     },
-    "last_successful_step_id": {
-      "type": "string"
-    },
-    "step_ids": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "approval_ids": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "handoff_ids": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "artifact_ids": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "checkpoint_count": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "trace_state": {
-      "type": "object"
-    },
-    "started_at": {
+    "handoff_path": {
       "type": "string",
-      "format": "date-time"
+      "minLength": 1
     },
-    "finished_at": {
-      "type": "string"
+    "read_first": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "done_items": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "important_files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "created_at": {
       "type": "string",

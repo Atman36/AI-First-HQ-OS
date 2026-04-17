@@ -150,6 +150,8 @@ class HqTelemetryTests(unittest.TestCase):
                 "mission-run-first-governed-loop-5678",
                 "--run-id",
                 "run-run-first-governed-loop-9abc",
+                "--handoff-id",
+                "handoff-run-first-governed-loop-fedc",
                 "--status",
                 "ready",
                 "--summary",
@@ -179,6 +181,7 @@ class HqTelemetryTests(unittest.TestCase):
         self.assertEqual(payload["thread_id"], "thread-run-first-governed-loop-1234")
         self.assertEqual(payload["mission_id"], "mission-run-first-governed-loop-5678")
         self.assertEqual(payload["run_id"], "run-run-first-governed-loop-9abc")
+        self.assertEqual(payload["handoff_id"], "handoff-run-first-governed-loop-fedc")
         self.assertEqual(payload["metadata"], {"phase": "triage"})
         self.assertEqual(payload["touched_files"], ["05 AI Control Plane/active-work.json"])
 
@@ -247,6 +250,7 @@ class HqTelemetryTests(unittest.TestCase):
         self.assertEqual(contract["entities"]["run"]["otel_role"], "trace")
         self.assertEqual(contract["entities"]["step"]["otel_role"], "span")
         self.assertEqual(contract["entities"]["approval"]["parent_entity"], "step")
+        self.assertEqual(contract["entities"]["handoff"]["parent_entity"], "thread")
         self.assertEqual(contract["entities"]["eval"]["parent_entity"], "run")
 
     def test_weekly_metrics_generates_review_and_flags_breach(self):

@@ -60,6 +60,9 @@ def policy_request_from_args(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "action": [item.strip() for item in args.action if item.strip()],
         "path": str(args.path or "").strip(),
+        "namespace": str(args.namespace or "").strip(),
+        "tool_name": str(args.tool_name or "").strip(),
+        "call_id": str(args.call_id or "").strip(),
         "risk_tier": str(args.risk_tier or "").strip(),
         "autonomy_tier": str(args.autonomy_tier or "").strip(),
     }
@@ -75,6 +78,26 @@ def rule_matches(rule: dict[str, Any], request: dict[str, Any]) -> bool:
     if path_prefixes:
         path_value = str(request.get("path") or "").strip()
         if not path_value or not any(path_value.startswith(prefix) for prefix in path_prefixes):
+            return False
+
+    namespaces = [str(item).strip() for item in rule.get("namespaces", []) if str(item).strip()]
+    if namespaces:
+        namespace_value = str(request.get("namespace") or "").strip()
+        if not namespace_value or namespace_value not in namespaces:
+            return False
+
+    tool_names = [str(item).strip() for item in rule.get("tool_names", []) if str(item).strip()]
+    if tool_names:
+        tool_name = str(request.get("tool_name") or "").strip()
+        if not tool_name or tool_name not in tool_names:
+            return False
+
+    call_id_prefixes = [
+        str(item).strip() for item in rule.get("call_id_prefixes", []) if str(item).strip()
+    ]
+    if call_id_prefixes:
+        call_id = str(request.get("call_id") or "").strip()
+        if not call_id or not any(call_id.startswith(prefix) for prefix in call_id_prefixes):
             return False
 
     risk_tiers = [str(item).strip() for item in rule.get("risk_tiers", []) if str(item).strip()]
@@ -96,6 +119,9 @@ def validate_policy_examples(policy: dict[str, Any]) -> None:
             continue
         template_request = {
             "path": str((rule.get("path_prefixes") or [""])[0] or ""),
+            "namespace": str((rule.get("namespaces") or [""])[0] or ""),
+            "tool_name": str((rule.get("tool_names") or [""])[0] or ""),
+            "call_id": str((rule.get("call_id_prefixes") or [""])[0] or ""),
             "risk_tier": str((rule.get("risk_tiers") or [""])[0] or ""),
             "autonomy_tier": str((rule.get("autonomy_tiers") or [""])[0] or ""),
         }
@@ -131,6 +157,9 @@ def evaluate_policy(policy: dict[str, Any], request: dict[str, Any]) -> dict[str
                 "decision": decision,
                 "justification": str(rule.get("justification") or "").strip(),
                 "actionPrefix": rule.get("action_prefix", []),
+                "namespace": str(request.get("namespace") or "").strip(),
+                "toolName": str(request.get("tool_name") or "").strip(),
+                "callId": str(request.get("call_id") or "").strip(),
             }
         )
         if DECISION_ORDER[decision] > DECISION_ORDER[effective_decision]:
@@ -138,6 +167,9 @@ def evaluate_policy(policy: dict[str, Any], request: dict[str, Any]) -> dict[str
     return {
         "action": request.get("action", []),
         "path": request.get("path", ""),
+        "namespace": str(request.get("namespace") or "").strip(),
+        "toolName": str(request.get("tool_name") or "").strip(),
+        "callId": str(request.get("call_id") or "").strip(),
         "matchedRules": matched_rules,
         "decision": effective_decision,
     }
@@ -166,6 +198,22 @@ def hook_matches(hook: dict[str, Any], event: str, payload: dict[str, Any]) -> b
     decisions = [str(item).strip() for item in hook.get("decisions", []) if str(item).strip()]
     if decisions and str(payload.get("decision") or "").strip() not in decisions:
         return False
+
+    namespaces = [str(item).strip() for item in hook.get("namespaces", []) if str(item).strip()]
+    if namespaces and str(payload.get("namespace") or "").strip() not in namespaces:
+        return False
+
+    tool_names = [str(item).strip() for item in hook.get("tool_names", []) if str(item).strip()]
+    if tool_names and str(payload.get("tool_name") or "").strip() not in tool_names:
+        return False
+
+    call_id_prefixes = [
+        str(item).strip() for item in hook.get("call_id_prefixes", []) if str(item).strip()
+    ]
+    if call_id_prefixes:
+        call_id = str(payload.get("call_id") or "").strip()
+        if not call_id or not any(call_id.startswith(prefix) for prefix in call_id_prefixes):
+            return False
 
     statuses = [str(item).strip() for item in hook.get("statuses", []) if str(item).strip()]
     if statuses and str(payload.get("status") or "").strip() not in statuses:
@@ -278,6 +326,9 @@ def build_parser() -> argparse.ArgumentParser:
     check_policy.add_argument("--policy-file", required=True, help="Path to the runtime policy JSON.")
     check_policy.add_argument("action", nargs="+", help="Action tokens to evaluate.")
     check_policy.add_argument("--path", help="Optional target path associated with the action.")
+    check_policy.add_argument("--namespace", help="Optional approval namespace.")
+    check_policy.add_argument("--tool-name", help="Optional tool or action name inside the namespace.")
+    check_policy.add_argument("--call-id", help="Optional call-scoped identifier.")
     check_policy.add_argument("--risk-tier", help="Optional risk tier filter input.")
     check_policy.add_argument("--autonomy-tier", help="Optional autonomy tier filter input.")
     check_policy.set_defaults(func=check_policy_command)
@@ -291,7 +342,19 @@ def build_parser() -> argparse.ArgumentParser:
     emit_hooks.add_argument(
         "--event",
         required=True,
-        choices=["session_start", "pre_action", "post_action", "approval_requested", "run_finished"],
+        choices=[
+            "session_start",
+            "run_started",
+            "run_checkpointed",
+            "agent_started",
+            "agent_finished",
+            "agent_handoff",
+            "pre_action",
+            "post_action",
+            "approval_requested",
+            "handoff_written",
+            "run_finished",
+        ],
     )
     emit_hooks.add_argument(
         "--payload",

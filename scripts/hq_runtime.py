@@ -768,6 +768,7 @@ def handoff_markdown(args: argparse.Namespace, updated_at: str) -> str:
 
 def handoff_command(args: argparse.Namespace) -> int:
     ensure_private_runtime()
+    hq_mission_runtime.ensure_runtime()
     updated_at = utc_now()
     task_slug = slugify(args.task)
     session_slug = slugify(args.session)
@@ -782,6 +783,31 @@ def handoff_command(args: argparse.Namespace) -> int:
     atomic_write_text(handoff_path, markdown)
     atomic_write_text(latest_path, markdown)
     read_first = list(dict.fromkeys(([args.spec_file] if args.spec_file else []) + args.read_first))
+    handoff_record = None
+    if args.thread_id:
+        try:
+            handoff_record = hq_mission_runtime.create_handoff_record(
+                thread_id=args.thread_id,
+                task=args.task,
+                session=args.session,
+                handoff_file=latest_path.relative_to(REPO_ROOT).as_posix(),
+                owner=args.owner or "",
+                status=args.status,
+                accepting_role=args.accepting_role or "",
+                continue_from=args.continue_from or "",
+                spec_file=args.spec_file or "",
+                primary_file=args.primary_file or "",
+                read_first=read_first,
+                done_items=args.done,
+                next_steps=args.next,
+                important_files=args.important_file,
+                risks=args.risk,
+                blockers=args.blocker,
+                notes=args.note,
+            )
+        except ValueError as exc:
+            print(f"error={exc}")
+            return 2
     write_json(
         manifest_path,
         {
@@ -794,6 +820,7 @@ def handoff_command(args: argparse.Namespace) -> int:
             "updated_at": updated_at,
             "latest_file": latest_path.relative_to(REPO_ROOT).as_posix(),
             "session_file": handoff_path.relative_to(REPO_ROOT).as_posix(),
+            "handoff_id": handoff_record["id"] if handoff_record else "",
             "continue_from": args.continue_from or "",
             "spec_file": args.spec_file or "",
             "primary_file": args.primary_file or "",
@@ -803,11 +830,18 @@ def handoff_command(args: argparse.Namespace) -> int:
             "blockers": args.blocker,
         },
     )
-    sync_thread_packet(thread_id=args.thread_id, handoff_path=latest_path, status="paused" if args.blocker else "active")
+    if not handoff_record:
+        sync_thread_packet(
+            thread_id=args.thread_id,
+            handoff_path=latest_path,
+            status="paused" if args.blocker else "active",
+        )
 
     print(f"handoff_file={handoff_path}")
     print(f"latest_file={latest_path}")
     print(f"manifest_file={manifest_path}")
+    if handoff_record:
+        print(f"handoff_id={handoff_record['id']}")
     return 0
 
 

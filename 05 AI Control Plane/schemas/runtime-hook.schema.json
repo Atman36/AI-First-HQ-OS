@@ -30,9 +30,15 @@
             "type": "string",
             "enum": [
               "session_start",
+              "run_started",
+              "run_checkpointed",
+              "agent_started",
+              "agent_finished",
+              "agent_handoff",
               "pre_action",
               "post_action",
               "approval_requested",
+              "handoff_written",
               "run_finished"
             ]
           },
@@ -65,6 +71,27 @@
                 "pause_for_founder_approval",
                 "block"
               ]
+            }
+          },
+          "namespaces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "tool_names": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "call_id_prefixes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
             }
           },
           "statuses": {

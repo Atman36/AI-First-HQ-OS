@@ -87,7 +87,7 @@ def write_event_payload(payload: dict[str, Any]) -> tuple[Path, str, Path | None
 
 def build_trace_contract() -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "canonical_trace_entity": "run",
         "grouping_entity": "thread",
         "join_key": "task_id",
@@ -125,6 +125,12 @@ def build_trace_contract() -> dict[str, Any]:
                 "parent_entity": "step",
                 "description": "Child observation for approval requests and decisions tied to a step.",
             },
+            "handoff": {
+                "role": "resume_packet",
+                "otel_role": "event",
+                "parent_entity": "thread",
+                "description": "First-class continuity packet that carries resume-safe handoff state across runs.",
+            },
             "eval": {
                 "role": "evaluation_observation",
                 "otel_role": "span",
@@ -142,7 +148,7 @@ def build_trace_contract() -> dict[str, Any]:
             "trace_id": "run_id",
             "session_id": "thread_id",
             "group_id": "mission_id",
-            "observation_id": "step_id|approval_id|metadata.eval_observation_id",
+            "observation_id": "step_id|approval_id|handoff_id|metadata.eval_observation_id",
             "tags": ["task_id", "workflow", "mission_id"],
         },
     }
@@ -176,6 +182,7 @@ def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
         "thread_id": str(args.thread_id or "").strip(),
         "mission_id": str(args.mission_id or "").strip(),
         "run_id": str(args.run_id or "").strip(),
+        "handoff_id": str(args.handoff_id or "").strip(),
         "status": status,
         "summary": summary,
         "workflow": str(args.workflow or "").strip(),
@@ -272,6 +279,7 @@ def build_parser() -> argparse.ArgumentParser:
     event.add_argument("--thread-id", help="Durable execution thread identifier.")
     event.add_argument("--mission-id", help="Mission identifier inside the thread.")
     event.add_argument("--run-id", help="Run identifier for the event.")
+    event.add_argument("--handoff-id", help="Handoff identifier for a continuity packet event.")
     event.add_argument("--status", required=True, choices=sorted(contract["statuses"]))
     event.add_argument("--summary", required=True, help="Short event summary.")
     event.add_argument("--workflow", help="Workflow identifier.")

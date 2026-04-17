@@ -56,6 +56,8 @@ class HqPolicyHooksTests(unittest.TestCase):
                     {
                         "id": "tracked-write-review",
                         "action_prefix": ["hq", "tracked", "write"],
+                        "namespaces": ["workspace.fs"],
+                        "tool_names": ["write_file"],
                         "decision": "allow_with_review",
                         "match": [["hq", "tracked", "write"]],
                     },
@@ -63,6 +65,7 @@ class HqPolicyHooksTests(unittest.TestCase):
                         "id": "control-plane-block",
                         "action_prefix": ["hq", "tracked", "write"],
                         "path_prefixes": ["05 AI Control Plane/"],
+                        "call_id_prefixes": ["call_"],
                         "decision": "block",
                         "match": ["hq tracked write"],
                     },
@@ -76,6 +79,9 @@ class HqPolicyHooksTests(unittest.TestCase):
             {
                 "action": ["hq", "tracked", "write"],
                 "path": "05 AI Control Plane/operating-policies.json",
+                "namespace": "workspace.fs",
+                "tool_name": "write_file",
+                "call_id": "call_123",
                 "risk_tier": "medium",
                 "autonomy_tier": "A2",
             },
@@ -85,6 +91,8 @@ class HqPolicyHooksTests(unittest.TestCase):
         self.assertEqual(len(result["matchedRules"]), 2)
         self.assertEqual(result["matchedRules"][0]["id"], "tracked-write-review")
         self.assertEqual(result["matchedRules"][1]["id"], "control-plane-block")
+        self.assertEqual(result["namespace"], "workspace.fs")
+        self.assertEqual(result["toolName"], "write_file")
 
     def test_policy_validation_rejects_bad_example(self):
         policy_path = self.write_json(
@@ -119,9 +127,12 @@ class HqPolicyHooksTests(unittest.TestCase):
                 "hooks": [
                     {
                         "id": "capture-pre-action",
-                        "event": "pre_action",
+                        "event": "agent_handoff",
                         "action_prefixes": [["hq", "tracked", "write"]],
                         "decisions": ["allow_with_review"],
+                        "namespaces": ["workspace.fs"],
+                        "tool_names": ["write_file"],
+                        "call_id_prefixes": ["call_"],
                         "command": [sys.executable, str(script_path), str(output_path)],
                     }
                 ],
@@ -135,12 +146,15 @@ class HqPolicyHooksTests(unittest.TestCase):
                 "--hooks-file",
                 str(hooks_path),
                 "--event",
-                "pre_action",
+                "agent_handoff",
                 "--payload",
                 json.dumps(
                     {
                         "action": ["hq", "tracked", "write"],
                         "decision": "allow_with_review",
+                        "namespace": "workspace.fs",
+                        "tool_name": "write_file",
+                        "call_id": "call_456",
                         "status": "running",
                     }
                 ),
@@ -151,9 +165,10 @@ class HqPolicyHooksTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         payload = json.loads(output_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["event"], "pre_action")
+        self.assertEqual(payload["event"], "agent_handoff")
         self.assertEqual(payload["action"], ["hq", "tracked", "write"])
         self.assertEqual(payload["decision"], "allow_with_review")
+        self.assertEqual(payload["namespace"], "workspace.fs")
 
 
 if __name__ == "__main__":
