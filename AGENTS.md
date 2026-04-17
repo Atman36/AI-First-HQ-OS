@@ -63,6 +63,10 @@ These files make the control plane legible for humans, but they are local-only a
 
 - AI is the default operator for low- and medium-risk work only when the task has an owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
 - AI should make low- and medium-risk operating decisions by default when they fit current strategy and policy; the founder is the override path, not the routine decision bottleneck.
+- HQ roles are split into manager roles and executor roles.
+- Manager roles orchestrate, route, approve, and sequence work; they are not the default specialist executors.
+- Executor roles own bounded output production inside a task contract and may be standing HQ roles or approved local specialist roles.
+- Manager roles may launch executor or specialist agents when the task needs narrower expertise than the manager role should carry directly.
 - Humans retain strategy, budget, legal, public, destructive, hiring, and override authority.
 - Governor can block or pause work that lacks policy coverage, telemetry, or approval.
 - AI Operations Lead owns orchestration quality: queue health, telemetry discipline, weekly metric review, eval follow-through, memory hygiene, and runtime-quality escalation.
@@ -106,6 +110,8 @@ These files make the control plane legible for humans, but they are local-only a
 - Change `05 AI Control Plane/active-work.json` first when delegated task state changes.
 - Re-render `02 Planning/Task Board.md` with `python3 scripts/hq_control_plane.py sync` after material task-state changes.
 - Confirm local tool availability before routing a workflow through a specific CLI or runner.
+- When a manager launches an executor or specialist, the manager still owns sequencing, write-scope isolation, and acceptance routing.
+- Managers should delegate specialist execution by default instead of absorbing it into the manager role.
 - Route orchestration, weekly metric review, telemetry coverage, eval discipline, memory hygiene, and runtime-quality issues through AI Operations Lead.
 - Escalate strategic, financial, legal, public, destructive, or policy-changing work to CEO.
 - Route policy, risk, and approval work through Governor.
@@ -121,6 +127,9 @@ These files make the control plane legible for humans, but they are local-only a
 
 ## Default Routing
 
+- Manager roles: CEO, AI Operations Lead, Governor.
+- Executor roles: Delivery, Documentation, Finance, Growth, Research.
+- Helper role: Assistant remains optional and non-standing.
 - CEO: strategy, approvals, high-risk decisions, overrides.
 - AI Operations Lead: intake, decomposition, routing, sequencing, queue state, observability, weekly metric review, eval discipline, memory hygiene, runtime quality.
 - Governor: risk review, guardrails, approvals, rollback triggers, policy exceptions.
@@ -128,19 +137,16 @@ These files make the control plane legible for humans, but they are local-only a
 - Documentation: shared truth sync after acceptance.
 - Finance, Growth, and Research: bounded specialist support.
 - Assistant: optional non-standing helper for inbox cleanup and task shaping when AI Operations Lead explicitly needs it.
+- Approved local specialist bench lives under `/Users/Apple/Documents/Obsidian/1. MyObsidianVault/assist/`.
+- Current approved local specialists for HQ routing: `CTO`, `Senior Product Engineer`, `Data Analyst`, `Evals Engineer`, `Security Engineer`, `QA`, `CloudOps Engineer`, `UX Designer`, `Skill Consultant`.
+- Managers may route work to the local specialist bench when no standing HQ role cleanly fits the slice.
 
 ## Current Team
 
-- CEO
-- AI Operations Lead
-- Governor
-- Delivery
-- Documentation
-- Finance
-- Growth
-- Research
-
-Assistant remains available as a non-standing helper for inbox hygiene bursts and messy inbound cleanup.
+- Manager layer: CEO, AI Operations Lead, Governor.
+- Executor layer: Delivery, Documentation, Finance, Growth, Research.
+- Helper layer: Assistant remains available as a non-standing helper for inbox hygiene bursts and messy inbound cleanup.
+- Specialist bench available for manager-launched execution: `CTO`, `Senior Product Engineer`, `Data Analyst`, `Evals Engineer`, `Security Engineer`, `QA`, `CloudOps Engineer`, `UX Designer`, `Skill Consultant`.
 
 ## Directory Convention
 
