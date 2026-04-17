@@ -1372,6 +1372,12 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
     trace_state["current_step_id"] = step_id
     trace_state["resume_from_step_id"] = run["resume_from_step_id"]
     trace_state["snapshot_at"] = created_at
+    trace_metadata = dict(trace_state.get("metadata", {}))
+    trace_state["metadata"] = reconcile_replay_metadata(
+        trace_metadata,
+        step=payload,
+        updated_at=created_at,
+    )
     run["trace_state"] = normalize_trace_state(
         trace_state,
         grouping_id=run["thread_id"],
@@ -1551,6 +1557,56 @@ def build_replay_plan(
         "checkpoint_count_after_target": checkpoint_count_after_target,
         "steps_to_replay": replay_payload,
     }
+
+
+def reconcile_replay_metadata(
+    trace_metadata: dict[str, Any],
+    *,
+    step: dict[str, Any],
+    updated_at: str,
+) -> dict[str, Any]:
+    replay = trace_metadata.get("replay", {})
+    if not isinstance(replay, dict):
+        trace_metadata.pop("replay", None)
+        return trace_metadata
+
+    replay_steps = replay.get("replay_steps", [])
+    if not isinstance(replay_steps, list) or not replay_steps:
+        trace_metadata.pop("replay", None)
+        return trace_metadata
+
+    next_step = replay_steps[0]
+    if not isinstance(next_step, dict):
+        trace_metadata.pop("replay", None)
+        return trace_metadata
+
+    expected_key = str(next_step.get("key") or "").strip()
+    expected_status = str(next_step.get("status") or "").strip()
+    if step["key"] != expected_key or step["status"] != expected_status:
+        return trace_metadata
+
+    remaining_steps = replay_steps[1:]
+    replay["last_replayed_step_id"] = step["id"]
+    replay["last_replayed_step_key"] = step["key"]
+    replay["last_replayed_at"] = updated_at
+    replay["remaining_replay_step_count"] = len(remaining_steps)
+    replay["replay_step_ids"] = [
+        str(item.get("step_id") or "").strip()
+        for item in remaining_steps
+        if isinstance(item, dict) and str(item.get("step_id") or "").strip()
+    ]
+    if remaining_steps:
+        replay["replay_steps"] = remaining_steps
+        replay["reconciled_at"] = updated_at
+        trace_metadata["replay"] = replay
+        return trace_metadata
+
+    trace_metadata.pop("replay", None)
+    trace_metadata["replay_completed_at"] = updated_at
+    trace_metadata["replay_completed_from_step_id"] = str(
+        replay.get("resume_from_step_id") or ""
+    ).strip()
+    return trace_metadata
 
 
 def list_checkpoints_command(args: argparse.Namespace) -> int:
@@ -2298,8 +2354,10 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
     if replay_plan["replay_required"]:
         trace_metadata["replay"] = {
             "resume_from_step_id": replay_plan["resume_from_step_id"],
+            "replay_steps": replay_plan["steps_to_replay"],
             "replay_step_ids": [step["step_id"] for step in replay_plan["steps_to_replay"]],
             "checkpoint_count_after_target": replay_plan["checkpoint_count_after_target"],
+            "remaining_replay_step_count": replay_plan["replay_step_count"],
             "planned_at": resumed_at,
         }
     else:
@@ -2436,6 +2494,11 @@ def resolve_resume_context(*, thread_id: str = "", run_id: str = "") -> dict[str
             dict(trace_state.get("metadata", {}).get("replay", {}))
             if isinstance(trace_state.get("metadata"), dict)
             else {}
+        ),
+        "replay_completed_at": (
+            str(trace_state.get("metadata", {}).get("replay_completed_at") or "").strip()
+            if isinstance(trace_state.get("metadata"), dict)
+            else ""
         ),
         "interruption_state": (
             run["interruption_state"]
