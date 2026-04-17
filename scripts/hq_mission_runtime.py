@@ -1214,6 +1214,64 @@ def checkpoint_step_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def checkpoint_history_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
+    checkpoints: list[dict[str, Any]] = []
+    for step_id in run.get("step_ids", []):
+        step = require_file(step_path(step_id), "step", "step")
+        if step["run_id"] != run["id"] or step["status"] != "completed":
+            continue
+        checkpoints.append(
+            {
+                "step_id": step["id"],
+                "key": step["key"],
+                "summary": step["summary"],
+                "actor": step["actor"],
+                "created_at": step["created_at"],
+                "completed_at": step["completed_at"],
+                "evidence": step.get("evidence", []),
+            }
+        )
+    checkpoints.sort(
+        key=lambda item: (
+            str(item.get("completed_at") or ""),
+            str(item.get("created_at") or ""),
+            str(item.get("step_id") or ""),
+        ),
+        reverse=True,
+    )
+    return checkpoints
+
+
+def resolve_resume_target_step(run: dict[str, Any], resume_from_step_id: str) -> dict[str, Any]:
+    target_step = require_file(step_path(resume_from_step_id), "step", "step")
+    if target_step["run_id"] != run["id"]:
+        raise ValueError("resume target step does not belong to the provided run")
+    if target_step["status"] != "completed":
+        raise ValueError("resume target step must have status 'completed'")
+    return target_step
+
+
+def list_checkpoints_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    if args.limit < 1:
+        print("error=limit must be >= 1")
+        return 2
+    try:
+        run = require_file(run_path(args.run_id), "run", "run")
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    payload = {
+        "run_id": run["id"],
+        "thread_id": run["thread_id"],
+        "mission_id": run["mission_id"],
+        "checkpoint_count": int(run.get("checkpoint_count", 0)),
+        "checkpoints": checkpoint_history_for_run(run)[: args.limit],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
 def request_approval(args: argparse.Namespace) -> dict[str, Any]:
     if args.policy_action not in ALLOWED_POLICY_ACTIONS:
         raise ValueError(
@@ -1880,14 +1938,23 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
     thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
     resumed_at = utc_now()
+    target_step_id = str(getattr(args, "resume_from_step_id", None) or "").strip()
+    if target_step_id:
+        target_step = resolve_resume_target_step(run, target_step_id)
+        run["resume_from_step_id"] = target_step["id"]
+        run["current_step_id"] = target_step["id"]
     run["status"] = "running"
     run["interruption_state"] = normalize_interruption_state({})
     run["updated_at"] = resumed_at
     trace_state = dict(run.get("trace_state", {}))
     trace_state["trace_id"] = run["id"]
+    trace_state["current_step_id"] = run["current_step_id"]
+    trace_state["resume_from_step_id"] = run["resume_from_step_id"]
     trace_state["snapshot_at"] = resumed_at
     trace_metadata = dict(trace_state.get("metadata", {}))
     trace_metadata["resumed_by"] = str(args.resumed_by or "").strip()
+    if target_step_id:
+        trace_metadata["resume_target_step_id"] = run["resume_from_step_id"]
     trace_state["metadata"] = trace_metadata
     run["trace_state"] = normalize_trace_state(
         trace_state,
@@ -2313,6 +2380,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resume_run_parser.add_argument("--run-id", required=True, help="Run identifier.")
     resume_run_parser.add_argument("--resumed-by", required=True, help="Actor resuming the run.")
+    resume_run_parser.add_argument(
+        "--resume-from-step-id",
+        help="Optional completed checkpoint step id to target instead of the current stored resume point.",
+    )
     resume_run_parser.set_defaults(func=resume_run_command)
 
     finish_run_parser = subparsers.add_parser(
@@ -2334,6 +2405,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     show_run_parser.add_argument("--run-id", required=True, help="Run identifier.")
     show_run_parser.set_defaults(func=show_run_command)
+
+    list_checkpoints_parser = subparsers.add_parser(
+        "list-checkpoints",
+        help="List completed checkpoint steps for a run, newest first.",
+    )
+    list_checkpoints_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    list_checkpoints_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of checkpoints to return.",
+    )
+    list_checkpoints_parser.set_defaults(func=list_checkpoints_command)
 
     resume_context_parser = subparsers.add_parser(
         "resume-context",
