@@ -206,3 +206,49 @@ description: CEO skill.
         errors = self.module.lint_repo(self.temp_root)
 
         self.assertTrue(any("missing referenced path `missing.md`" in error for error in errors))
+
+    def test_skill_rejects_extra_root_docs_and_unknown_entries(self):
+        self.write_file("skills/ceo/README.md", "# Extra doc\n")
+        self.write_file("skills/ceo/helpers/tool.py", "print('nope')\n")
+
+        errors = self.module.lint_repo(self.temp_root)
+
+        self.assertTrue(any("skills/ceo/README.md" in error for error in errors))
+        self.assertTrue(any("skills/ceo/helpers" in error for error in errors))
+
+    def test_skill_requires_compact_skill_markdown(self):
+        oversized_body = "\n".join(f"- Line {index}" for index in range(300))
+        self.write_file(
+            "skills/ceo/SKILL.md",
+            f"""---
+name: ceo
+description: CEO skill.
+---
+
+# CEO
+
+## Read First
+
+- `AGENTS.md`
+
+## Trigger Shape
+
+- "what next"
+
+## Default Workflow
+
+1. Restate the objective.
+
+## Guardrails
+
+- Use one bundled blocker question at most.
+
+## Expected Output Shape
+
+{oversized_body}
+""",
+        )
+
+        errors = self.module.lint_repo(self.temp_root)
+
+        self.assertTrue(any("SKILL.md must stay compact" in error for error in errors))

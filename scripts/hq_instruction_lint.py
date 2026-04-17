@@ -30,6 +30,10 @@ SKILL_REQUIRED_SECTIONS = (
     "## Guardrails",
     "## Expected Output Shape",
 )
+SKILL_ALLOWED_ROOT_ENTRIES = {"SKILL.md", "agents", "scripts", "references", "assets"}
+SKILL_ALLOWED_AGENT_FILES = {"openai.yaml"}
+SKILL_DISALLOWED_FILENAMES = {"README.md", "CHANGELOG.md", "INSTALLATION_GUIDE.md", "QUICK_REFERENCE.md"}
+SKILL_MAX_LINES = 250
 
 
 def iter_role_prompts(repo_root: Path) -> list[Path]:
@@ -148,12 +152,37 @@ def lint_skill(repo_root: Path, path: Path) -> list[str]:
     text = read_text(path)
     rel_path = relative_to_repo(path, repo_root)
     errors: list[str] = []
+    skill_dir = path.parent
 
     if has_absolute_path(text):
         errors.append(f"{rel_path}: contains machine-specific absolute path")
 
     for section in missing_sections(text, SKILL_REQUIRED_SECTIONS):
         errors.append(f"{rel_path}: missing required section `{section}`")
+
+    if len(text.splitlines()) > SKILL_MAX_LINES:
+        errors.append(f"{rel_path}: SKILL.md must stay compact ({SKILL_MAX_LINES} lines max)")
+
+    for child in sorted(skill_dir.iterdir()):
+        name = child.name
+        if name.startswith("."):
+            continue
+        if name not in SKILL_ALLOWED_ROOT_ENTRIES:
+            errors.append(
+                f"{relative_to_repo(child, repo_root)}: skill root may contain only SKILL.md, agents/, scripts/, references/, assets/"
+            )
+        if child.is_file() and name in SKILL_DISALLOWED_FILENAMES:
+            errors.append(f"{relative_to_repo(child, repo_root)}: extra skill documentation is not allowed")
+
+    agents_dir = skill_dir / "agents"
+    if agents_dir.exists():
+        for child in sorted(agents_dir.iterdir()):
+            if child.name.startswith("."):
+                continue
+            if child.name not in SKILL_ALLOWED_AGENT_FILES:
+                errors.append(
+                    f"{relative_to_repo(child, repo_root)}: agents/ may contain only openai.yaml"
+                )
 
     errors.extend(validate_references(repo_root, path, "## Read First"))
     return errors

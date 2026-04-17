@@ -622,6 +622,32 @@ def render_section(title: str, items: list[str]) -> str:
     return "\n".join(lines)
 
 
+def relative_runtime_path(path: Path) -> str:
+    try:
+        return path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def sync_thread_packet(
+    *,
+    thread_id: str | None,
+    spec_path: Path | None = None,
+    handoff_path: Path | None = None,
+    status: str | None = None,
+) -> None:
+    if not thread_id:
+        return
+    hq_mission_runtime.ensure_runtime()
+    hq_mission_runtime.update_thread_context(
+        thread_id,
+        spec_path=relative_runtime_path(spec_path) if spec_path else None,
+        handoff_path=relative_runtime_path(handoff_path) if handoff_path else None,
+        resume_packet_path=relative_runtime_path(handoff_path or spec_path) if (handoff_path or spec_path) else None,
+        status=status,
+    )
+
+
 def spec_markdown(args: argparse.Namespace, updated_at: str) -> str:
     goal = args.goal or args.task
     header = [
@@ -630,6 +656,7 @@ def spec_markdown(args: argparse.Namespace, updated_at: str) -> str:
         f"- Task: {args.task}",
         f"- Session: {args.session}",
         f"- Updated At: {updated_at}",
+        f"- Thread ID: {args.thread_id or 'Not set'}",
         f"- Owner: {args.owner or 'Unassigned'}",
         f"- Status: {args.status}",
         f"- Goal: {goal}",
@@ -678,6 +705,7 @@ def spec_command(args: argparse.Namespace) -> int:
             "task": args.task,
             "task_slug": task_slug,
             "session": args.session,
+            "thread_id": args.thread_id or "",
             "owner": args.owner or "",
             "status": args.status,
             "updated_at": updated_at,
@@ -694,6 +722,7 @@ def spec_command(args: argparse.Namespace) -> int:
             "open_questions": args.question,
         },
     )
+    sync_thread_packet(thread_id=args.thread_id, spec_path=latest_path, status="active")
 
     print(f"spec_file={spec_path}")
     print(f"latest_file={latest_path}")
@@ -709,6 +738,7 @@ def handoff_markdown(args: argparse.Namespace, updated_at: str) -> str:
         f"- Task: {args.task}",
         f"- Session: {args.session}",
         f"- Updated At: {updated_at}",
+        f"- Thread ID: {args.thread_id or 'Not set'}",
         f"- Owner: {args.owner or 'Unassigned'}",
         f"- Status: {args.status}",
         f"- Continue From: {args.continue_from or 'Not set'}",
@@ -758,6 +788,7 @@ def handoff_command(args: argparse.Namespace) -> int:
             "task": args.task,
             "task_slug": task_slug,
             "session": args.session,
+            "thread_id": args.thread_id or "",
             "owner": args.owner or "",
             "status": args.status,
             "updated_at": updated_at,
@@ -772,6 +803,7 @@ def handoff_command(args: argparse.Namespace) -> int:
             "blockers": args.blocker,
         },
     )
+    sync_thread_packet(thread_id=args.thread_id, handoff_path=latest_path, status="paused" if args.blocker else "active")
 
     print(f"handoff_file={handoff_path}")
     print(f"latest_file={latest_path}")
@@ -903,6 +935,8 @@ def founder_weekly_review_command(args: argparse.Namespace) -> int:
             manager=args.manager,
             accepts_result=args.accepts_result,
             source_task_id=args.source_task_id,
+            thread_id="",
+            thread_title="",
             metadata={
                 "routes": routes,
                 "approvals": approvals,
@@ -1094,6 +1128,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Session identifier. Defaults to a UTC timestamp.",
     )
     spec.add_argument("--owner", help="Current owner of the task slice.")
+    spec.add_argument("--thread-id", help="Durable execution thread identifier.")
     spec.add_argument(
         "--status",
         default="draft",
@@ -1160,6 +1195,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Session identifier. Defaults to a UTC timestamp.",
     )
     handoff.add_argument("--owner", help="Current owner of the task slice.")
+    handoff.add_argument("--thread-id", help="Durable execution thread identifier.")
     handoff.add_argument(
         "--status",
         default="ready_for_handoff",

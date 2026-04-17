@@ -6,18 +6,18 @@
     "schema_version",
     "entity_type",
     "id",
-    "thread_id",
-    "run_id",
-    "mission_id",
-    "key",
-    "actor",
+    "title",
+    "owner",
     "status",
-    "summary",
-    "evidence",
-    "metadata",
+    "mission_ids",
+    "active_mission_id",
+    "active_run_id",
+    "latest_spec_path",
+    "latest_handoff_path",
+    "resume_packet_path",
     "created_at",
     "updated_at",
-    "completed_at"
+    "metadata"
   ],
   "properties": {
     "schema_version": {
@@ -26,55 +26,49 @@
     },
     "entity_type": {
       "type": "string",
-      "const": "step"
+      "const": "thread"
     },
     "id": {
       "type": "string",
       "minLength": 1
     },
-    "thread_id": {
+    "title": {
       "type": "string",
       "minLength": 1
     },
-    "run_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "mission_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "key": {
-      "type": "string",
-      "minLength": 1
-    },
-    "actor": {
+    "owner": {
       "type": "string"
     },
     "status": {
       "type": "string",
       "enum": [
-        "planned",
-        "running",
-        "completed",
-        "blocked",
-        "waiting_approval",
-        "failed",
-        "skipped"
+        "active",
+        "idle",
+        "paused",
+        "archived"
       ]
     },
-    "summary": {
-      "type": "string"
-    },
-    "evidence": {
+    "mission_ids": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
       }
     },
-    "metadata": {
-      "type": "object"
+    "active_mission_id": {
+      "type": "string"
+    },
+    "active_run_id": {
+      "type": "string"
+    },
+    "latest_spec_path": {
+      "type": "string"
+    },
+    "latest_handoff_path": {
+      "type": "string"
+    },
+    "resume_packet_path": {
+      "type": "string"
     },
     "created_at": {
       "type": "string",
@@ -84,8 +78,8 @@
       "type": "string",
       "format": "date-time"
     },
-    "completed_at": {
-      "type": "string"
+    "metadata": {
+      "type": "object"
     }
   }
 }

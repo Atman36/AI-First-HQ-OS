@@ -89,17 +89,23 @@ def build_trace_contract() -> dict[str, Any]:
     return {
         "version": 1,
         "canonical_trace_entity": "run",
-        "grouping_entity": "mission",
+        "grouping_entity": "thread",
         "join_key": "task_id",
         "entities": {
             "task": {
                 "role": "cross_run_join_key",
                 "description": "Control-plane work item or eval target lineage key.",
             },
-            "mission": {
-                "role": "thread",
+            "thread": {
+                "role": "execution_thread",
                 "otel_role": "session",
-                "description": "Durable execution thread that can contain multiple runs.",
+                "description": "Durable private continuity boundary spanning missions, runs, specs, and handoffs.",
+            },
+            "mission": {
+                "role": "work_item",
+                "otel_role": "group",
+                "parent_entity": "thread",
+                "description": "Bounded mission tracked inside a durable thread.",
             },
             "run": {
                 "role": "execution_instance",
@@ -134,9 +140,10 @@ def build_trace_contract() -> dict[str, Any]:
         },
         "export_mapping": {
             "trace_id": "run_id",
-            "session_id": "mission_id",
+            "session_id": "thread_id",
+            "group_id": "mission_id",
             "observation_id": "step_id|approval_id|metadata.eval_observation_id",
-            "tags": ["task_id", "workflow"],
+            "tags": ["task_id", "workflow", "mission_id"],
         },
     }
 
@@ -166,6 +173,9 @@ def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
         "agent": actor,
         "role": str(args.role or "").strip(),
         "task_id": task_id,
+        "thread_id": str(args.thread_id or "").strip(),
+        "mission_id": str(args.mission_id or "").strip(),
+        "run_id": str(args.run_id or "").strip(),
         "status": status,
         "summary": summary,
         "workflow": str(args.workflow or "").strip(),
@@ -173,6 +183,11 @@ def build_event_payload(args: argparse.Namespace) -> dict[str, Any]:
         "autonomy_tier": str(args.autonomy_tier or "").strip(),
         "touched_files": normalize_list(args.touched_file),
         "metadata": args.metadata or {},
+    }
+    payload = {
+        key: value
+        for key, value in payload.items()
+        if value != "" or key in {"metadata", "touched_files"}
     }
     validate_event_payload(payload)
     return payload
@@ -254,6 +269,9 @@ def build_parser() -> argparse.ArgumentParser:
     event.add_argument("--actor", required=True, help="Actor or agent that produced the event.")
     event.add_argument("--role", help="Optional role label.")
     event.add_argument("--task-id", required=True, help="Task identifier from active-work.json.")
+    event.add_argument("--thread-id", help="Durable execution thread identifier.")
+    event.add_argument("--mission-id", help="Mission identifier inside the thread.")
+    event.add_argument("--run-id", help="Run identifier for the event.")
     event.add_argument("--status", required=True, choices=sorted(contract["statuses"]))
     event.add_argument("--summary", required=True, help="Short event summary.")
     event.add_argument("--workflow", help="Workflow identifier.")

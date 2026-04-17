@@ -563,6 +563,10 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertTrue(any(event.get("approval_id") == approval["id"] for event in events))
 
     def test_spec_command_writes_private_spec_packet(self):
+        thread = self.module.hq_mission_runtime.create_thread_record(
+            title="Launch scheduler hardening",
+            owner="AI Operations Lead",
+        )
         parser = self.module.build_parser()
         args = parser.parse_args(
             [
@@ -571,6 +575,8 @@ class HqRuntimeReflectionTests(unittest.TestCase):
                 "Launch scheduler hardening",
                 "--owner",
                 "AI Operations Lead",
+                "--thread-id",
+                thread["id"],
                 "--goal",
                 "Define a narrow implementation packet for scheduler work.",
                 "--primary-file",
@@ -608,10 +614,20 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn("scripts/hq_runtime.py", content)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(manifest["task"], "Launch scheduler hardening")
+        self.assertEqual(manifest["thread_id"], thread["id"])
         self.assertEqual(manifest["read_first"], ["scripts/hq_runtime.py"])
         self.assertEqual(manifest["primary_file"], "scripts/hq_runtime.py")
+        thread_state = json.loads(
+            self.module.hq_mission_runtime.thread_path(thread["id"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(thread_state["latest_spec_path"], ".hq/specs/launch-scheduler-hardening/LATEST.md")
+        self.assertEqual(thread_state["resume_packet_path"], ".hq/specs/launch-scheduler-hardening/LATEST.md")
 
     def test_handoff_command_records_spec_file_in_read_first(self):
+        thread = self.module.hq_mission_runtime.create_thread_record(
+            title="Launch scheduler hardening",
+            owner="Delivery",
+        )
         parser = self.module.build_parser()
         args = parser.parse_args(
             [
@@ -620,6 +636,8 @@ class HqRuntimeReflectionTests(unittest.TestCase):
                 "Launch scheduler hardening",
                 "--owner",
                 "Delivery",
+                "--thread-id",
+                thread["id"],
                 "--spec-file",
                 ".hq/specs/launch-scheduler-hardening/LATEST.md",
                 "--continue-from",
@@ -653,6 +671,18 @@ class HqRuntimeReflectionTests(unittest.TestCase):
                 ".hq/specs/launch-scheduler-hardening/LATEST.md",
                 ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
             ],
+        )
+        self.assertEqual(manifest["thread_id"], thread["id"])
+        thread_state = json.loads(
+            self.module.hq_mission_runtime.thread_path(thread["id"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            thread_state["latest_handoff_path"],
+            ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
+        )
+        self.assertEqual(
+            thread_state["resume_packet_path"],
+            ".hq/handoffs/launch-scheduler-hardening/LATEST.md",
         )
 
 

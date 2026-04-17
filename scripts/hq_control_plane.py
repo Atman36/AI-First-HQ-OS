@@ -398,6 +398,39 @@ def validate_policies(
                         f"unknown metric id: {metric_text}",
                     )
 
+    runtime_governance = policies.get("runtime_governance")
+    if runtime_governance is not None:
+        if not isinstance(runtime_governance, dict):
+            context.add("operating-policies.json.runtime_governance", "runtime_governance must be an object")
+        else:
+            policy_surface = runtime_governance.get("policy_surface")
+            if not isinstance(policy_surface, dict):
+                context.add(
+                    "operating-policies.json.runtime_governance.policy_surface",
+                    "policy_surface must be an object",
+                )
+            else:
+                script_path = normalize_text(policy_surface.get("script"))
+                schema_path = normalize_text(policy_surface.get("policy_schema"))
+                if script_path:
+                    ensure_file_exists(
+                        context,
+                        script_path,
+                        "operating-policies.json.runtime_governance.policy_surface.script",
+                    )
+                if schema_path:
+                    ensure_file_exists(
+                        context,
+                        schema_path,
+                        "operating-policies.json.runtime_governance.policy_surface.policy_schema",
+                    )
+            hook_events = runtime_governance.get("hook_events")
+            if not isinstance(hook_events, list) or not hook_events:
+                context.add(
+                    "operating-policies.json.runtime_governance.hook_events",
+                    "hook_events must be a non-empty list",
+                )
+
     metric_thresholds = policies.get("metric_thresholds", []) or []
     if metric_thresholds and not isinstance(metric_thresholds, list):
         context.add("operating-policies.json.metric_thresholds", "metric_thresholds must be a list")

@@ -70,10 +70,15 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
         mission_files = sorted(self.module.RUNTIME_DIRS["missions"].glob("*.json"))
+        thread_files = sorted(self.module.RUNTIME_DIRS["threads"].glob("*.json"))
         self.assertEqual(len(mission_files), 1)
+        self.assertEqual(len(thread_files), 1)
         mission = json.loads(mission_files[0].read_text(encoding="utf-8"))
+        thread = json.loads(thread_files[0].read_text(encoding="utf-8"))
         self.assertEqual(mission["entity_type"], "mission")
         self.assertEqual(mission["status"], "planned")
+        self.assertEqual(mission["thread_id"], thread["id"])
+        self.assertEqual(thread["mission_ids"], [mission["id"]])
 
         run_args = parser.parse_args(
             [
@@ -95,10 +100,13 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(run["entity_type"], "run")
         self.assertEqual(run["mission_id"], mission["id"])
         self.assertEqual(run["status"], "running")
+        self.assertEqual(run["thread_id"], mission["thread_id"])
 
         mission = json.loads(mission_files[0].read_text(encoding="utf-8"))
         self.assertEqual(mission["latest_run_id"], run["id"])
         self.assertEqual(mission["run_ids"], [run["id"]])
+        thread = json.loads(thread_files[0].read_text(encoding="utf-8"))
+        self.assertEqual(thread["active_run_id"], run["id"])
 
     def test_checkpoint_step_tracks_resume_pointer_and_waiting_step(self):
         mission = self.module.create_mission(
@@ -160,6 +168,8 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(current_run["resume_from_step_id"], planner_step["id"])
         self.assertEqual(current_run["current_step_id"], gate_step["id"])
         self.assertEqual(current_run["status"], "waiting_approval")
+        self.assertEqual(planner_step["thread_id"], mission["thread_id"])
+        self.assertEqual(gate_step["thread_id"], mission["thread_id"])
 
     def test_request_and_decide_approval_updates_run_status(self):
         mission = self.module.create_mission(
@@ -226,6 +236,7 @@ class HqMissionRuntimeTests(unittest.TestCase):
             self.module.approval_path(approval["id"]).read_text(encoding="utf-8")
         )
         self.assertEqual(approval_state["status"], "decided")
+        self.assertEqual(approval_state["thread_id"], mission["thread_id"])
 
     def test_attach_artifact_and_finish_run_persist_lineage(self):
         mission = self.module.create_mission(
@@ -278,6 +289,11 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(finished["status"], "completed")
         mission_state = json.loads(self.module.mission_path(mission["id"]).read_text(encoding="utf-8"))
         self.assertEqual(mission_state["status"], "completed")
+        thread_state = json.loads(
+            self.module.thread_path(mission["thread_id"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(thread_state["status"], "idle")
+        self.assertEqual(thread_state["active_run_id"], "")
 
         event_files = sorted(self.module.RUNTIME_DIRS["events"].glob("**/*.jsonl"))
         self.assertTrue(event_files)
@@ -332,14 +348,44 @@ class HqMissionRuntimeTests(unittest.TestCase):
             for line in telemetry_files[0].read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
-        self.assertEqual(events[0]["event_type"], "mission_created")
-        self.assertEqual(events[0]["task_id"], "weekly-review-task")
-        self.assertEqual(events[1]["event_type"], "run_started")
-        self.assertEqual(events[1]["run_id"], run["id"])
-        self.assertEqual(events[2]["event_type"], "step_checkpointed")
-        self.assertEqual(events[2]["run_id"], run["id"])
-        self.assertEqual(events[2]["step_id"], step["id"])
-        self.assertEqual(events[2]["mission_id"], mission["id"])
+        step_events = [event for event in events if event["event_type"] == "step_checkpointed"]
+        self.assertTrue(any(event["event_type"] == "mission_created" for event in events))
+        self.assertTrue(any(event["event_type"] == "run_started" for event in events))
+        self.assertTrue(step_events)
+        self.assertEqual(step_events[-1]["run_id"], run["id"])
+        self.assertEqual(step_events[-1]["step_id"], step["id"])
+        self.assertEqual(step_events[-1]["mission_id"], mission["id"])
+        self.assertEqual(step_events[-1]["thread_id"], mission["thread_id"])
+
+    def test_link_thread_command_updates_spec_and_handoff_pointers(self):
+        thread = self.module.create_thread_record(title="Reference Donor Analysis", owner="delivery")
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "link-thread",
+                "--thread-id",
+                thread["id"],
+                "--spec-path",
+                ".hq/specs/reference-donor-analysis/LATEST.md",
+                "--handoff-path",
+                ".hq/handoffs/reference-donor-analysis/LATEST.md",
+                "--resume-packet-path",
+                ".hq/handoffs/reference-donor-analysis/LATEST.md",
+                "--status",
+                "paused",
+            ]
+        )
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        thread_state = json.loads(self.module.thread_path(thread["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(thread_state["latest_spec_path"], ".hq/specs/reference-donor-analysis/LATEST.md")
+        self.assertEqual(
+            thread_state["latest_handoff_path"],
+            ".hq/handoffs/reference-donor-analysis/LATEST.md",
+        )
+        self.assertEqual(thread_state["resume_packet_path"], ".hq/handoffs/reference-donor-analysis/LATEST.md")
+        self.assertEqual(thread_state["status"], "paused")
 
     def test_checkpoint_step_rejects_corrupt_run_payload_against_schema(self):
         mission = self.module.create_mission(

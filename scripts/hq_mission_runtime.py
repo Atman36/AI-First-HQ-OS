@@ -35,6 +35,7 @@ PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")
 CONTROL_PLANE_DIR = REPO_ROOT / "05 AI Control Plane" / "schemas"
 RUNTIME_ROOT = PRIVATE_ROOT / "state" / "mission-runtime"
 RUNTIME_DIRS = {
+    "threads": PRIVATE_ROOT / "state" / "threads",
     "missions": RUNTIME_ROOT / "missions",
     "runs": RUNTIME_ROOT / "runs",
     "steps": RUNTIME_ROOT / "steps",
@@ -43,6 +44,7 @@ RUNTIME_DIRS = {
     "events": RUNTIME_ROOT / "events",
 }
 ENTITY_SCHEMA_PATHS = {
+    "thread": CONTROL_PLANE_DIR / "thread.schema.json",
     "mission": CONTROL_PLANE_DIR / "mission.schema.json",
     "run": CONTROL_PLANE_DIR / "run.schema.json",
     "step": CONTROL_PLANE_DIR / "step.schema.json",
@@ -61,6 +63,7 @@ ALLOWED_STEP_STATUSES = {
 }
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
+ALLOWED_THREAD_STATUSES = {"active", "idle", "paused", "archived"}
 
 
 def utc_now() -> str:
@@ -137,6 +140,10 @@ def mission_path(mission_id: str) -> Path:
     return RUNTIME_DIRS["missions"] / f"{mission_id}.json"
 
 
+def thread_path(thread_id: str) -> Path:
+    return RUNTIME_DIRS["threads"] / f"{thread_id}.json"
+
+
 def run_path(run_id: str) -> Path:
     return RUNTIME_DIRS["runs"] / f"{run_id}.json"
 
@@ -184,7 +191,8 @@ def emit_runtime_telemetry(
     status: str,
     summary: str,
     actor: str,
-    mission_id: str,
+    mission_id: str = "",
+    thread_id: str = "",
     source_task_id: str = "",
     workflow: str = "",
     run_id: str = "",
@@ -200,7 +208,8 @@ def emit_runtime_telemetry(
         "event_type": event_type,
         "agent": actor or "runtime",
         "role": actor or "",
-        "task_id": source_task_id or mission_id,
+        "task_id": source_task_id or mission_id or thread_id or event_type,
+        "thread_id": thread_id,
         "mission_id": mission_id,
         "run_id": run_id,
         "step_id": step_id,
@@ -232,13 +241,135 @@ def require_file(path: Path, label: str, expected_entity_type: str | None = None
     return payload
 
 
+def create_thread_record(
+    *,
+    title: str,
+    owner: str = "",
+    status: str = "active",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if status not in ALLOWED_THREAD_STATUSES:
+        raise ValueError("thread status must be one of: " + ", ".join(sorted(ALLOWED_THREAD_STATUSES)))
+    created_at = utc_now()
+    payload = {
+        "schema_version": 1,
+        "entity_type": "thread",
+        "id": make_id("thread", title),
+        "title": title.strip(),
+        "owner": owner.strip(),
+        "status": status,
+        "mission_ids": [],
+        "active_mission_id": "",
+        "active_run_id": "",
+        "latest_spec_path": "",
+        "latest_handoff_path": "",
+        "resume_packet_path": "",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "metadata": metadata or {},
+    }
+    write_entity(thread_path(payload["id"]), payload)
+    record_event(
+        event_type="thread_created",
+        entity_id=payload["id"],
+        summary=f"Created execution thread '{payload['title']}'.",
+        payload={"owner": payload["owner"]},
+    )
+    emit_runtime_telemetry(
+        event_type="thread_created",
+        status=payload["status"],
+        summary=f"Created execution thread '{payload['title']}'.",
+        actor=payload["owner"] or "runtime",
+        thread_id=payload["id"],
+        metadata={"entity_type": "thread"},
+    )
+    return payload
+
+
+def update_thread_context(
+    thread_id: str,
+    *,
+    mission_id: str | None = None,
+    run_id: str | None = None,
+    spec_path: str | None = None,
+    handoff_path: str | None = None,
+    resume_packet_path: str | None = None,
+    status: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    thread = require_file(thread_path(thread_id), "thread", "thread")
+    updated_at = utc_now()
+    change_summary: list[str] = []
+    if mission_id:
+        thread["mission_ids"] = list(dict.fromkeys([*thread.get("mission_ids", []), mission_id]))
+        thread["active_mission_id"] = mission_id
+        change_summary.append(f"mission={mission_id}")
+    if run_id is not None:
+        thread["active_run_id"] = run_id
+        change_summary.append(f"run={run_id or 'cleared'}")
+    if spec_path:
+        thread["latest_spec_path"] = spec_path
+        change_summary.append("spec")
+    if handoff_path:
+        thread["latest_handoff_path"] = handoff_path
+        change_summary.append("handoff")
+    if resume_packet_path:
+        thread["resume_packet_path"] = resume_packet_path
+        change_summary.append("resume")
+    if status:
+        if status not in ALLOWED_THREAD_STATUSES:
+            raise ValueError("thread status must be one of: " + ", ".join(sorted(ALLOWED_THREAD_STATUSES)))
+        thread["status"] = status
+        change_summary.append(f"status={status}")
+    if metadata:
+        merged_metadata = dict(thread.get("metadata", {}))
+        merged_metadata.update(metadata)
+        thread["metadata"] = merged_metadata
+        change_summary.append("metadata")
+    thread["updated_at"] = updated_at
+    write_entity(thread_path(thread["id"]), thread)
+    if change_summary:
+        summary = "Updated thread context: " + ", ".join(change_summary)
+        record_event(
+            event_type="thread_updated",
+            entity_id=thread["id"],
+            summary=summary,
+            payload={
+                "mission_id": mission_id or "",
+                "run_id": run_id or "",
+                "spec_path": spec_path or "",
+                "handoff_path": handoff_path or "",
+            },
+        )
+        emit_runtime_telemetry(
+            event_type="thread_updated",
+            status=thread["status"],
+            summary=summary,
+            actor=thread["owner"] or "runtime",
+            thread_id=thread["id"],
+            mission_id=thread["active_mission_id"],
+            run_id=thread["active_run_id"],
+            metadata={"entity_type": "thread"},
+        )
+    return thread
+
+
 def create_mission(args: argparse.Namespace) -> dict[str, Any]:
+    if args.thread_id:
+        thread = require_file(thread_path(args.thread_id), "thread", "thread")
+    else:
+        thread = create_thread_record(
+            title=args.thread_title or args.title,
+            owner=str(args.owner or args.manager or "").strip(),
+            metadata={"created_for": "mission"},
+        )
     mission_id = make_id("mission", args.title)
     created_at = utc_now()
     payload = {
         "schema_version": 1,
         "entity_type": "mission",
         "id": mission_id,
+        "thread_id": thread["id"],
         "title": args.title.strip(),
         "goal": str(args.goal or "").strip(),
         "workflow": str(args.workflow or "").strip(),
@@ -255,17 +386,27 @@ def create_mission(args: argparse.Namespace) -> dict[str, Any]:
         "metadata": args.metadata or {},
     }
     write_entity(mission_path(mission_id), payload)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission_id,
+        status="active",
+    )
     record_event(
         event_type="mission_created",
         entity_id=mission_id,
         summary=f"Created mission '{payload['title']}'.",
-        payload={"workflow": payload["workflow"], "source_task_id": payload["source_task_id"]},
+        payload={
+            "workflow": payload["workflow"],
+            "source_task_id": payload["source_task_id"],
+            "thread_id": payload["thread_id"],
+        },
     )
     emit_runtime_telemetry(
         event_type="mission_created",
         status=payload["status"],
         summary=f"Created mission '{payload['title']}'.",
         actor=payload["owner"] or payload["manager"] or "runtime",
+        thread_id=payload["thread_id"],
         mission_id=payload["id"],
         source_task_id=payload["source_task_id"],
         workflow=payload["workflow"],
@@ -278,18 +419,70 @@ def create_mission_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     payload = create_mission(args)
     print(f"mission_id={payload['id']}")
+    print(f"thread_id={payload['thread_id']}")
     print(f"mission_file={mission_path(payload['id'])}")
+    return 0
+
+
+def create_thread_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = create_thread_record(
+            title=args.title,
+            owner=str(args.owner or "").strip(),
+            status=args.status,
+            metadata=args.metadata or {},
+        )
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"thread_id={payload['id']}")
+    print(f"thread_file={thread_path(payload['id'])}")
+    return 0
+
+
+def link_thread_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = update_thread_context(
+            args.thread_id,
+            mission_id=args.mission_id,
+            run_id=args.run_id,
+            spec_path=args.spec_path,
+            handoff_path=args.handoff_path,
+            resume_packet_path=args.resume_packet_path,
+            status=args.status,
+            metadata=args.metadata or {},
+        )
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"thread_id={payload['id']}")
+    print(f"thread_file={thread_path(payload['id'])}")
+    return 0
+
+
+def show_thread_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = require_file(thread_path(args.thread_id), "thread", "thread")
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
 def start_run(args: argparse.Namespace) -> dict[str, Any]:
     mission = require_file(mission_path(args.mission_id), "mission", "mission")
+    thread = require_file(thread_path(mission["thread_id"]), "thread", "thread")
     run_id = make_id("run", f"{mission['title']}-{args.actor or 'runtime'}")
     created_at = utc_now()
     payload = {
         "schema_version": 1,
         "entity_type": "run",
         "id": run_id,
+        "thread_id": mission["thread_id"],
         "mission_id": mission["id"],
         "status": "running",
         "actor": str(args.actor or "").strip(),
@@ -313,17 +506,24 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
     mission["status"] = "active"
     mission["updated_at"] = created_at
     write_entity(mission_path(mission["id"]), mission)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        run_id=run_id,
+        status="active",
+    )
     record_event(
         event_type="run_started",
         entity_id=run_id,
         summary=f"Started run for mission '{mission['title']}'.",
-        payload={"mission_id": mission["id"], "actor": payload["actor"]},
+        payload={"mission_id": mission["id"], "actor": payload["actor"], "thread_id": thread["id"]},
     )
     emit_runtime_telemetry(
         event_type="run_started",
         status=payload["status"],
         summary=f"Started run for mission '{mission['title']}'.",
         actor=payload["actor"] or mission["owner"] or "runtime",
+        thread_id=thread["id"],
         mission_id=mission["id"],
         source_task_id=mission["source_task_id"],
         workflow=mission["workflow"],
@@ -356,6 +556,7 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": 1,
         "entity_type": "step",
         "id": step_id,
+        "thread_id": run["thread_id"],
         "run_id": run["id"],
         "mission_id": run["mission_id"],
         "key": args.key.strip(),
@@ -388,13 +589,14 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         event_type="step_checkpointed",
         entity_id=step_id,
         summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
-        payload={"run_id": run["id"], "actor": payload["actor"]},
+        payload={"run_id": run["id"], "actor": payload["actor"], "thread_id": run["thread_id"]},
     )
     emit_runtime_telemetry(
         event_type="step_checkpointed",
         status=payload["status"],
         summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
         actor=payload["actor"] or run["actor"] or "runtime",
+        thread_id=run["thread_id"],
         mission_id=mission["id"],
         source_task_id=mission["source_task_id"],
         workflow=mission["workflow"],
@@ -433,6 +635,7 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": 1,
         "entity_type": "approval",
         "id": approval_id,
+        "thread_id": run["thread_id"],
         "mission_id": run["mission_id"],
         "run_id": run["id"],
         "step_id": step["id"],
@@ -462,13 +665,19 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         event_type="approval_requested",
         entity_id=approval_id,
         summary=f"Requested approval for step '{step['key']}'.",
-        payload={"run_id": run["id"], "step_id": step["id"], "policy_action": args.policy_action},
+        payload={
+            "run_id": run["id"],
+            "step_id": step["id"],
+            "policy_action": args.policy_action,
+            "thread_id": run["thread_id"],
+        },
     )
     emit_runtime_telemetry(
         event_type="approval_requested",
         status="waiting_approval",
         summary=f"Requested approval for step '{step['key']}'.",
         actor=payload["requested_by"],
+        thread_id=run["thread_id"],
         mission_id=mission["id"],
         source_task_id=mission["source_task_id"],
         workflow=mission["workflow"],
@@ -532,6 +741,7 @@ def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
         status=args.decision,
         summary=f"Approval decision '{args.decision}' recorded.",
         actor=approval["decided_by"] or "runtime",
+        thread_id=run["thread_id"],
         mission_id=mission["id"],
         source_task_id=mission["source_task_id"],
         workflow=mission["workflow"],
@@ -567,6 +777,7 @@ def attach_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": 1,
         "entity_type": "artifact",
         "id": artifact_id,
+        "thread_id": run["thread_id"],
         "mission_id": run["mission_id"],
         "run_id": run["id"],
         "step_id": step["id"],
@@ -585,13 +796,19 @@ def attach_artifact(args: argparse.Namespace) -> dict[str, Any]:
         event_type="artifact_attached",
         entity_id=artifact_id,
         summary=f"Attached artifact '{payload['kind']}'.",
-        payload={"run_id": run["id"], "step_id": step["id"], "path": payload["path"]},
+        payload={
+            "run_id": run["id"],
+            "step_id": step["id"],
+            "path": payload["path"],
+            "thread_id": run["thread_id"],
+        },
     )
     emit_runtime_telemetry(
         event_type="artifact_attached",
         status="attached",
         summary=f"Attached artifact '{payload['kind']}'.",
         actor=step["actor"] or run["actor"] or "runtime",
+        thread_id=run["thread_id"],
         mission_id=mission["id"],
         source_task_id=mission["source_task_id"],
         workflow=mission["workflow"],
@@ -618,6 +835,7 @@ def attach_artifact_command(args: argparse.Namespace) -> int:
 def finish_run(args: argparse.Namespace) -> dict[str, Any]:
     run = require_file(run_path(args.run_id), "run", "run")
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
     finished_at = utc_now()
     run["status"] = args.status
     run["finished_at"] = finished_at
@@ -626,17 +844,24 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
     mission["status"] = "completed" if args.status == "completed" else args.status
     mission["updated_at"] = finished_at
     write_entity(mission_path(mission["id"]), mission)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        run_id="",
+        status="idle" if args.status == "completed" else "paused",
+    )
     record_event(
         event_type="run_finished",
         entity_id=run["id"],
         summary=f"Finished run with status '{args.status}'.",
-        payload={"mission_id": mission["id"]},
+        payload={"mission_id": mission["id"], "thread_id": thread["id"]},
     )
     emit_runtime_telemetry(
         event_type="run_finished",
         status=args.status,
         summary=f"Finished run with status '{args.status}'.",
         actor=run["actor"] or mission["owner"] or "runtime",
+        thread_id=thread["id"],
         mission_id=mission["id"],
         source_task_id=mission["source_task_id"],
         workflow=mission["workflow"],
@@ -678,6 +903,25 @@ def build_parser() -> argparse.ArgumentParser:
     init = subparsers.add_parser("init", help="Create the mission runtime state directories.")
     init.set_defaults(func=lambda args: (ensure_runtime() or print(f"runtime_root={RUNTIME_ROOT}") or 0))
 
+    create_thread_parser = subparsers.add_parser(
+        "create-thread",
+        help="Create a durable execution thread record.",
+    )
+    create_thread_parser.add_argument("--title", required=True, help="Thread title.")
+    create_thread_parser.add_argument("--owner", help="Owning role or operator.")
+    create_thread_parser.add_argument(
+        "--status",
+        default="active",
+        choices=sorted(ALLOWED_THREAD_STATUSES),
+        help="Initial thread status.",
+    )
+    create_thread_parser.add_argument(
+        "--metadata",
+        type=parse_json_object,
+        help="Optional inline JSON metadata object.",
+    )
+    create_thread_parser.set_defaults(func=create_thread_command)
+
     create_mission_parser = subparsers.add_parser(
         "create-mission",
         help="Create a mission record in the local mission runtime.",
@@ -691,11 +935,48 @@ def build_parser() -> argparse.ArgumentParser:
     create_mission_parser.add_argument("--accepts-result", help="Accepting role.")
     create_mission_parser.add_argument("--source-task-id", help="Optional source task id.")
     create_mission_parser.add_argument(
+        "--thread-id",
+        help="Existing execution thread identifier. When omitted, a thread is created automatically.",
+    )
+    create_mission_parser.add_argument(
+        "--thread-title",
+        help="Optional title used only when a new thread is auto-created.",
+    )
+    create_mission_parser.add_argument(
         "--metadata",
         type=parse_json_object,
         help="Optional inline JSON metadata object.",
     )
     create_mission_parser.set_defaults(func=create_mission_command)
+
+    link_thread_parser = subparsers.add_parser(
+        "link-thread",
+        help="Attach mission/run/spec/handoff pointers to an existing thread.",
+    )
+    link_thread_parser.add_argument("--thread-id", required=True, help="Thread identifier.")
+    link_thread_parser.add_argument("--mission-id", help="Mission identifier to mark active.")
+    link_thread_parser.add_argument("--run-id", help="Run identifier to mark active.")
+    link_thread_parser.add_argument("--spec-path", help="Latest spec path for the thread.")
+    link_thread_parser.add_argument("--handoff-path", help="Latest handoff path for the thread.")
+    link_thread_parser.add_argument("--resume-packet-path", help="Latest resume packet path.")
+    link_thread_parser.add_argument(
+        "--status",
+        choices=sorted(ALLOWED_THREAD_STATUSES),
+        help="Optional thread status update.",
+    )
+    link_thread_parser.add_argument(
+        "--metadata",
+        type=parse_json_object,
+        help="Optional inline JSON metadata object.",
+    )
+    link_thread_parser.set_defaults(func=link_thread_command)
+
+    show_thread_parser = subparsers.add_parser(
+        "show-thread",
+        help="Render one thread record as JSON.",
+    )
+    show_thread_parser.add_argument("--thread-id", required=True, help="Thread identifier.")
+    show_thread_parser.set_defaults(func=show_thread_command)
 
     start_run_parser = subparsers.add_parser(
         "start-run",

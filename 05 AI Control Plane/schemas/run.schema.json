@@ -6,6 +6,7 @@
     "schema_version",
     "entity_type",
     "id",
+    "thread_id",
     "mission_id",
     "status",
     "actor",
@@ -33,6 +34,10 @@
       "const": "run"
     },
     "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
       "type": "string",
       "minLength": 1
     },

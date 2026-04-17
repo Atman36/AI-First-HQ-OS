@@ -8,6 +8,12 @@ HQ Harness Runtime is a Codex-native execution and governance layer for long-run
 
 The core thesis is simple: model quality matters, but production reliability now depends more on the harness around the model than on the base model itself. The product is not "another agent wrapper." The product is the runtime that manages memory, context, approvals, verification, recovery, and controlled delegation.
 
+The next donor-driven tightening is narrow:
+
+- add a durable private `thread_id` separate from any specific run;
+- expose explicit runtime policy and hook seams outside prompts;
+- keep skills as compact `SKILL.md` packets with optional `scripts/`, `references/`, and `assets/`, not local mini-frameworks.
+
 ## Why This Project Exists
 
 Current agent systems usually fail at the same seams:
@@ -37,7 +43,7 @@ This project does not try to replace frontier models, replace Codex, or become a
 
 - make long-running work resumable across sessions and interruptions;
 - persist high-signal working memory without treating prompts as the source of truth;
-- separate execution state from conversation history;
+- separate execution state from conversation history and from the durable execution thread;
 - enforce risk-based approval gates for mutating and destructive actions;
 - require verification before a run can be considered complete;
 - support bounded delegation with explicit ownership and compact result return;
@@ -63,6 +69,20 @@ The runtime should maintain layered memory instead of reusing full chat transcri
 - procedural memory: durable operating rules, conventions, recurring workflows, accepted playbooks.
 
 The first implementation should be file-backed and human-inspectable. More advanced retrieval backends can remain optional.
+
+### 1A. Execution Thread
+
+The runtime should treat `thread` as the durable continuity boundary above any individual `mission` or `run`.
+
+That thread should stay private under `.hq/state/threads/` and hold only narrow linkage:
+
+- `thread_id`;
+- active mission and run pointers;
+- latest spec and handoff pointers;
+- resume packet pointer;
+- status and private metadata.
+
+This preserves continuity without turning chat history into HQ source of truth.
 
 ### 2. Context Compaction
 
@@ -101,6 +121,14 @@ Each class should map to a default policy response:
 - pause for approval;
 - block.
 
+Policy should not live only in prompts. HQ should expose explicit runtime seams for:
+
+- rule-based policy evaluation;
+- pre-action hooks;
+- post-action hooks;
+- approval-trigger hooks;
+- run-finish hooks.
+
 ### 5. Subagent Contract
 
 Delegation should be explicit and bounded. Each subagent task should include:
@@ -113,23 +141,37 @@ Delegation should be explicit and bounded. Each subagent task should include:
 
 The parent run stays authoritative. Subagents do not become hidden state silos.
 
+### 6. Skill Packaging Discipline
+
+Skills should remain thin capability packets:
+
+- one compact `SKILL.md`;
+- optional `scripts/` for deterministic helpers;
+- optional `references/` for lazy-loaded docs;
+- optional `assets/` for templates or output resources.
+
+HQ should avoid letting a skill directory grow into its own framework, docs site, or toolchain.
+
 ## V1 Scope
 
-Version 1 should focus on five narrow capabilities:
+Version 1 should focus on six narrow capabilities:
 
 1. file-backed layered memory for runs and missions;
-2. context compaction and resume packets;
-3. verification-before-complete pipeline;
-4. policy-gated action classification and approvals;
-5. bounded subagent handoff and result packaging.
+2. durable execution-thread records linked to missions, runs, specs, handoffs, and telemetry;
+3. context compaction and resume packets;
+4. verification-before-complete pipeline;
+5. explicit policy and hook seams for action classification and approvals;
+6. bounded subagent handoff and result packaging.
 
 ## V1 Deliverables
 
+- thread contract added to the private runtime and linked into the mission runtime;
 - memory contract added to the mission runtime;
 - compaction command and stored resume summaries;
 - verification stage and verification result artifacts;
-- policy gate primitive for tool/action classes;
+- policy gate and hook primitives for action classes;
 - subagent packet schema or lightweight tracked contract;
+- skill-packaging lint that preserves compact skill directories;
 - targeted tests covering resume, verification, and approval behavior;
 - public-safe documentation for architecture and operating assumptions.
 
@@ -137,6 +179,7 @@ Version 1 should focus on five narrow capabilities:
 
 ### Milestone 1: Memory and Resume
 
+- add durable execution-thread records and `thread_id` lineage;
 - add working memory and resume packet generation;
 - persist compact high-signal summaries per run;
 - prove a run can resume from a narrow packet instead of full transcript reconstruction.
@@ -151,6 +194,7 @@ Version 1 should focus on five narrow capabilities:
 
 - classify actions by risk;
 - add approval hooks;
+- move policy and hook evaluation into explicit runtime surfaces, not prompt-only rules;
 - formalize subagent task packet and compact return path.
 
 ## Technical Direction
@@ -165,7 +209,7 @@ Version 1 should focus on five narrow capabilities:
 
 The project should selectively borrow ideas from:
 
-- `openai/codex` for execution surface and workflow ergonomics;
+- `openai/codex` for execution surface and workflow ergonomics, especially thread/run separation, explicit `execpolicy` and `hooks` seams, and compact skill packaging;
 - `openai/openai-agents-python` for harness and sandbox patterns;
 - `langchain-ai/langgraph` for persistence, interrupts, and resume semantics;
 - `paperclipai/paperclip` for company-layer governance concepts;

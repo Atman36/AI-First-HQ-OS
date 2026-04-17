@@ -6,6 +6,7 @@
     "schema_version",
     "entity_type",
     "id",
+    "thread_id",
     "title",
     "goal",
     "workflow",
@@ -31,6 +32,10 @@
       "const": "mission"
     },
     "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
       "type": "string",
       "minLength": 1
     },

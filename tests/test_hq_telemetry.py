@@ -144,6 +144,12 @@ class HqTelemetryTests(unittest.TestCase):
                 "AI Operations Lead",
                 "--task-id",
                 "run-first-governed-loop",
+                "--thread-id",
+                "thread-run-first-governed-loop-1234",
+                "--mission-id",
+                "mission-run-first-governed-loop-5678",
+                "--run-id",
+                "run-run-first-governed-loop-9abc",
                 "--status",
                 "ready",
                 "--summary",
@@ -170,6 +176,9 @@ class HqTelemetryTests(unittest.TestCase):
         self.assertEqual(payload["event_type"], "route")
         self.assertEqual(payload["agent"], "ai_operations_lead")
         self.assertEqual(payload["task_id"], "run-first-governed-loop")
+        self.assertEqual(payload["thread_id"], "thread-run-first-governed-loop-1234")
+        self.assertEqual(payload["mission_id"], "mission-run-first-governed-loop-5678")
+        self.assertEqual(payload["run_id"], "run-run-first-governed-loop-9abc")
         self.assertEqual(payload["metadata"], {"phase": "triage"})
         self.assertEqual(payload["touched_files"], ["05 AI Control Plane/active-work.json"])
 
@@ -231,8 +240,10 @@ class HqTelemetryTests(unittest.TestCase):
         contract = self.module.build_trace_contract()
 
         self.assertEqual(contract["canonical_trace_entity"], "run")
-        self.assertEqual(contract["grouping_entity"], "mission")
+        self.assertEqual(contract["grouping_entity"], "thread")
         self.assertEqual(contract["join_key"], "task_id")
+        self.assertEqual(contract["entities"]["thread"]["otel_role"], "session")
+        self.assertEqual(contract["entities"]["mission"]["parent_entity"], "thread")
         self.assertEqual(contract["entities"]["run"]["otel_role"], "trace")
         self.assertEqual(contract["entities"]["step"]["otel_role"], "span")
         self.assertEqual(contract["entities"]["approval"]["parent_entity"], "step")

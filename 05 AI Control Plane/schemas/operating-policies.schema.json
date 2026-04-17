@@ -142,6 +142,13 @@
         "control_plane_change_requires"
       ]
     },
+    "runtime_governance": {
+      "type": "object",
+      "required": [
+        "policy_surface",
+        "hook_events"
+      ]
+    },
     "metric_thresholds": {
       "type": "array",
       "items": {

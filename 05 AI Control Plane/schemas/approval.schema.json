@@ -6,6 +6,7 @@
     "schema_version",
     "entity_type",
     "id",
+    "thread_id",
     "mission_id",
     "run_id",
     "step_id",
@@ -32,6 +33,10 @@
       "const": "approval"
     },
     "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
       "type": "string",
       "minLength": 1
     },
