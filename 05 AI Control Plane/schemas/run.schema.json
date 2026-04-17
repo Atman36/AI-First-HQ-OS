@@ -53,6 +53,7 @@
     "status": {
       "type": "string",
       "enum": [
+        "queued",
         "running",
         "waiting_approval",
         "interrupted",

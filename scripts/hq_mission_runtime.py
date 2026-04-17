@@ -86,6 +86,7 @@ ALLOWED_HANDOFF_STATUSES = {
 }
 ACTIVE_RUN_STATUSES = {"running", "waiting_approval", "blocked", "interrupted"}
 TERMINAL_RUN_STATUSES = {"completed", "failed", "blocked", "cancelled"}
+QUEUED_RUN_STATUS = "queued"
 DEFAULT_CHILD_BLOCKED_TOOL_CLASSES = [
     "delegation",
     "user_interaction",
@@ -973,9 +974,77 @@ def show_thread_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def start_run(args: argparse.Namespace) -> dict[str, Any]:
-    mission = require_file(mission_path(args.mission_id), "mission", "mission")
-    thread = require_file(thread_path(mission["thread_id"]), "thread", "thread")
+def queued_runs_for_thread(thread_id: str) -> list[dict[str, Any]]:
+    queued_runs: list[dict[str, Any]] = []
+    for candidate in sorted(RUNTIME_DIRS["runs"].glob("*.json")):
+        payload = require_file(candidate, "run", "run")
+        if payload["thread_id"] != thread_id or payload["status"] != QUEUED_RUN_STATUS:
+            continue
+        queued_runs.append(payload)
+    queued_runs.sort(
+        key=lambda item: (
+            str(item.get("created_at") or ""),
+            str(item.get("id") or ""),
+        )
+    )
+    return queued_runs
+
+
+def emit_run_lifecycle(
+    *,
+    event_type: str,
+    status: str,
+    summary: str,
+    action: list[str],
+    hook_event: str,
+    run: dict[str, Any],
+    mission: dict[str, Any],
+    thread: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    record_event(
+        event_type=event_type,
+        entity_id=run["id"],
+        summary=summary,
+        payload={"mission_id": mission["id"], "actor": run["actor"], "thread_id": thread["id"]},
+    )
+    emit_runtime_telemetry(
+        event_type=event_type,
+        status=status,
+        summary=summary,
+        actor=run["actor"] or mission["owner"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        metadata={"entity_type": "run", **(metadata or {})},
+    )
+    emit_runtime_hook_event(
+        event=hook_event,
+        action=action,
+        status=status,
+        summary=summary,
+        actor=run["actor"] or mission["owner"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        tool_name="run",
+        call_id=run["id"],
+        metadata={"loop": run["loop"], **(metadata or {})},
+    )
+
+
+def activate_queued_run(
+    run: dict[str, Any],
+    *,
+    thread: dict[str, Any],
+    mission: dict[str, Any],
+    activated_by: str,
+    activated_at: str | None = None,
+) -> dict[str, Any]:
+    if run["status"] != QUEUED_RUN_STATUS:
+        raise ValueError(f"run status must be '{QUEUED_RUN_STATUS}', got '{run['status']}'")
     active_run_id = str(thread.get("active_run_id") or "").strip()
     if active_run_id:
         active_run = require_file(run_path(active_run_id), "run", "run")
@@ -983,6 +1052,67 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError(
                 f"thread already has active run {active_run_id} with status '{active_run['status']}'"
             )
+    now = activated_at or utc_now()
+    run["status"] = "running"
+    run["updated_at"] = now
+    run["interruption_state"] = normalize_interruption_state({})
+    queue_metadata = dict(run.get("metadata", {}).get("queue", {}))
+    queue_metadata["activated_at"] = now
+    queue_metadata["activated_by"] = activated_by
+    metadata = dict(run.get("metadata", {}))
+    metadata["queue"] = queue_metadata
+    run["metadata"] = metadata
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["session_id"] = run["execution_context"]["session_id"]
+    trace_state["work_dir"] = run["execution_context"]["work_dir"]
+    trace_state["snapshot_at"] = now
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=now,
+    )
+    write_entity(run_path(run["id"]), run)
+    mission["latest_run_id"] = run["id"]
+    mission["status"] = "active"
+    mission["updated_at"] = now
+    write_entity(mission_path(mission["id"]), mission)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        status="active",
+        execution_context=run["execution_context"],
+        trace_state=run["trace_state"],
+    )
+    emit_run_lifecycle(
+        event_type="run_started",
+        status=run["status"],
+        summary=f"Activated queued run for mission '{mission['title']}'.",
+        action=["hq", "run", "dispatch"],
+        hook_event="run_started",
+        run=run,
+        mission=mission,
+        thread=thread,
+        metadata={"queue_activated_by": activated_by},
+    )
+    return run
+
+
+def start_run(args: argparse.Namespace) -> dict[str, Any]:
+    mission = require_file(mission_path(args.mission_id), "mission", "mission")
+    thread = require_file(thread_path(mission["thread_id"]), "thread", "thread")
+    busy_strategy = str(getattr(args, "if_busy", None) or "reject").strip()
+    active_run_id = str(thread.get("active_run_id") or "").strip()
+    active_run: dict[str, Any] | None = None
+    if active_run_id:
+        active_run = require_file(run_path(active_run_id), "run", "run")
+        if active_run["status"] in ACTIVE_RUN_STATUSES:
+            if busy_strategy != "queue":
+                raise ValueError(
+                    f"thread already has active run {active_run_id} with status '{active_run['status']}'"
+                )
     run_id = make_id("run", f"{mission['title']}-{args.actor or 'runtime'}")
     created_at = utc_now()
     execution_context = prepare_execution_context(
@@ -994,13 +1124,22 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         parent_session_id=str(getattr(args, "parent_session_id", None) or "").strip(),
         blocked_tool_classes=getattr(args, "blocked_tool_class", None) or [],
     )
+    run_status = "running"
+    metadata = dict(args.metadata or {})
+    if active_run is not None and active_run["status"] in ACTIVE_RUN_STATUSES:
+        run_status = QUEUED_RUN_STATUS
+        metadata["queue"] = {
+            "strategy": busy_strategy,
+            "queued_at": created_at,
+            "queued_after_run_id": active_run["id"],
+        }
     payload = {
         "schema_version": 1,
         "entity_type": "run",
         "id": run_id,
         "thread_id": mission["thread_id"],
         "mission_id": mission["id"],
-        "status": "running",
+        "status": run_status,
         "actor": str(args.actor or "").strip(),
         "loop": str(args.loop or "").strip(),
         "current_step_id": "",
@@ -1028,7 +1167,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "finished_at": "",
         "created_at": created_at,
         "updated_at": created_at,
-        "metadata": args.metadata or {},
+        "metadata": metadata,
     }
     write_entity(run_path(run_id), payload)
     mission["latest_run_id"] = run_id
@@ -1036,6 +1175,19 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
     mission["status"] = "active"
     mission["updated_at"] = created_at
     write_entity(mission_path(mission["id"]), mission)
+    if payload["status"] == QUEUED_RUN_STATUS:
+        emit_run_lifecycle(
+            event_type="run_queued",
+            status=payload["status"],
+            summary=f"Queued run for mission '{mission['title']}' behind active run '{active_run_id}'.",
+            action=["hq", "run", "queue"],
+            hook_event="run_queued",
+            run=payload,
+            mission=mission,
+            thread=thread,
+            metadata={"queued_after_run_id": active_run_id},
+        )
+        return payload
     update_thread_context(
         thread["id"],
         mission_id=mission["id"],
@@ -1044,36 +1196,15 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         execution_context=execution_context,
         trace_state=payload["trace_state"],
     )
-    record_event(
-        event_type="run_started",
-        entity_id=run_id,
-        summary=f"Started run for mission '{mission['title']}'.",
-        payload={"mission_id": mission["id"], "actor": payload["actor"], "thread_id": thread["id"]},
-    )
-    emit_runtime_telemetry(
+    emit_run_lifecycle(
         event_type="run_started",
         status=payload["status"],
         summary=f"Started run for mission '{mission['title']}'.",
-        actor=payload["actor"] or mission["owner"] or "runtime",
-        thread_id=thread["id"],
-        mission_id=mission["id"],
-        source_task_id=mission["source_task_id"],
-        workflow=mission["workflow"],
-        run_id=payload["id"],
-        metadata={"entity_type": "run"},
-    )
-    emit_runtime_hook_event(
-        event="run_started",
         action=["hq", "run", "start"],
-        status=payload["status"],
-        summary=f"Started run for mission '{mission['title']}'.",
-        actor=payload["actor"] or mission["owner"] or "runtime",
-        thread_id=thread["id"],
-        mission_id=mission["id"],
-        run_id=payload["id"],
-        tool_name="run",
-        call_id=payload["id"],
-        metadata={"loop": payload["loop"]},
+        hook_event="run_started",
+        run=payload,
+        mission=mission,
+        thread=thread,
     )
     return payload
 
@@ -1086,7 +1217,38 @@ def start_run_command(args: argparse.Namespace) -> int:
         print(f"error={exc}")
         return 2
     print(f"run_id={payload['id']}")
+    print(f"status={payload['status']}")
     print(f"run_file={run_path(payload['id'])}")
+    return 0
+
+
+def dispatch_queued_run(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        selected_run: dict[str, Any]
+        if str(getattr(args, "run_id", None) or "").strip():
+            selected_run = require_file(run_path(args.run_id), "run", "run")
+            if selected_run["status"] != QUEUED_RUN_STATUS:
+                raise ValueError(f"run status must be '{QUEUED_RUN_STATUS}' to dispatch")
+            thread = require_file(thread_path(selected_run["thread_id"]), "thread", "thread")
+        else:
+            thread = require_file(thread_path(args.thread_id), "thread", "thread")
+            queued_runs = queued_runs_for_thread(thread["id"])
+            if not queued_runs:
+                raise ValueError("thread has no queued runs to dispatch")
+            selected_run = queued_runs[0]
+        mission = require_file(mission_path(selected_run["mission_id"]), "mission", "mission")
+        payload = activate_queued_run(
+            selected_run,
+            thread=thread,
+            mission=mission,
+            activated_by=str(args.activated_by or "").strip(),
+        )
+    except (ValueError, RuntimeError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"run_id={payload['id']}")
+    print(f"status={payload['status']}")
     return 0
 
 
@@ -2310,6 +2472,12 @@ def build_parser() -> argparse.ArgumentParser:
     start_run_parser.add_argument("--mission-id", required=True, help="Mission identifier.")
     start_run_parser.add_argument("--actor", help="Actor starting the run.")
     start_run_parser.add_argument("--loop", help="Loop description.")
+    start_run_parser.add_argument(
+        "--if-busy",
+        choices=["reject", "queue"],
+        default="reject",
+        help="How to handle a thread that already has an active run. Defaults to reject.",
+    )
     start_run_parser.add_argument("--session-id", help="Optional execution session identifier.")
     start_run_parser.add_argument("--work-dir", help="Optional isolated work directory override.")
     start_run_parser.add_argument("--runtime-home", help="Optional scoped runtime home override.")
@@ -2335,6 +2503,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional inline JSON metadata object.",
     )
     start_run_parser.set_defaults(func=start_run_command)
+
+    dispatch_queued_run_parser = subparsers.add_parser(
+        "dispatch-queued-run",
+        help="Activate the next queued run for a thread, or a specific queued run.",
+    )
+    dispatch_target = dispatch_queued_run_parser.add_mutually_exclusive_group(required=True)
+    dispatch_target.add_argument("--thread-id", help="Thread identifier used to pick the oldest queued run.")
+    dispatch_target.add_argument("--run-id", help="Specific queued run identifier.")
+    dispatch_queued_run_parser.add_argument(
+        "--activated-by",
+        required=True,
+        help="Actor activating the queued run.",
+    )
+    dispatch_queued_run_parser.set_defaults(func=dispatch_queued_run)
 
     checkpoint_step_parser = subparsers.add_parser(
         "checkpoint-step",
