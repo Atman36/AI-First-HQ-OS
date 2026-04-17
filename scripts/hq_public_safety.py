@@ -60,6 +60,7 @@ ALLOWED_EXACT_PATHS = {
 
 ALLOWED_PATH_PREFIXES = (
     ".github/workflows/",
+    "docs/",
     "scripts/",
     "skills/",
     "tests/",

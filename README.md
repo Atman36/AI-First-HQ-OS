@@ -15,6 +15,7 @@ This repository packages the reusable public shell of an AI-first company operat
 - `05 AI Control Plane/schemas/` holds reusable schemas for the local control plane
 - `agents/` contains role prompts for specialized execution
 - `skills/` contains reusable callable skills for slash-style invocation and UI surfacing
+- `docs/` contains public-safe architecture notes and project briefs
 - `scripts/` provides validation, telemetry, runtime helpers, the additive mission runtime nucleus, and publication guardrails
 - `.hq/` is reserved for private local runtime artifacts and live operating state; it must never enter public git history
 - large work should use a private `.hq/specs/` packet plus `.hq/handoffs/` continuity instead of reopening the whole repo context in each new chat
@@ -37,6 +38,7 @@ This repository packages the reusable public shell of an AI-first company operat
 - `agents/*/AGENTS.md` role-specific prompts
 - `skills/*/SKILL.md` reusable skill definitions
 - `05 AI Control Plane/schemas/` reusable schema definitions
+- `docs/` public-safe architecture and project documentation
 - `scripts/` validation, runtime, telemetry, and publication-safety tools
 - `tests/` automated coverage for core behavior
 - `agents/*/AGENTS.md` role prompts safe for publication
@@ -90,6 +92,7 @@ When `.hq/prompts/` exists locally, run `python3 scripts/hq_private_prompt_lint.
 The public repository is allowlist-only. These path classes are allowed:
 
 - `README.md`, `AGENTS.md`, `.gitignore`, `requirements-dev.txt`
+- `docs/`
 - `.github/workflows/`
 - `agents/*/AGENTS.md`
 - `skills/`
