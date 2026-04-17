@@ -137,7 +137,7 @@ These files make the control plane legible for humans, but they are local-only a
 - Documentation: shared truth sync after acceptance.
 - Finance, Growth, and Research: bounded specialist support.
 - Assistant: optional non-standing helper for inbox cleanup and task shaping when AI Operations Lead explicitly needs it.
-- Approved local specialist bench lives under `/Users/Apple/Documents/Obsidian/1. MyObsidianVault/assist/`.
+- Approved local specialist bench lives in the founder-local Obsidian specialist workspace outside this repository.
 - Current approved local specialists for HQ routing: `CTO`, `Senior Product Engineer`, `Data Analyst`, `Evals Engineer`, `Security Engineer`, `QA`, `CloudOps Engineer`, `UX Designer`, `Skill Consultant`.
 - Managers may route work to the local specialist bench when no standing HQ role cleanly fits the slice.
 

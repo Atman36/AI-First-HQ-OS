@@ -33,7 +33,6 @@ class HqPublicSafetyTests(unittest.TestCase):
     def test_public_safe_files_pass(self):
         tracked_files = [
             self.write_file("README.md", "# AI-First HQ OS\n"),
-            self.write_file("docs/projects/example-brief.md", "# Example Brief\n"),
             self.write_file("scripts/tool.py", "print('ok')\n"),
             self.write_file("agents/delivery/AGENTS.md", "# Delivery\n"),
             self.write_file("skills/ceo/SKILL.md", "---\nname: ceo\ndescription: CEO skill.\n---\n"),
@@ -78,6 +77,16 @@ class HqPublicSafetyTests(unittest.TestCase):
 
         self.assertEqual(len(violations), 1)
         self.assertIn(".hq/telemetry/2026-04-16.jsonl", violations[0])
+
+    def test_project_brief_under_docs_projects_fails(self):
+        tracked_files = [
+            self.write_file("docs/projects/example-brief.md", "# Example Brief\n"),
+        ]
+
+        violations = self.module.find_violations(self.temp_root, tracked_files)
+
+        self.assertEqual(len(violations), 1)
+        self.assertIn("blocked private path", violations[0])
 
     def test_blocked_sensitive_extension_fails(self):
         tracked_files = [

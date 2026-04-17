@@ -16,6 +16,7 @@ REPO_ROOT = Path(
 
 BLOCKED_PATH_PREFIXES = (
     ".hq/",
+    "docs/projects/",
     "private/",
     "private-data/",
     "user-data/",
