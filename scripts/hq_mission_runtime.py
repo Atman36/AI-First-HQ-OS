@@ -1004,9 +1004,29 @@ def summarize_queued_run(run: dict[str, Any]) -> dict[str, Any]:
         "created_at": run["created_at"],
         "updated_at": run["updated_at"],
         "queued_at": str(queue_metadata.get("queued_at") or "").strip(),
+        "rebased_at": str(queue_metadata.get("rebased_at") or "").strip(),
         "queued_after_run_id": str(queue_metadata.get("queued_after_run_id") or "").strip(),
         "strategy": str(queue_metadata.get("strategy") or "").strip(),
     }
+
+
+def rebase_queued_runs_after_dispatch(
+    *,
+    thread_id: str,
+    active_run_id: str,
+    updated_at: str,
+) -> None:
+    for queued_run in queued_runs_for_thread(thread_id):
+        if queued_run["id"] == active_run_id:
+            continue
+        metadata = dict(queued_run.get("metadata", {}))
+        queue_metadata = dict(metadata.get("queue", {}))
+        queue_metadata["queued_after_run_id"] = active_run_id
+        queue_metadata["rebased_at"] = updated_at
+        metadata["queue"] = queue_metadata
+        queued_run["metadata"] = metadata
+        queued_run["updated_at"] = updated_at
+        write_entity(run_path(queued_run["id"]), queued_run)
 
 
 def emit_run_lifecycle(
@@ -1104,6 +1124,11 @@ def activate_queued_run(
         status="active",
         execution_context=run["execution_context"],
         trace_state=run["trace_state"],
+    )
+    rebase_queued_runs_after_dispatch(
+        thread_id=thread["id"],
+        active_run_id=run["id"],
+        updated_at=now,
     )
     emit_run_lifecycle(
         event_type="run_dispatched",
