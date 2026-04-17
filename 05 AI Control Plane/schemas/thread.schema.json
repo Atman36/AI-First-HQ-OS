@@ -16,6 +16,7 @@
     "latest_spec_path",
     "latest_handoff_path",
     "resume_packet_path",
+    "execution_context",
     "trace_state",
     "created_at",
     "updated_at",
@@ -74,6 +75,9 @@
     },
     "resume_packet_path": {
       "type": "string"
+    },
+    "execution_context": {
+      "type": "object"
     },
     "trace_state": {
       "type": "object"

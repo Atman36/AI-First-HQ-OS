@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import contextlib
 import json
 import os
 import shutil
@@ -106,6 +108,11 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(run["status"], "running")
         self.assertEqual(run["thread_id"], mission["thread_id"])
         self.assertEqual(run["trace_state"]["trace_id"], run["id"])
+        self.assertEqual(run["execution_context"]["scope"], "isolated")
+        self.assertEqual(run["execution_context"]["runtime_home_mode"], "scoped")
+        self.assertTrue(run["execution_context"]["session_id"])
+        self.assertTrue((self.temp_root / run["execution_context"]["work_dir"]).is_dir())
+        self.assertTrue((self.temp_root / run["execution_context"]["runtime_home"]).is_dir())
 
         mission = json.loads(mission_files[0].read_text(encoding="utf-8"))
         self.assertEqual(mission["latest_run_id"], run["id"])
@@ -114,6 +121,8 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(thread["active_run_id"], run["id"])
         self.assertEqual(thread["trace_state"]["trace_id"], run["id"])
         self.assertTrue(thread["trace_state"]["resume_fingerprint"])
+        self.assertEqual(thread["execution_context"]["session_id"], run["execution_context"]["session_id"])
+        self.assertEqual(thread["execution_context"]["work_dir"], run["execution_context"]["work_dir"])
 
     def test_checkpoint_step_tracks_resume_pointer_and_waiting_step(self):
         mission = self.module.create_mission(
@@ -281,6 +290,14 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(
             thread_state["trace_state"]["resume_packet_path"],
             ".hq/handoffs/handoff-mission/LATEST.md",
+        )
+        self.assertEqual(
+            handoff["metadata"]["execution_context"]["session_id"],
+            run_state["execution_context"]["session_id"],
+        )
+        self.assertEqual(
+            handoff["metadata"]["execution_context"]["work_dir"],
+            run_state["execution_context"]["work_dir"],
         )
 
     def test_runtime_entities_emit_policy_hook_events(self):
@@ -607,6 +624,91 @@ class HqMissionRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(thread_state["resume_packet_path"], ".hq/handoffs/reference-donor-analysis/LATEST.md")
         self.assertEqual(thread_state["status"], "paused")
+
+    def test_resume_context_command_returns_narrow_resume_linkage(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Resume Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "delivery",
+                    "--session-id",
+                    "codex-session-42",
+                ]
+            )
+        )
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--summary",
+                    "Resume packet ready.",
+                ]
+            )
+        )
+        handoff = self.module.create_handoff_record(
+            thread_id=mission["thread_id"],
+            task="Resume Mission",
+            session="session-1",
+            handoff_file=".hq/handoffs/resume-mission/LATEST.md",
+            owner="delivery",
+            status="ready_for_handoff",
+            next_steps=["Resume from the isolated workdir."],
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["resume-context", "--thread-id", mission["thread_id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["thread_id"], mission["thread_id"])
+        self.assertEqual(payload["run_id"], run["id"])
+        self.assertEqual(payload["session_id"], "codex-session-42")
+        self.assertEqual(payload["work_dir"], run["execution_context"]["work_dir"])
+        self.assertEqual(payload["runtime_home"], run["execution_context"]["runtime_home"])
+        self.assertEqual(payload["handoff_id"], handoff["id"])
+        self.assertEqual(payload["resume_packet_path"], ".hq/handoffs/resume-mission/LATEST.md")
+
+    def test_start_run_can_prepare_child_isolated_context_with_default_blocked_tool_classes(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Delegation Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "delivery",
+                    "--parent-session-id",
+                    "parent-session-1",
+                ]
+            )
+        )
+
+        self.assertEqual(run["execution_context"]["scope"], "child_isolated")
+        self.assertEqual(run["execution_context"]["parent_session_id"], "parent-session-1")
+        self.assertEqual(
+            run["execution_context"]["blocked_tool_classes"],
+            ["delegation", "user_interaction", "shared_memory_write", "external_side_effect"],
+        )
 
     def test_checkpoint_step_rejects_corrupt_run_payload_against_schema(self):
         mission = self.module.create_mission(

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scope",
+    "session_id",
+    "work_dir",
+    "runtime_home",
+    "runtime_home_mode",
+    "parent_session_id",
+    "blocked_tool_classes",
+    "metadata"
+  ],
+  "properties": {
+    "scope": {
+      "type": "string",
+      "enum": [
+        "none",
+        "isolated",
+        "child_isolated"
+      ]
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "work_dir": {
+      "type": "string"
+    },
+    "runtime_home": {
+      "type": "string"
+    },
+    "runtime_home_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "scoped"
+      ]
+    },
+    "parent_session_id": {
+      "type": "string"
+    },
+    "blocked_tool_classes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

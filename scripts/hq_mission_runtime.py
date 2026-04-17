@@ -45,6 +45,7 @@ RUNTIME_DIRS = {
     "handoffs": RUNTIME_ROOT / "handoffs",
     "artifacts": RUNTIME_ROOT / "artifacts",
     "events": RUNTIME_ROOT / "events",
+    "execution_envs": PRIVATE_ROOT / "runs",
 }
 ENTITY_SCHEMA_PATHS = {
     "thread": CONTROL_PLANE_DIR / "thread.schema.json",
@@ -59,6 +60,7 @@ TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "telemetry-event.schema.json"
 TRACE_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "trace-state.schema.json"
 APPROVAL_KEY_SCHEMA_PATH = CONTROL_PLANE_DIR / "approval-key.schema.json"
 VERIFICATION_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "verification-state.schema.json"
+EXECUTION_CONTEXT_SCHEMA_PATH = CONTROL_PLANE_DIR / "execution-context.schema.json"
 ALLOWED_STEP_STATUSES = {
     "planned",
     "running",
@@ -80,6 +82,12 @@ ALLOWED_HANDOFF_STATUSES = {
     "blocked",
     "cancelled",
 }
+DEFAULT_CHILD_BLOCKED_TOOL_CLASSES = [
+    "delegation",
+    "user_interaction",
+    "shared_memory_write",
+    "external_side_effect",
+]
 
 
 def utc_now() -> str:
@@ -185,6 +193,90 @@ def normalize_verification_state(payload: dict[str, Any] | None) -> dict[str, An
     return normalized
 
 
+def path_reference(path: Path | str) -> str:
+    candidate = Path(path).resolve()
+    try:
+        return candidate.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return candidate.as_posix()
+
+
+def execution_env_root(run_id: str) -> Path:
+    return RUNTIME_DIRS["execution_envs"] / run_id
+
+
+def normalize_execution_context(payload: dict[str, Any] | None) -> dict[str, Any]:
+    raw = payload or {}
+    metadata = raw.get("metadata", {})
+    blocked_tool_classes = raw.get("blocked_tool_classes", [])
+    normalized = {
+        "scope": str(raw.get("scope") or "none").strip(),
+        "session_id": str(raw.get("session_id") or "").strip(),
+        "work_dir": str(raw.get("work_dir") or "").strip(),
+        "runtime_home": str(raw.get("runtime_home") or "").strip(),
+        "runtime_home_mode": str(raw.get("runtime_home_mode") or "none").strip(),
+        "parent_session_id": str(raw.get("parent_session_id") or "").strip(),
+        "blocked_tool_classes": normalize_string_list(
+            blocked_tool_classes if isinstance(blocked_tool_classes, list) else []
+        ),
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+    validate_payload_against_schema(
+        normalized,
+        EXECUTION_CONTEXT_SCHEMA_PATH,
+        label="execution_context",
+    )
+    return normalized
+
+
+def prepare_execution_context(
+    *,
+    run_id: str,
+    session_id: str = "",
+    work_dir: str = "",
+    runtime_home: str = "",
+    runtime_home_mode: str = "scoped",
+    parent_session_id: str = "",
+    blocked_tool_classes: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    env_root = execution_env_root(run_id)
+    env_root.mkdir(parents=True, exist_ok=True)
+
+    resolved_work_dir = Path(work_dir).resolve() if work_dir else (env_root / "workdir").resolve()
+    resolved_work_dir.mkdir(parents=True, exist_ok=True)
+
+    normalized_runtime_home_mode = str(runtime_home_mode or "none").strip() or "none"
+    if normalized_runtime_home_mode not in {"none", "scoped"}:
+        raise ValueError("runtime_home_mode must be one of: none, scoped")
+
+    runtime_home_value = ""
+    if normalized_runtime_home_mode == "scoped":
+        resolved_runtime_home = (
+            Path(runtime_home).resolve() if runtime_home else (env_root / "codex-home").resolve()
+        )
+        resolved_runtime_home.mkdir(parents=True, exist_ok=True)
+        runtime_home_value = path_reference(resolved_runtime_home)
+
+    blocked = normalize_string_list(blocked_tool_classes)
+    scope = "child_isolated" if parent_session_id else "isolated"
+    if parent_session_id and not blocked:
+        blocked = list(DEFAULT_CHILD_BLOCKED_TOOL_CLASSES)
+
+    return normalize_execution_context(
+        {
+            "scope": scope,
+            "session_id": session_id or run_id,
+            "work_dir": path_reference(resolved_work_dir),
+            "runtime_home": runtime_home_value,
+            "runtime_home_mode": normalized_runtime_home_mode,
+            "parent_session_id": parent_session_id,
+            "blocked_tool_classes": blocked,
+            "metadata": metadata or {},
+        }
+    )
+
+
 def build_resume_fingerprint(payload: dict[str, Any]) -> str:
     fingerprint_payload = {
         "trace_entity": str(payload.get("trace_entity") or "").strip(),
@@ -196,6 +288,8 @@ def build_resume_fingerprint(payload: dict[str, Any]) -> str:
         "handoff_id": str(payload.get("handoff_id") or "").strip(),
         "handoff_path": str(payload.get("handoff_path") or "").strip(),
         "resume_packet_path": str(payload.get("resume_packet_path") or "").strip(),
+        "session_id": str(payload.get("session_id") or "").strip(),
+        "work_dir": str(payload.get("work_dir") or "").strip(),
     }
     return hashlib.sha256(
         json.dumps(fingerprint_payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -432,6 +526,13 @@ def write_entity(path: Path, payload: dict[str, Any]) -> None:
             VERIFICATION_STATE_SCHEMA_PATH,
             label="verification_state",
         )
+    execution_context = payload.get("execution_context")
+    if execution_context is not None:
+        validate_payload_against_schema(
+            execution_context,
+            EXECUTION_CONTEXT_SCHEMA_PATH,
+            label="execution_context",
+        )
     if str(payload.get("entity_type") or "").strip() == "approval":
         validate_payload_against_schema(
             payload.get("approval_key", {}),
@@ -447,6 +548,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
     snapshot_at = str(upgraded.get("updated_at") or upgraded.get("created_at") or utc_now()).strip()
     if entity_type == "thread":
         upgraded.setdefault("latest_handoff_id", "")
+        upgraded["execution_context"] = normalize_execution_context(
+            upgraded.get("execution_context", {})
+        )
         upgraded["trace_state"] = normalize_trace_state(
             upgraded.get("trace_state", {}),
             grouping_id=str(upgraded.get("id") or "").strip(),
@@ -455,6 +559,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
         )
     elif entity_type == "run":
         upgraded.setdefault("handoff_ids", [])
+        upgraded["execution_context"] = normalize_execution_context(
+            upgraded.get("execution_context", {})
+        )
         upgraded["verification_state"] = normalize_verification_state(
             upgraded.get("verification_state", {})
         )
@@ -514,6 +621,7 @@ def create_thread_record(
         "latest_spec_path": "",
         "latest_handoff_path": "",
         "resume_packet_path": "",
+        "execution_context": normalize_execution_context({}),
         "trace_state": {},
         "created_at": created_at,
         "updated_at": created_at,
@@ -548,6 +656,7 @@ def update_thread_context(
     handoff_path: str | None = None,
     resume_packet_path: str | None = None,
     status: str | None = None,
+    execution_context: dict[str, Any] | None = None,
     trace_state: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -578,9 +687,16 @@ def update_thread_context(
             raise ValueError("thread status must be one of: " + ", ".join(sorted(ALLOWED_THREAD_STATUSES)))
         thread["status"] = status
         change_summary.append(f"status={status}")
+    if execution_context is not None:
+        thread["execution_context"] = normalize_execution_context(execution_context)
+        change_summary.append("execution_context")
     if trace_state is not None:
+        trace_state_payload = dict(trace_state)
+        if execution_context is not None:
+            trace_state_payload["session_id"] = thread["execution_context"]["session_id"]
+            trace_state_payload["work_dir"] = thread["execution_context"]["work_dir"]
         thread["trace_state"] = normalize_trace_state(
-            trace_state,
+            trace_state_payload,
             grouping_id=thread["id"],
             default_trace_id=thread.get("active_run_id", ""),
             snapshot_at=updated_at,
@@ -599,6 +715,9 @@ def update_thread_context(
             current_trace_state["handoff_path"] = handoff_path
         if resume_packet_path:
             current_trace_state["resume_packet_path"] = resume_packet_path
+        if execution_context is not None:
+            current_trace_state["session_id"] = thread["execution_context"]["session_id"]
+            current_trace_state["work_dir"] = thread["execution_context"]["work_dir"]
         current_trace_state["snapshot_at"] = updated_at
         current_trace_state["resume_fingerprint"] = build_resume_fingerprint(current_trace_state)
         thread["trace_state"] = normalize_trace_state(
@@ -732,6 +851,52 @@ def create_thread_command(args: argparse.Namespace) -> int:
 def link_thread_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
+        execution_context = None
+        if any(
+            [
+                args.session_id,
+                args.work_dir,
+                args.runtime_home,
+                args.runtime_home_mode,
+                args.parent_session_id,
+                args.blocked_tool_class,
+            ]
+        ):
+            thread = require_file(thread_path(args.thread_id), "thread", "thread")
+            existing_context = dict(thread.get("execution_context", {}))
+            execution_context = normalize_execution_context(
+                {
+                    **existing_context,
+                    "session_id": str(args.session_id or existing_context.get("session_id", "")).strip(),
+                    "work_dir": str(args.work_dir or existing_context.get("work_dir", "")).strip(),
+                    "runtime_home": str(
+                        args.runtime_home or existing_context.get("runtime_home", "")
+                    ).strip(),
+                    "runtime_home_mode": str(
+                        args.runtime_home_mode or existing_context.get("runtime_home_mode", "none")
+                    ).strip(),
+                    "parent_session_id": str(
+                        args.parent_session_id or existing_context.get("parent_session_id", "")
+                    ).strip(),
+                    "blocked_tool_classes": (
+                        args.blocked_tool_class
+                        if args.blocked_tool_class
+                        else existing_context.get("blocked_tool_classes", [])
+                    ),
+                    "metadata": existing_context.get("metadata", {}),
+                    "scope": (
+                        "child_isolated"
+                        if str(
+                            args.parent_session_id or existing_context.get("parent_session_id", "")
+                        ).strip()
+                        else (
+                            existing_context.get("scope", "isolated")
+                            if str(args.session_id or args.work_dir or args.runtime_home).strip()
+                            else existing_context.get("scope", "none")
+                        )
+                    ),
+                }
+            )
         payload = update_thread_context(
             args.thread_id,
             mission_id=args.mission_id,
@@ -740,6 +905,7 @@ def link_thread_command(args: argparse.Namespace) -> int:
             handoff_path=args.handoff_path,
             resume_packet_path=args.resume_packet_path,
             status=args.status,
+            execution_context=execution_context,
             metadata=args.metadata or {},
         )
     except ValueError as exc:
@@ -766,6 +932,15 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
     thread = require_file(thread_path(mission["thread_id"]), "thread", "thread")
     run_id = make_id("run", f"{mission['title']}-{args.actor or 'runtime'}")
     created_at = utc_now()
+    execution_context = prepare_execution_context(
+        run_id=run_id,
+        session_id=str(getattr(args, "session_id", None) or "").strip(),
+        work_dir=str(getattr(args, "work_dir", None) or "").strip(),
+        runtime_home=str(getattr(args, "runtime_home", None) or "").strip(),
+        runtime_home_mode=str(getattr(args, "runtime_home_mode", None) or "scoped").strip(),
+        parent_session_id=str(getattr(args, "parent_session_id", None) or "").strip(),
+        blocked_tool_classes=getattr(args, "blocked_tool_class", None) or [],
+    )
     payload = {
         "schema_version": 1,
         "entity_type": "run",
@@ -783,9 +958,14 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "handoff_ids": [],
         "artifact_ids": [],
         "checkpoint_count": 0,
+        "execution_context": execution_context,
         "verification_state": normalize_verification_state({}),
         "trace_state": normalize_trace_state(
-            {"trace_id": run_id},
+            {
+                "trace_id": run_id,
+                "session_id": execution_context["session_id"],
+                "work_dir": execution_context["work_dir"],
+            },
             grouping_id=thread["id"],
             default_trace_id=run_id,
             snapshot_at=created_at,
@@ -807,6 +987,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         mission_id=mission["id"],
         run_id=run_id,
         status="active",
+        execution_context=execution_context,
         trace_state=payload["trace_state"],
     )
     record_event(
@@ -1234,6 +1415,7 @@ def create_handoff_record(
         "updated_at": created_at,
         "metadata": metadata or {},
     }
+    payload["metadata"]["execution_context"] = dict(thread.get("execution_context", {}))
     write_entity(handoff_path(handoff_id), payload)
     if run_id:
         run = require_file(run_path(run_id), "run", "run")
@@ -1242,6 +1424,8 @@ def create_handoff_record(
         trace_state["handoff_id"] = handoff_id
         trace_state["handoff_path"] = handoff_file
         trace_state["resume_packet_path"] = handoff_file
+        trace_state["session_id"] = run["execution_context"]["session_id"]
+        trace_state["work_dir"] = run["execution_context"]["work_dir"]
         trace_state["snapshot_at"] = created_at
         run["trace_state"] = normalize_trace_state(
             trace_state,
@@ -1257,6 +1441,8 @@ def create_handoff_record(
         trace_state_payload["handoff_id"] = handoff_id
         trace_state_payload["handoff_path"] = handoff_file
         trace_state_payload["resume_packet_path"] = handoff_file
+        trace_state_payload["session_id"] = thread["execution_context"]["session_id"]
+        trace_state_payload["work_dir"] = thread["execution_context"]["work_dir"]
         trace_state_payload["snapshot_at"] = created_at
         trace_state_payload = normalize_trace_state(
             trace_state_payload,
@@ -1272,6 +1458,7 @@ def create_handoff_record(
         handoff_path=handoff_file,
         resume_packet_path=handoff_file,
         status="paused" if payload["blockers"] else "active",
+        execution_context=dict(thread.get("execution_context", {})),
         trace_state=trace_state_payload,
     )
     record_event(
@@ -1534,6 +1721,74 @@ def show_run_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def resolve_resume_context(*, thread_id: str = "", run_id: str = "") -> dict[str, Any]:
+    if not thread_id and not run_id:
+        raise ValueError("resume context requires either thread_id or run_id")
+
+    run: dict[str, Any] | None = None
+    if run_id:
+        run = require_file(run_path(run_id), "run", "run")
+        thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
+    else:
+        thread = require_file(thread_path(thread_id), "thread", "thread")
+        active_run_id = str(thread.get("active_run_id") or "").strip()
+        if active_run_id:
+            run = require_file(run_path(active_run_id), "run", "run")
+
+    execution_context = (
+        dict(run.get("execution_context", {}))
+        if run is not None
+        else dict(thread.get("execution_context", {}))
+    )
+    trace_state = dict(thread.get("trace_state", {}))
+    if run is not None:
+        trace_state["current_step_id"] = run["trace_state"]["current_step_id"]
+        trace_state["resume_from_step_id"] = run["trace_state"]["resume_from_step_id"]
+        trace_state["handoff_id"] = run["trace_state"]["handoff_id"] or trace_state.get("handoff_id", "")
+        trace_state["handoff_path"] = run["trace_state"]["handoff_path"] or trace_state.get(
+            "handoff_path", ""
+        )
+        trace_state["resume_packet_path"] = run["trace_state"]["resume_packet_path"] or trace_state.get(
+            "resume_packet_path", ""
+        )
+
+    return {
+        "thread_id": thread["id"],
+        "mission_id": str(thread.get("active_mission_id") or "").strip(),
+        "run_id": run["id"] if run is not None else str(thread.get("active_run_id") or "").strip(),
+        "session_id": str(execution_context.get("session_id") or "").strip(),
+        "work_dir": str(execution_context.get("work_dir") or "").strip(),
+        "runtime_home": str(execution_context.get("runtime_home") or "").strip(),
+        "runtime_home_mode": str(execution_context.get("runtime_home_mode") or "none").strip(),
+        "scope": str(execution_context.get("scope") or "none").strip(),
+        "parent_session_id": str(execution_context.get("parent_session_id") or "").strip(),
+        "blocked_tool_classes": normalize_string_list(
+            execution_context.get("blocked_tool_classes")
+            if isinstance(execution_context.get("blocked_tool_classes"), list)
+            else []
+        ),
+        "handoff_id": str(trace_state.get("handoff_id") or "").strip(),
+        "handoff_path": str(trace_state.get("handoff_path") or "").strip(),
+        "resume_packet_path": str(trace_state.get("resume_packet_path") or "").strip(),
+        "current_step_id": str(trace_state.get("current_step_id") or "").strip(),
+        "resume_from_step_id": str(trace_state.get("resume_from_step_id") or "").strip(),
+    }
+
+
+def resume_context_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = resolve_resume_context(
+            thread_id=str(getattr(args, "thread_id", None) or "").strip(),
+            run_id=str(getattr(args, "run_id", None) or "").strip(),
+        )
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Additive durable mission runtime nucleus for HQ Mission/Run/Step state."
@@ -1599,6 +1854,21 @@ def build_parser() -> argparse.ArgumentParser:
     link_thread_parser.add_argument("--spec-path", help="Latest spec path for the thread.")
     link_thread_parser.add_argument("--handoff-path", help="Latest handoff path for the thread.")
     link_thread_parser.add_argument("--resume-packet-path", help="Latest resume packet path.")
+    link_thread_parser.add_argument("--session-id", help="Linked execution session identifier.")
+    link_thread_parser.add_argument("--work-dir", help="Linked isolated work directory.")
+    link_thread_parser.add_argument("--runtime-home", help="Linked scoped runtime home path.")
+    link_thread_parser.add_argument(
+        "--runtime-home-mode",
+        choices=["none", "scoped"],
+        help="Execution runtime home mode.",
+    )
+    link_thread_parser.add_argument("--parent-session-id", help="Optional parent session identifier.")
+    link_thread_parser.add_argument(
+        "--blocked-tool-class",
+        action="append",
+        default=[],
+        help="Repeat for each blocked tool class attached to the execution context.",
+    )
     link_thread_parser.add_argument(
         "--status",
         choices=sorted(ALLOWED_THREAD_STATUSES),
@@ -1625,6 +1895,25 @@ def build_parser() -> argparse.ArgumentParser:
     start_run_parser.add_argument("--mission-id", required=True, help="Mission identifier.")
     start_run_parser.add_argument("--actor", help="Actor starting the run.")
     start_run_parser.add_argument("--loop", help="Loop description.")
+    start_run_parser.add_argument("--session-id", help="Optional execution session identifier.")
+    start_run_parser.add_argument("--work-dir", help="Optional isolated work directory override.")
+    start_run_parser.add_argument("--runtime-home", help="Optional scoped runtime home override.")
+    start_run_parser.add_argument(
+        "--runtime-home-mode",
+        choices=["none", "scoped"],
+        default="scoped",
+        help="Execution runtime home mode. Defaults to scoped.",
+    )
+    start_run_parser.add_argument(
+        "--parent-session-id",
+        help="Optional parent session identifier for child-isolated execution.",
+    )
+    start_run_parser.add_argument(
+        "--blocked-tool-class",
+        action="append",
+        default=[],
+        help="Repeat for each blocked tool class attached to the execution context.",
+    )
     start_run_parser.add_argument(
         "--metadata",
         type=parse_json_object,
@@ -1782,6 +2071,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     show_run_parser.add_argument("--run-id", required=True, help="Run identifier.")
     show_run_parser.set_defaults(func=show_run_command)
+
+    resume_context_parser = subparsers.add_parser(
+        "resume-context",
+        help="Render narrow resume linkage for a thread or run.",
+    )
+    resume_context_target = resume_context_parser.add_mutually_exclusive_group(required=True)
+    resume_context_target.add_argument("--thread-id", help="Thread identifier.")
+    resume_context_target.add_argument("--run-id", help="Run identifier.")
+    resume_context_parser.set_defaults(func=resume_context_command)
 
     return parser
 
