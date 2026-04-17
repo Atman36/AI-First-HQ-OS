@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "step_id",
+    "summary",
+    "evidence",
+    "verified_at",
+    "verified_by",
+    "metadata"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "verified",
+        "failed"
+      ]
+    },
+    "step_id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verified_at": {
+      "type": "string"
+    },
+    "verified_by": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

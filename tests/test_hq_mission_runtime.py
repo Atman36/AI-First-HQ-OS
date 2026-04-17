@@ -16,7 +16,9 @@ def load_module(temp_root: Path):
     os.environ["HQ_MISSION_RUNTIME_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_RUNTIME_PRIVATE_ROOT"] = str(temp_root / ".hq")
     os.environ["HQ_TELEMETRY_REPO_ROOT"] = str(temp_root)
+    os.environ["HQ_POLICY_HOOKS_REPO_ROOT"] = str(temp_root)
     sys.modules.pop("hq_io", None)
+    sys.modules.pop("hq_policy_hooks", None)
     sys.modules.pop("hq_telemetry_store", None)
     spec = importlib.util.spec_from_file_location("hq_mission_runtime_test_module", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -42,6 +44,8 @@ class HqMissionRuntimeTests(unittest.TestCase):
         os.environ.pop("HQ_MISSION_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
         os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
+        os.environ.pop("HQ_POLICY_HOOKS_REPO_ROOT", None)
+        os.environ.pop("HQ_RUNTIME_HOOKS_FILE", None)
         self.temp_dir.cleanup()
 
     def test_create_mission_and_start_run_persist_first_class_records(self):
@@ -279,6 +283,167 @@ class HqMissionRuntimeTests(unittest.TestCase):
             ".hq/handoffs/handoff-mission/LATEST.md",
         )
 
+    def test_runtime_entities_emit_policy_hook_events(self):
+        output_path = self.temp_root / "hook-events.jsonl"
+        script_path = self.temp_root / "capture_hook.py"
+        script_path.write_text(
+            (
+                "import json\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "payload = json.loads(sys.stdin.read())\n"
+                "path = Path(sys.argv[1])\n"
+                "existing = path.read_text(encoding='utf-8') if path.exists() else ''\n"
+                "path.write_text(existing + json.dumps(payload, ensure_ascii=False) + '\\n', encoding='utf-8')\n"
+            ),
+            encoding="utf-8",
+        )
+        hooks_path = self.temp_root / ".hq" / "runtime" / "hooks.json"
+        hooks_path.parent.mkdir(parents=True, exist_ok=True)
+        hooks_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "hooks": [
+                        {
+                            "id": "capture-run-started",
+                            "event": "run_started",
+                            "action_prefixes": [["hq", "run", "start"]],
+                            "tool_names": ["run"],
+                            "command": [sys.executable, str(script_path), str(output_path)],
+                        },
+                        {
+                            "id": "capture-run-checkpointed",
+                            "event": "run_checkpointed",
+                            "action_prefixes": [["hq", "run", "checkpoint"]],
+                            "tool_names": ["verification"],
+                            "command": [sys.executable, str(script_path), str(output_path)],
+                        },
+                        {
+                            "id": "capture-agent-finished",
+                            "event": "agent_finished",
+                            "action_prefixes": [["hq", "agent", "finish"]],
+                            "tool_names": ["verification"],
+                            "statuses": ["completed"],
+                            "command": [sys.executable, str(script_path), str(output_path)],
+                        },
+                        {
+                            "id": "capture-handoff-written",
+                            "event": "handoff_written",
+                            "action_prefixes": [["hq", "handoff", "write"]],
+                            "command": [sys.executable, str(script_path), str(output_path)],
+                        },
+                        {
+                            "id": "capture-run-finished",
+                            "event": "run_finished",
+                            "action_prefixes": [["hq", "run", "finish"]],
+                            "tool_names": ["run"],
+                            "statuses": ["completed"],
+                            "command": [sys.executable, str(script_path), str(output_path)],
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.environ["HQ_RUNTIME_HOOKS_FILE"] = str(hooks_path)
+
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Hook Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Verification checklist passed.",
+                ]
+            )
+        )
+        self.module.create_handoff_record(
+            thread_id=mission["thread_id"],
+            task="Hook Mission",
+            session="session-1",
+            handoff_file=".hq/handoffs/hook-mission/LATEST.md",
+            owner="delivery",
+            status="ready_for_handoff",
+            next_steps=["Resume from the verified state."],
+        )
+        self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "completed"]
+            )
+        )
+
+        events = [
+            json.loads(line)
+            for line in output_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        event_types = [event["event"] for event in events]
+        self.assertIn("run_started", event_types)
+        self.assertIn("run_checkpointed", event_types)
+        self.assertIn("agent_finished", event_types)
+        self.assertIn("handoff_written", event_types)
+        self.assertIn("run_finished", event_types)
+        verification_event = next(event for event in events if event["event"] == "run_checkpointed")
+        self.assertEqual(verification_event["tool_name"], "verification")
+        self.assertEqual(verification_event["run_id"], run["id"])
+
+    def test_finish_run_requires_verification_before_completed(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Verification Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        with self.assertRaises(ValueError):
+            self.module.finish_run(
+                self.module.build_parser().parse_args(
+                    ["finish-run", "--run-id", run["id"], "--status", "completed"]
+                )
+            )
+
+        verified = self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Verification checklist passed.",
+                    "--evidence",
+                    "python3 -m unittest tests.test_hq_mission_runtime",
+                ]
+            )
+        )
+        self.assertEqual(verified["verification_state"]["status"], "verified")
+
+        finished = self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "completed"]
+            )
+        )
+        self.assertEqual(finished["status"], "completed")
+        self.assertEqual(finished["verification_state"]["status"], "verified")
+
     def test_attach_artifact_and_finish_run_persist_lineage(self):
         mission = self.module.create_mission(
             self.module.build_parser().parse_args(["create-mission", "--title", "Artifact Mission"])
@@ -321,6 +486,20 @@ class HqMissionRuntimeTests(unittest.TestCase):
             )
         )
         self.assertEqual(artifact["run_id"], run["id"])
+
+        self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Artifact mission verification passed.",
+                ]
+            )
+        )
 
         finished = self.module.finish_run(
             self.module.build_parser().parse_args(

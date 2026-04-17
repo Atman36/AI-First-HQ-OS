@@ -26,6 +26,7 @@ DEFAULT_REPO_ROOT = Path(
 os.environ.setdefault("HQ_TELEMETRY_REPO_ROOT", str(DEFAULT_REPO_ROOT))
 
 from hq_io import append_jsonl, write_json
+import hq_policy_hooks
 from hq_telemetry_store import append_event as append_telemetry_event
 from hq_telemetry_store import ensure_runtime as ensure_telemetry_runtime
 from hq_telemetry_store import event_file_for_timestamp as telemetry_event_file_for_timestamp
@@ -57,6 +58,7 @@ ENTITY_SCHEMA_PATHS = {
 TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "telemetry-event.schema.json"
 TRACE_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "trace-state.schema.json"
 APPROVAL_KEY_SCHEMA_PATH = CONTROL_PLANE_DIR / "approval-key.schema.json"
+VERIFICATION_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "verification-state.schema.json"
 ALLOWED_STEP_STATUSES = {
     "planned",
     "running",
@@ -68,6 +70,7 @@ ALLOWED_STEP_STATUSES = {
 }
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
+ALLOWED_VERIFICATION_STATUSES = {"pending", "verified", "failed"}
 ALLOWED_THREAD_STATUSES = {"active", "idle", "paused", "archived"}
 ALLOWED_HANDOFF_STATUSES = {
     "ready_for_handoff",
@@ -155,6 +158,33 @@ def normalize_string_list(values: list[str] | None) -> list[str]:
     return items
 
 
+def normalize_verification_state(payload: dict[str, Any] | None) -> dict[str, Any]:
+    raw = payload or {}
+    metadata = raw.get("metadata", {})
+    normalized = {
+        "status": str(raw.get("status") or "pending").strip(),
+        "step_id": str(raw.get("step_id") or "").strip(),
+        "summary": str(raw.get("summary") or "").strip(),
+        "evidence": normalize_string_list(
+            raw.get("evidence") if isinstance(raw.get("evidence"), list) else []
+        ),
+        "verified_at": str(raw.get("verified_at") or "").strip(),
+        "verified_by": str(raw.get("verified_by") or "").strip(),
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+    if normalized["status"] not in ALLOWED_VERIFICATION_STATUSES:
+        raise ValueError(
+            "verification status must be one of: "
+            + ", ".join(sorted(ALLOWED_VERIFICATION_STATUSES))
+        )
+    validate_payload_against_schema(
+        normalized,
+        VERIFICATION_STATE_SCHEMA_PATH,
+        label="verification_state",
+    )
+    return normalized
+
+
 def build_resume_fingerprint(payload: dict[str, Any]) -> str:
     fingerprint_payload = {
         "trace_entity": str(payload.get("trace_entity") or "").strip(),
@@ -223,6 +253,14 @@ def ensure_runtime() -> None:
     for path in RUNTIME_DIRS.values():
         path.mkdir(parents=True, exist_ok=True)
     ensure_telemetry_runtime()
+
+
+def runtime_hooks_path() -> Path:
+    configured = str(os.environ.get("HQ_RUNTIME_HOOKS_FILE") or "").strip()
+    if configured:
+        path = Path(configured)
+        return path if path.is_absolute() else (REPO_ROOT / path).resolve()
+    return PRIVATE_ROOT / "runtime" / "hooks.json"
 
 
 def mission_path(mission_id: str) -> Path:
@@ -320,10 +358,80 @@ def emit_runtime_telemetry(
     append_telemetry_event(telemetry_event_file_for_timestamp(created_at), payload)
 
 
+def emit_runtime_hook_event(
+    *,
+    event: str,
+    action: list[str],
+    status: str,
+    summary: str,
+    actor: str,
+    thread_id: str = "",
+    mission_id: str = "",
+    run_id: str = "",
+    step_id: str = "",
+    approval_id: str = "",
+    handoff_id: str = "",
+    namespace: str = "hq.mission_runtime",
+    tool_name: str = "",
+    call_id: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    hooks_path = runtime_hooks_path()
+    if not hooks_path.exists():
+        return []
+    hooks = hq_policy_hooks.load_hooks(hooks_path)
+    payload: dict[str, Any] = {
+        "action": normalize_string_list(action),
+        "status": status,
+        "summary": summary,
+        "actor": actor or "runtime",
+        "thread_id": thread_id,
+        "mission_id": mission_id,
+        "run_id": run_id,
+        "step_id": step_id,
+        "approval_id": approval_id,
+        "handoff_id": handoff_id,
+        "namespace": namespace,
+        "tool_name": tool_name,
+        "call_id": call_id,
+        "metadata": metadata or {},
+        "event": event,
+    }
+    payload = {
+        key: value
+        for key, value in payload.items()
+        if key in {"action", "metadata", "event"} or value not in ("", [])
+    }
+    executed: list[dict[str, Any]] = []
+    for hook in hooks.get("hooks", []):
+        if not isinstance(hook, dict) or not hq_policy_hooks.hook_matches(hook, event, payload):
+            continue
+        result = hq_policy_hooks.run_hook([str(item) for item in hook.get("command", [])], payload)
+        executed.append(
+            {
+                "id": str(hook.get("id") or "").strip(),
+                "event": event,
+                "result": result,
+            }
+        )
+        if result["returncode"] != 0 and bool(hook.get("stop_on_error")):
+            raise RuntimeError(
+                f"runtime hook `{hook.get('id', '<unknown>')}` failed for event `{event}`"
+            )
+    return executed
+
+
 def write_entity(path: Path, payload: dict[str, Any]) -> None:
     trace_state = payload.get("trace_state")
     if trace_state is not None:
         validate_payload_against_schema(trace_state, TRACE_STATE_SCHEMA_PATH, label="trace_state")
+    verification_state = payload.get("verification_state")
+    if verification_state is not None:
+        validate_payload_against_schema(
+            verification_state,
+            VERIFICATION_STATE_SCHEMA_PATH,
+            label="verification_state",
+        )
     if str(payload.get("entity_type") or "").strip() == "approval":
         validate_payload_against_schema(
             payload.get("approval_key", {}),
@@ -347,6 +455,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
         )
     elif entity_type == "run":
         upgraded.setdefault("handoff_ids", [])
+        upgraded["verification_state"] = normalize_verification_state(
+            upgraded.get("verification_state", {})
+        )
         upgraded["trace_state"] = normalize_trace_state(
             upgraded.get("trace_state", {}),
             grouping_id=str(upgraded.get("thread_id") or "").strip(),
@@ -672,6 +783,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "handoff_ids": [],
         "artifact_ids": [],
         "checkpoint_count": 0,
+        "verification_state": normalize_verification_state({}),
         "trace_state": normalize_trace_state(
             {"trace_id": run_id},
             grouping_id=thread["id"],
@@ -715,6 +827,19 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         run_id=payload["id"],
         metadata={"entity_type": "run"},
     )
+    emit_runtime_hook_event(
+        event="run_started",
+        action=["hq", "run", "start"],
+        status=payload["status"],
+        summary=f"Started run for mission '{mission['title']}'.",
+        actor=payload["actor"] or mission["owner"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        run_id=payload["id"],
+        tool_name="run",
+        call_id=payload["id"],
+        metadata={"loop": payload["loop"]},
+    )
     return payload
 
 
@@ -722,7 +847,7 @@ def start_run_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
         payload = start_run(args)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
     print(f"run_id={payload['id']}")
@@ -807,6 +932,38 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         step_id=payload["id"],
         metadata={"entity_type": "step", "step_key": payload["key"]},
     )
+    emit_runtime_hook_event(
+        event="run_checkpointed",
+        action=["hq", "run", "checkpoint"],
+        status=payload["status"],
+        summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
+        actor=payload["actor"] or run["actor"] or "runtime",
+        thread_id=run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        step_id=payload["id"],
+        tool_name=payload["key"],
+        call_id=payload["id"],
+        metadata={"step_key": payload["key"]},
+    )
+    lifecycle_event = "agent_started" if payload["status"] in {"planned", "running"} else "agent_finished"
+    lifecycle_action = (
+        ["hq", "agent", "start"] if lifecycle_event == "agent_started" else ["hq", "agent", "finish"]
+    )
+    emit_runtime_hook_event(
+        event=lifecycle_event,
+        action=lifecycle_action,
+        status=payload["status"],
+        summary=f"Agent step '{payload['key']}' is now '{payload['status']}'.",
+        actor=payload["actor"] or run["actor"] or "runtime",
+        thread_id=run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        step_id=payload["id"],
+        tool_name=payload["key"],
+        call_id=payload["id"],
+        metadata={"step_key": payload["key"]},
+    )
     return payload
 
 
@@ -814,7 +971,7 @@ def checkpoint_step_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
         payload = checkpoint_step(args)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
     print(f"step_id={payload['id']}")
@@ -915,6 +1072,22 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
             "approval_call_id": approval_key["call_id"],
         },
     )
+    emit_runtime_hook_event(
+        event="approval_requested",
+        action=["hq", "approval", "request"],
+        status="waiting_approval",
+        summary=f"Requested approval for step '{step['key']}'.",
+        actor=payload["requested_by"] or "runtime",
+        thread_id=run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        step_id=step["id"],
+        approval_id=payload["id"],
+        namespace=approval_key["namespace"],
+        tool_name=approval_key["name"],
+        call_id=approval_key["call_id"] or payload["id"],
+        metadata={"policy_action": payload["policy_action"]},
+    )
     update_thread_context(
         run["thread_id"],
         mission_id=mission["id"],
@@ -929,7 +1102,7 @@ def request_approval_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
         payload = request_approval(args)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
     print(f"approval_id={payload['id']}")
@@ -1118,6 +1291,34 @@ def create_handoff_record(
         handoff_id=handoff_id,
         metadata={"entity_type": "handoff", "handoff_path": handoff_file},
     )
+    emit_runtime_hook_event(
+        event="agent_handoff",
+        action=["hq", "agent", "handoff"],
+        status=payload["status"],
+        summary=f"Recorded handoff for task '{payload['task']}'.",
+        actor=payload["owner"] or "runtime",
+        thread_id=thread_id,
+        mission_id=payload["mission_id"],
+        run_id=payload["run_id"],
+        handoff_id=handoff_id,
+        tool_name="handoff",
+        call_id=handoff_id,
+        metadata={"handoff_path": handoff_file},
+    )
+    emit_runtime_hook_event(
+        event="handoff_written",
+        action=["hq", "handoff", "write"],
+        status=payload["status"],
+        summary=f"Wrote handoff packet for task '{payload['task']}'.",
+        actor=payload["owner"] or "runtime",
+        thread_id=thread_id,
+        mission_id=payload["mission_id"],
+        run_id=payload["run_id"],
+        handoff_id=handoff_id,
+        tool_name="handoff",
+        call_id=handoff_id,
+        metadata={"handoff_path": handoff_file},
+    )
     return payload
 
 
@@ -1125,7 +1326,7 @@ def decide_approval_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
         payload = decide_approval(args)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
     print(f"approval_id={payload['id']}")
@@ -1192,7 +1393,7 @@ def attach_artifact_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
         payload = attach_artifact(args)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
     print(f"artifact_id={payload['id']}")
@@ -1200,10 +1401,58 @@ def attach_artifact_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def verify_run(args: argparse.Namespace) -> dict[str, Any]:
+    verification_status = str(args.status or "verified").strip()
+    if verification_status not in {"verified", "failed"}:
+        raise ValueError("verification status must be one of: failed, verified")
+    step = checkpoint_step(
+        argparse.Namespace(
+            run_id=args.run_id,
+            key="verification",
+            actor=str(args.actor or "").strip(),
+            status="completed" if verification_status == "verified" else "failed",
+            summary=str(args.summary or "").strip(),
+            evidence=getattr(args, "evidence", []) or [],
+            metadata=args.metadata or {},
+        )
+    )
+    run = require_file(run_path(args.run_id), "run", "run")
+    run["verification_state"] = normalize_verification_state(
+        {
+            "status": verification_status,
+            "step_id": step["id"],
+            "summary": step["summary"],
+            "evidence": step["evidence"],
+            "verified_at": step["updated_at"],
+            "verified_by": step["actor"],
+            "metadata": step["metadata"],
+        }
+    )
+    run["updated_at"] = utc_now()
+    write_entity(run_path(run["id"]), run)
+    return run
+
+
+def verify_run_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = verify_run(args)
+    except (ValueError, RuntimeError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"run_id={payload['id']}")
+    print(f"verification_status={payload['verification_state']['status']}")
+    print(f"verification_step_id={payload['verification_state']['step_id']}")
+    return 0
+
+
 def finish_run(args: argparse.Namespace) -> dict[str, Any]:
     run = require_file(run_path(args.run_id), "run", "run")
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
     thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
+    verification_state = normalize_verification_state(run.get("verification_state", {}))
+    if args.status == "completed" and verification_state["status"] != "verified":
+        raise ValueError("run cannot be completed before a verification stage is recorded")
     finished_at = utc_now()
     run["status"] = args.status
     run["finished_at"] = finished_at
@@ -1246,6 +1495,19 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         run_id=run["id"],
         metadata={"entity_type": "run"},
     )
+    emit_runtime_hook_event(
+        event="run_finished",
+        action=["hq", "run", "finish"],
+        status=args.status,
+        summary=f"Finished run with status '{args.status}'.",
+        actor=run["actor"] or mission["owner"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        tool_name="run",
+        call_id=run["id"],
+        metadata={"verification_status": run["verification_state"]["status"]},
+    )
     return run
 
 
@@ -1253,7 +1515,7 @@ def finish_run_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
         payload = finish_run(args)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
     print(f"run_id={payload['id']}")
@@ -1396,6 +1658,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional inline JSON metadata object.",
     )
     checkpoint_step_parser.set_defaults(func=checkpoint_step_command)
+
+    verify_run_parser = subparsers.add_parser(
+        "verify-run",
+        help="Record a verification stage for a run before marking it completed.",
+    )
+    verify_run_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    verify_run_parser.add_argument("--actor", required=True, help="Verification actor.")
+    verify_run_parser.add_argument(
+        "--status",
+        choices=["verified", "failed"],
+        default="verified",
+        help="Verification outcome. Defaults to verified.",
+    )
+    verify_run_parser.add_argument("--summary", required=True, help="Verification result summary.")
+    verify_run_parser.add_argument(
+        "--evidence",
+        action="append",
+        default=[],
+        help="Repeat for each verification artifact or command.",
+    )
+    verify_run_parser.add_argument(
+        "--metadata",
+        type=parse_json_object,
+        help="Optional inline JSON metadata object.",
+    )
+    verify_run_parser.set_defaults(func=verify_run_command)
 
     request_approval_parser = subparsers.add_parser(
         "request-approval",

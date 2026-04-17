@@ -805,7 +805,7 @@ def handoff_command(args: argparse.Namespace) -> int:
                 blockers=args.blocker,
                 notes=args.note,
             )
-        except ValueError as exc:
+        except (ValueError, RuntimeError) as exc:
             print(f"error={exc}")
             return 2
     write_json(
@@ -1081,6 +1081,17 @@ def founder_weekly_review_command(args: argparse.Namespace) -> int:
                     rationale=args.founder_rationale or "Founder weekly operating review decision recorded.",
                 )
             )
+            if args.founder_decision == "approved":
+                hq_mission_runtime.verify_run(
+                    argparse.Namespace(
+                        run_id=run["id"],
+                        actor=args.accepts_result,
+                        status="verified",
+                        summary="Founder-approved weekly review outputs passed verification.",
+                        evidence=[inbox_path.relative_to(REPO_ROOT).as_posix()],
+                        metadata={"artifact_id": artifact["id"], "review_date": args.review_date},
+                    )
+                )
             hq_mission_runtime.finish_run(
                 argparse.Namespace(
                     run_id=run["id"],
@@ -1088,6 +1099,16 @@ def founder_weekly_review_command(args: argparse.Namespace) -> int:
                 )
             )
     else:
+        hq_mission_runtime.verify_run(
+            argparse.Namespace(
+                run_id=run["id"],
+                actor=args.accepts_result,
+                status="verified",
+                summary="Weekly review outputs passed verification without founder escalation.",
+                evidence=[inbox_path.relative_to(REPO_ROOT).as_posix()],
+                metadata={"artifact_id": artifact["id"], "review_date": args.review_date},
+            )
+        )
         hq_mission_runtime.finish_run(
             argparse.Namespace(
                 run_id=run["id"],

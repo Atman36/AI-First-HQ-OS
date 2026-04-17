@@ -16,9 +16,11 @@ def load_runtime_module(temp_root: Path):
     os.environ["HQ_RUNTIME_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_MISSION_RUNTIME_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_TELEMETRY_REPO_ROOT"] = str(temp_root)
+    os.environ["HQ_POLICY_HOOKS_REPO_ROOT"] = str(temp_root)
     os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
     sys.modules.pop("hq_io", None)
     sys.modules.pop("hq_mission_runtime", None)
+    sys.modules.pop("hq_policy_hooks", None)
     sys.modules.pop("hq_runtime_review", None)
     sys.modules.pop("hq_telemetry_store", None)
     spec = importlib.util.spec_from_file_location("hq_runtime_test_module", SCRIPT_PATH)
@@ -45,6 +47,7 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         os.environ.pop("HQ_MISSION_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
+        os.environ.pop("HQ_POLICY_HOOKS_REPO_ROOT", None)
         os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         os.environ.pop("HQ_REVIEW_ARCHIVE_KEEP", None)
         self.temp_dir.cleanup()
@@ -506,6 +509,7 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         artifact = json.loads(artifact_files[0].read_text(encoding="utf-8"))
         self.assertEqual(mission["workflow"], "founder-weekly-operating-review")
         self.assertEqual(run["status"], "completed")
+        self.assertEqual(run["verification_state"]["status"], "verified")
         self.assertEqual(artifact["kind"], "founder_inbox")
 
         inbox_path = self.temp_root / artifact["path"]

@@ -19,6 +19,7 @@
     "handoff_ids",
     "artifact_ids",
     "checkpoint_count",
+    "verification_state",
     "trace_state",
     "started_at",
     "finished_at",
@@ -104,6 +105,9 @@
     "checkpoint_count": {
       "type": "integer",
       "minimum": 0
+    },
+    "verification_state": {
+      "type": "object"
     },
     "trace_state": {
       "type": "object"
