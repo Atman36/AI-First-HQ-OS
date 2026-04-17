@@ -10,9 +10,21 @@ The core thesis is simple: model quality matters, but production reliability now
 
 The next donor-driven tightening is narrow:
 
-- add a durable private `thread_id` separate from any specific run;
-- expose explicit runtime policy and hook seams outside prompts;
+- build on the existing private `thread_id`, runtime hook, and verification nucleus instead of starting from zero;
+- add fenced memory recall and compact cross-session summaries instead of broad transcript replay;
+- add isolated execution environments and scoped resume linkage for long-running work;
 - keep skills as compact `SKILL.md` packets with optional `scripts/`, `references/`, and `assets/`, not local mini-frameworks.
+
+## Current HQ Baseline
+
+HQ is not starting from a blank page. The current runtime already has a partial nucleus in `scripts/hq_mission_runtime.py` and the related schemas:
+
+- private thread records and `thread_id` lineage;
+- explicit runtime hook seams outside prompts;
+- verification state before a run can be marked complete;
+- first-class `Mission`, `Run`, `Step`, `Approval`, and `Artifact` records.
+
+That nucleus is useful but incomplete. The next step is to harden it into a narrower, more reliable harness for memory, resume, execution isolation, and bounded delegation.
 
 ## Why This Project Exists
 
@@ -56,7 +68,10 @@ This project does not try to replace frontier models, replace Codex, or become a
 - replacing Codex with another chat or agent product;
 - introducing a heavyweight always-on infrastructure dependency for local-first use;
 - copying an external framework wholesale;
-- treating vector databases or graph databases as mandatory v1 dependencies.
+- treating vector databases or graph databases as mandatory v1 dependencies;
+- building a team collaboration product with boards, chat surfaces, roles, and workspace SaaS;
+- adding cross-platform agent messaging, chatbot delivery, or gateway product features;
+- requiring a daemon/server/Postgres/WebSocket stack for v1 local-first use.
 
 ## Core Concepts
 
@@ -68,7 +83,11 @@ The runtime should maintain layered memory instead of reusing full chat transcri
 - episodic memory: completed steps, approvals, failures, corrections, outcome summaries;
 - procedural memory: durable operating rules, conventions, recurring workflows, accepted playbooks.
 
-The first implementation should be file-backed and human-inspectable. More advanced retrieval backends can remain optional.
+Recalled memory should be fenced and labeled as runtime background context, not merged back into the prompt as fresh user input.
+
+Cross-session recall should prefer compact summaries and resume packets over replaying raw transcripts into the active context window.
+
+The first implementation should be file-backed and human-inspectable, with a pluggable memory-provider boundary rather than a mandatory external memory stack. More advanced retrieval backends can remain optional.
 
 ### 1A. Execution Thread
 
@@ -141,6 +160,18 @@ Delegation should be explicit and bounded. Each subagent task should include:
 
 The parent run stays authoritative. Subagents do not become hidden state silos.
 
+Delegated children should run with isolated context and an explicitly restricted tool surface. Recursive delegation, user-clarification loops, shared-memory writes, and unrelated side-effect channels should be blocked by default unless HQ intentionally opens them.
+
+### 5A. Execution Environment
+
+The harness should treat execution isolation as a runtime primitive, not an implementation detail.
+
+Each long-running run should have an isolated workdir and, when useful, a scoped per-run tool or skill overlay such as a private `CODEX_HOME` equivalent.
+
+Resume should preserve narrow linkage to the execution environment, including `session_id` and `work_dir` style pointers, so a future run can re-enter the right context without broad reconstruction.
+
+If HQ later adds background runners, stale runtime and stale task recovery should be added as follow-on harness behavior rather than as a v1 platform requirement.
+
 ### 6. Skill Packaging Discipline
 
 Skills should remain thin capability packets:
@@ -171,6 +202,7 @@ Version 1 should focus on six narrow capabilities:
 - verification stage and verification result artifacts;
 - policy gate and hook primitives for action classes;
 - subagent packet schema or lightweight tracked contract;
+- isolated execution environment primitives with scoped resume linkage;
 - skill-packaging lint that preserves compact skill directories;
 - targeted tests covering resume, verification, and approval behavior;
 - public-safe documentation for architecture and operating assumptions.
@@ -203,11 +235,42 @@ Version 1 should focus on six narrow capabilities:
 - keep private runtime state in `.hq/`;
 - prefer additive commands in `scripts/hq_mission_runtime.py` over broad rewrites;
 - keep the runtime file-backed until the workflow is trusted;
-- make advanced memory backends pluggable rather than mandatory.
+- make advanced memory backends pluggable rather than mandatory;
+- treat fenced memory recall and compact cross-session summaries as default harness behavior;
+- treat isolated execution environments as a harness primitive, not a platform bet.
 
 ## Donor Inputs
 
-The project should selectively borrow ideas from:
+The project should selectively borrow ideas from specific patterns, not from full external products.
+
+Borrow from `hermes-agent`:
+
+- fenced recalled memory so retrieval is treated as background context rather than fresh user input;
+- async prefetch and compact cross-session recall summaries instead of loading broad transcripts into the active turn;
+- bounded delegation with child-context isolation and blocked tool classes;
+- file-backed first memory with a pluggable provider boundary instead of mandatory external memory infrastructure.
+
+Do not borrow from `hermes-agent`:
+
+- messaging gateway and platform integrations;
+- cron delivery or chatbot product surface;
+- Honcho-style user modeling or personality stack;
+- broad plugin or memory-provider sprawl as a v1 requirement.
+
+Borrow from `multica`:
+
+- isolated per-run execution environments and workdirs;
+- optional per-run `CODEX_HOME` style overlays so skills and runtime state are resumable but scoped;
+- persisted `session_id` and `work_dir` linkage for resume and re-entry;
+- stale runtime and stale task recovery patterns once HQ has background runners.
+
+Do not borrow from `multica`:
+
+- web app, board, or workspace SaaS surface;
+- multi-user collaboration model as a product requirement;
+- mandatory daemon/server/Postgres/WebSocket infrastructure for v1.
+
+Continue to borrow from:
 
 - `openai/codex` for execution surface and workflow ergonomics, especially thread/run separation, explicit `execpolicy` and `hooks` seams, and compact skill packaging;
 - `openai/openai-agents-python` for harness and sandbox patterns;
