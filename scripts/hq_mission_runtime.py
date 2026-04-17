@@ -1242,6 +1242,15 @@ def checkpoint_history_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
     return checkpoints
 
 
+def ordered_steps_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
+    steps: list[dict[str, Any]] = []
+    for step_id in run.get("step_ids", []):
+        step = require_file(step_path(step_id), "step", "step")
+        if step["run_id"] == run["id"]:
+            steps.append(step)
+    return steps
+
+
 def resolve_resume_target_step(run: dict[str, Any], resume_from_step_id: str) -> dict[str, Any]:
     target_step = require_file(step_path(resume_from_step_id), "step", "step")
     if target_step["run_id"] != run["id"]:
@@ -1249,6 +1258,61 @@ def resolve_resume_target_step(run: dict[str, Any], resume_from_step_id: str) ->
     if target_step["status"] != "completed":
         raise ValueError("resume target step must have status 'completed'")
     return target_step
+
+
+def build_replay_plan(
+    run: dict[str, Any],
+    *,
+    resume_from_step_id: str = "",
+) -> dict[str, Any]:
+    target_step_id = str(resume_from_step_id or run.get("resume_from_step_id") or "").strip()
+    if not target_step_id:
+        return {
+            "resume_from_step_id": "",
+            "replay_required": False,
+            "replay_step_count": 0,
+            "checkpoint_count_after_target": 0,
+            "steps_to_replay": [],
+        }
+
+    target_step = resolve_resume_target_step(run, target_step_id)
+    ordered_steps = ordered_steps_for_run(run)
+    target_index = next(
+        (index for index, step in enumerate(ordered_steps) if step["id"] == target_step["id"]),
+        -1,
+    )
+    if target_index < 0:
+        raise ValueError("resume target step is missing from the run step history")
+
+    replay_steps = ordered_steps[target_index + 1 :]
+    replay_payload = [
+        {
+            "step_id": step["id"],
+            "key": step["key"],
+            "actor": step["actor"],
+            "status": step["status"],
+            "summary": step["summary"],
+            "created_at": step["created_at"],
+            "completed_at": step["completed_at"],
+        }
+        for step in replay_steps
+    ]
+    checkpoint_count_after_target = sum(1 for step in replay_steps if step["status"] == "completed")
+    return {
+        "resume_from_step_id": target_step["id"],
+        "target_checkpoint": {
+            "step_id": target_step["id"],
+            "key": target_step["key"],
+            "actor": target_step["actor"],
+            "summary": target_step["summary"],
+            "created_at": target_step["created_at"],
+            "completed_at": target_step["completed_at"],
+        },
+        "replay_required": bool(replay_payload),
+        "replay_step_count": len(replay_payload),
+        "checkpoint_count_after_target": checkpoint_count_after_target,
+        "steps_to_replay": replay_payload,
+    }
 
 
 def list_checkpoints_command(args: argparse.Namespace) -> int:
@@ -1267,6 +1331,29 @@ def list_checkpoints_command(args: argparse.Namespace) -> int:
         "mission_id": run["mission_id"],
         "checkpoint_count": int(run.get("checkpoint_count", 0)),
         "checkpoints": checkpoint_history_for_run(run)[: args.limit],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def plan_replay_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        run = require_file(run_path(args.run_id), "run", "run")
+        replay_plan = build_replay_plan(
+            run,
+            resume_from_step_id=str(args.resume_from_step_id or "").strip(),
+        )
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+    payload = {
+        "run_id": run["id"],
+        "thread_id": run["thread_id"],
+        "mission_id": run["mission_id"],
+        "current_step_id": str(run.get("current_step_id") or "").strip(),
+        "stored_resume_from_step_id": str(run.get("resume_from_step_id") or "").strip(),
+        "replay_plan": replay_plan,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -1939,10 +2026,10 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
     thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
     resumed_at = utc_now()
     target_step_id = str(getattr(args, "resume_from_step_id", None) or "").strip()
+    replay_plan = build_replay_plan(run, resume_from_step_id=target_step_id)
     if target_step_id:
-        target_step = resolve_resume_target_step(run, target_step_id)
-        run["resume_from_step_id"] = target_step["id"]
-        run["current_step_id"] = target_step["id"]
+        run["resume_from_step_id"] = replay_plan["resume_from_step_id"]
+        run["current_step_id"] = replay_plan["resume_from_step_id"]
     run["status"] = "running"
     run["interruption_state"] = normalize_interruption_state({})
     run["updated_at"] = resumed_at
@@ -1953,8 +2040,19 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
     trace_state["snapshot_at"] = resumed_at
     trace_metadata = dict(trace_state.get("metadata", {}))
     trace_metadata["resumed_by"] = str(args.resumed_by or "").strip()
+    if replay_plan["replay_required"]:
+        trace_metadata["replay"] = {
+            "resume_from_step_id": replay_plan["resume_from_step_id"],
+            "replay_step_ids": [step["step_id"] for step in replay_plan["steps_to_replay"]],
+            "checkpoint_count_after_target": replay_plan["checkpoint_count_after_target"],
+            "planned_at": resumed_at,
+        }
+    else:
+        trace_metadata.pop("replay", None)
     if target_step_id:
         trace_metadata["resume_target_step_id"] = run["resume_from_step_id"]
+    else:
+        trace_metadata.pop("resume_target_step_id", None)
     trace_state["metadata"] = trace_metadata
     run["trace_state"] = normalize_trace_state(
         trace_state,
@@ -2006,7 +2104,11 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
         step_id=run["current_step_id"],
         tool_name="run",
         call_id=run["id"],
-        metadata={"resume_from_step_id": run["resume_from_step_id"]},
+        metadata={
+            "resume_from_step_id": run["resume_from_step_id"],
+            "replay_required": replay_plan["replay_required"],
+            "replay_step_count": replay_plan["replay_step_count"],
+        },
     )
     return run
 
@@ -2075,6 +2177,11 @@ def resolve_resume_context(*, thread_id: str = "", run_id: str = "") -> dict[str
         "resume_packet_path": str(trace_state.get("resume_packet_path") or "").strip(),
         "current_step_id": str(trace_state.get("current_step_id") or "").strip(),
         "resume_from_step_id": str(trace_state.get("resume_from_step_id") or "").strip(),
+        "replay": (
+            dict(trace_state.get("metadata", {}).get("replay", {}))
+            if isinstance(trace_state.get("metadata"), dict)
+            else {}
+        ),
         "interruption_state": (
             run["interruption_state"]
             if run is not None
@@ -2418,6 +2525,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of checkpoints to return.",
     )
     list_checkpoints_parser.set_defaults(func=list_checkpoints_command)
+
+    plan_replay_parser = subparsers.add_parser(
+        "plan-replay",
+        help="Preview which later steps would be replayed from a selected completed checkpoint.",
+    )
+    plan_replay_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    plan_replay_parser.add_argument(
+        "--resume-from-step-id",
+        help="Optional completed checkpoint step id. Defaults to the run's stored resume point.",
+    )
+    plan_replay_parser.set_defaults(func=plan_replay_command)
 
     resume_context_parser = subparsers.add_parser(
         "resume-context",
