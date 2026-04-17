@@ -60,6 +60,7 @@ TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "telemetry-event.schema.json"
 TRACE_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "trace-state.schema.json"
 APPROVAL_KEY_SCHEMA_PATH = CONTROL_PLANE_DIR / "approval-key.schema.json"
 VERIFICATION_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "verification-state.schema.json"
+INTERRUPTION_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "interruption-state.schema.json"
 EXECUTION_CONTEXT_SCHEMA_PATH = CONTROL_PLANE_DIR / "execution-context.schema.json"
 ALLOWED_STEP_STATUSES = {
     "planned",
@@ -73,7 +74,8 @@ ALLOWED_STEP_STATUSES = {
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
 ALLOWED_VERIFICATION_STATUSES = {"pending", "verified", "failed"}
-ALLOWED_THREAD_STATUSES = {"active", "idle", "paused", "archived"}
+ALLOWED_INTERRUPTION_STATUSES = {"none", "interrupted"}
+ALLOWED_THREAD_STATUSES = {"active", "idle", "paused", "interrupted", "archived"}
 ALLOWED_HANDOFF_STATUSES = {
     "ready_for_handoff",
     "in_progress",
@@ -82,6 +84,8 @@ ALLOWED_HANDOFF_STATUSES = {
     "blocked",
     "cancelled",
 }
+ACTIVE_RUN_STATUSES = {"running", "waiting_approval", "blocked", "interrupted"}
+TERMINAL_RUN_STATUSES = {"completed", "failed", "blocked", "cancelled"}
 DEFAULT_CHILD_BLOCKED_TOOL_CLASSES = [
     "delegation",
     "user_interaction",
@@ -189,6 +193,30 @@ def normalize_verification_state(payload: dict[str, Any] | None) -> dict[str, An
         normalized,
         VERIFICATION_STATE_SCHEMA_PATH,
         label="verification_state",
+    )
+    return normalized
+
+
+def normalize_interruption_state(payload: dict[str, Any] | None) -> dict[str, Any]:
+    raw = payload or {}
+    metadata = raw.get("metadata", {})
+    normalized = {
+        "status": str(raw.get("status") or "none").strip(),
+        "reason": str(raw.get("reason") or "").strip(),
+        "requested_by": str(raw.get("requested_by") or "").strip(),
+        "interrupted_at": str(raw.get("interrupted_at") or "").strip(),
+        "resume_from_step_id": str(raw.get("resume_from_step_id") or "").strip(),
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+    if normalized["status"] not in ALLOWED_INTERRUPTION_STATUSES:
+        raise ValueError(
+            "interruption status must be one of: "
+            + ", ".join(sorted(ALLOWED_INTERRUPTION_STATUSES))
+        )
+    validate_payload_against_schema(
+        normalized,
+        INTERRUPTION_STATE_SCHEMA_PATH,
+        label="interruption_state",
     )
     return normalized
 
@@ -526,6 +554,13 @@ def write_entity(path: Path, payload: dict[str, Any]) -> None:
             VERIFICATION_STATE_SCHEMA_PATH,
             label="verification_state",
         )
+    interruption_state = payload.get("interruption_state")
+    if interruption_state is not None:
+        validate_payload_against_schema(
+            interruption_state,
+            INTERRUPTION_STATE_SCHEMA_PATH,
+            label="interruption_state",
+        )
     execution_context = payload.get("execution_context")
     if execution_context is not None:
         validate_payload_against_schema(
@@ -548,6 +583,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
     snapshot_at = str(upgraded.get("updated_at") or upgraded.get("created_at") or utc_now()).strip()
     if entity_type == "thread":
         upgraded.setdefault("latest_handoff_id", "")
+        upgraded["interruption_state"] = normalize_interruption_state(
+            upgraded.get("interruption_state", {})
+        )
         upgraded["execution_context"] = normalize_execution_context(
             upgraded.get("execution_context", {})
         )
@@ -559,6 +597,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
         )
     elif entity_type == "run":
         upgraded.setdefault("handoff_ids", [])
+        upgraded["interruption_state"] = normalize_interruption_state(
+            upgraded.get("interruption_state", {})
+        )
         upgraded["execution_context"] = normalize_execution_context(
             upgraded.get("execution_context", {})
         )
@@ -621,6 +662,7 @@ def create_thread_record(
         "latest_spec_path": "",
         "latest_handoff_path": "",
         "resume_packet_path": "",
+        "interruption_state": normalize_interruption_state({}),
         "execution_context": normalize_execution_context({}),
         "trace_state": {},
         "created_at": created_at,
@@ -657,6 +699,7 @@ def update_thread_context(
     resume_packet_path: str | None = None,
     status: str | None = None,
     execution_context: dict[str, Any] | None = None,
+    interruption_state: dict[str, Any] | None = None,
     trace_state: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -690,6 +733,9 @@ def update_thread_context(
     if execution_context is not None:
         thread["execution_context"] = normalize_execution_context(execution_context)
         change_summary.append("execution_context")
+    if interruption_state is not None:
+        thread["interruption_state"] = normalize_interruption_state(interruption_state)
+        change_summary.append("interruption_state")
     if trace_state is not None:
         trace_state_payload = dict(trace_state)
         if execution_context is not None:
@@ -930,6 +976,13 @@ def show_thread_command(args: argparse.Namespace) -> int:
 def start_run(args: argparse.Namespace) -> dict[str, Any]:
     mission = require_file(mission_path(args.mission_id), "mission", "mission")
     thread = require_file(thread_path(mission["thread_id"]), "thread", "thread")
+    active_run_id = str(thread.get("active_run_id") or "").strip()
+    if active_run_id:
+        active_run = require_file(run_path(active_run_id), "run", "run")
+        if active_run["status"] in ACTIVE_RUN_STATUSES:
+            raise ValueError(
+                f"thread already has active run {active_run_id} with status '{active_run['status']}'"
+            )
     run_id = make_id("run", f"{mission['title']}-{args.actor or 'runtime'}")
     created_at = utc_now()
     execution_context = prepare_execution_context(
@@ -958,6 +1011,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "handoff_ids": [],
         "artifact_ids": [],
         "checkpoint_count": 0,
+        "interruption_state": normalize_interruption_state({}),
         "execution_context": execution_context,
         "verification_state": normalize_verification_state({}),
         "trace_state": normalize_trace_state(
@@ -1642,6 +1696,7 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("run cannot be completed before a verification stage is recorded")
     finished_at = utc_now()
     run["status"] = args.status
+    run["interruption_state"] = normalize_interruption_state({})
     run["finished_at"] = finished_at
     run["updated_at"] = finished_at
     trace_state = dict(run.get("trace_state", {}))
@@ -1662,6 +1717,7 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         mission_id=mission["id"],
         run_id="",
         status="idle" if args.status == "completed" else "paused",
+        interruption_state=normalize_interruption_state({}),
         trace_state=run["trace_state"],
     )
     record_event(
@@ -1721,6 +1777,186 @@ def show_run_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def interrupt_run(args: argparse.Namespace) -> dict[str, Any]:
+    run = require_file(run_path(args.run_id), "run", "run")
+    if run["status"] in TERMINAL_RUN_STATUSES:
+        raise ValueError(f"run already reached terminal status '{run['status']}'")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
+    interrupted_at = utc_now()
+    interruption_state = normalize_interruption_state(
+        {
+            "status": "interrupted",
+            "reason": str(args.reason or "").strip(),
+            "requested_by": str(args.requested_by or "").strip(),
+            "interrupted_at": interrupted_at,
+            "resume_from_step_id": str(
+                run.get("resume_from_step_id") or run.get("current_step_id") or ""
+            ).strip(),
+            "metadata": args.metadata or {},
+        }
+    )
+    run["status"] = "interrupted"
+    run["interruption_state"] = interruption_state
+    run["updated_at"] = interrupted_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["snapshot_at"] = interrupted_at
+    trace_metadata = dict(trace_state.get("metadata", {}))
+    trace_metadata["interruption"] = interruption_state
+    trace_state["metadata"] = trace_metadata
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=interrupted_at,
+    )
+    write_entity(run_path(run["id"]), run)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        status="interrupted",
+        interruption_state=interruption_state,
+        trace_state=run["trace_state"],
+    )
+    record_event(
+        event_type="run_interrupted",
+        entity_id=run["id"],
+        summary=f"Interrupted run '{run['id']}'.",
+        payload={
+            "mission_id": mission["id"],
+            "thread_id": thread["id"],
+            "requested_by": interruption_state["requested_by"],
+        },
+    )
+    emit_runtime_telemetry(
+        event_type="run_interrupted",
+        status="interrupted",
+        summary=f"Interrupted run '{run['id']}'.",
+        actor=interruption_state["requested_by"] or run["actor"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=run["current_step_id"],
+        metadata={"entity_type": "run", "resume_from_step_id": interruption_state["resume_from_step_id"]},
+    )
+    emit_runtime_hook_event(
+        event="run_interrupted",
+        action=["hq", "run", "interrupt"],
+        status="interrupted",
+        summary=f"Interrupted run '{run['id']}'.",
+        actor=interruption_state["requested_by"] or run["actor"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        step_id=run["current_step_id"],
+        tool_name="run",
+        call_id=run["id"],
+        metadata={"resume_from_step_id": interruption_state["resume_from_step_id"]},
+    )
+    return run
+
+
+def interrupt_run_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = interrupt_run(args)
+    except (ValueError, RuntimeError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"run_id={payload['id']}")
+    print(f"status={payload['status']}")
+    print(f"resume_from_step_id={payload['interruption_state']['resume_from_step_id']}")
+    return 0
+
+
+def resume_run(args: argparse.Namespace) -> dict[str, Any]:
+    run = require_file(run_path(args.run_id), "run", "run")
+    if run["status"] != "interrupted":
+        raise ValueError(f"run status must be 'interrupted', got '{run['status']}'")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
+    resumed_at = utc_now()
+    run["status"] = "running"
+    run["interruption_state"] = normalize_interruption_state({})
+    run["updated_at"] = resumed_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["snapshot_at"] = resumed_at
+    trace_metadata = dict(trace_state.get("metadata", {}))
+    trace_metadata["resumed_by"] = str(args.resumed_by or "").strip()
+    trace_state["metadata"] = trace_metadata
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=resumed_at,
+    )
+    write_entity(run_path(run["id"]), run)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        status="active",
+        interruption_state=normalize_interruption_state({}),
+        trace_state=run["trace_state"],
+    )
+    record_event(
+        event_type="run_resumed",
+        entity_id=run["id"],
+        summary=f"Resumed run '{run['id']}'.",
+        payload={
+            "mission_id": mission["id"],
+            "thread_id": thread["id"],
+            "resumed_by": str(args.resumed_by or "").strip(),
+        },
+    )
+    emit_runtime_telemetry(
+        event_type="run_resumed",
+        status="running",
+        summary=f"Resumed run '{run['id']}'.",
+        actor=str(args.resumed_by or "").strip() or run["actor"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=run["current_step_id"],
+        metadata={"entity_type": "run", "resume_from_step_id": run["resume_from_step_id"]},
+    )
+    emit_runtime_hook_event(
+        event="run_resumed",
+        action=["hq", "run", "resume"],
+        status="running",
+        summary=f"Resumed run '{run['id']}'.",
+        actor=str(args.resumed_by or "").strip() or run["actor"] or "runtime",
+        thread_id=thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        step_id=run["current_step_id"],
+        tool_name="run",
+        call_id=run["id"],
+        metadata={"resume_from_step_id": run["resume_from_step_id"]},
+    )
+    return run
+
+
+def resume_run_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = resume_run(args)
+    except (ValueError, RuntimeError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"run_id={payload['id']}")
+    print(f"status={payload['status']}")
+    print(f"resume_from_step_id={payload['resume_from_step_id']}")
+    return 0
+
+
 def resolve_resume_context(*, thread_id: str = "", run_id: str = "") -> dict[str, Any]:
     if not thread_id and not run_id:
         raise ValueError("resume context requires either thread_id or run_id")
@@ -1772,6 +2008,11 @@ def resolve_resume_context(*, thread_id: str = "", run_id: str = "") -> dict[str
         "resume_packet_path": str(trace_state.get("resume_packet_path") or "").strip(),
         "current_step_id": str(trace_state.get("current_step_id") or "").strip(),
         "resume_from_step_id": str(trace_state.get("resume_from_step_id") or "").strip(),
+        "interruption_state": (
+            run["interruption_state"]
+            if run is not None
+            else normalize_interruption_state(thread.get("interruption_state", {}))
+        ),
     }
 
 
@@ -2051,6 +2292,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional inline JSON metadata object.",
     )
     attach_artifact_parser.set_defaults(func=attach_artifact_command)
+
+    interrupt_run_parser = subparsers.add_parser(
+        "interrupt-run",
+        help="Interrupt a non-terminal run and preserve its resume point.",
+    )
+    interrupt_run_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    interrupt_run_parser.add_argument("--requested-by", required=True, help="Actor requesting interruption.")
+    interrupt_run_parser.add_argument("--reason", help="Optional interruption reason.")
+    interrupt_run_parser.add_argument(
+        "--metadata",
+        type=parse_json_object,
+        help="Optional inline JSON metadata object.",
+    )
+    interrupt_run_parser.set_defaults(func=interrupt_run_command)
+
+    resume_run_parser = subparsers.add_parser(
+        "resume-run",
+        help="Resume an interrupted run from its last recorded resume point.",
+    )
+    resume_run_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    resume_run_parser.add_argument("--resumed-by", required=True, help="Actor resuming the run.")
+    resume_run_parser.set_defaults(func=resume_run_command)
 
     finish_run_parser = subparsers.add_parser(
         "finish-run",

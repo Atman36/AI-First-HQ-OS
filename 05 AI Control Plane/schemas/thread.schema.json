@@ -16,6 +16,7 @@
     "latest_spec_path",
     "latest_handoff_path",
     "resume_packet_path",
+    "interruption_state",
     "execution_context",
     "trace_state",
     "created_at",
@@ -48,6 +49,7 @@
         "active",
         "idle",
         "paused",
+        "interrupted",
         "archived"
       ]
     },
@@ -75,6 +77,9 @@
     },
     "resume_packet_path": {
       "type": "string"
+    },
+    "interruption_state": {
+      "type": "object"
     },
     "execution_context": {
       "type": "object"

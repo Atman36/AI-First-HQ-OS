@@ -353,6 +353,8 @@ def build_parser() -> argparse.ArgumentParser:
             "post_action",
             "approval_requested",
             "handoff_written",
+            "run_interrupted",
+            "run_resumed",
             "run_finished",
         ],
     )

@@ -19,6 +19,7 @@
     "handoff_ids",
     "artifact_ids",
     "checkpoint_count",
+    "interruption_state",
     "execution_context",
     "verification_state",
     "trace_state",
@@ -54,6 +55,7 @@
       "enum": [
         "running",
         "waiting_approval",
+        "interrupted",
         "completed",
         "failed",
         "blocked",
@@ -106,6 +108,9 @@
     "checkpoint_count": {
       "type": "integer",
       "minimum": 0
+    },
+    "interruption_state": {
+      "type": "object"
     },
     "execution_context": {
       "type": "object"
