@@ -2019,6 +2019,8 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
     mission["status"] = "completed" if args.status == "completed" else args.status
     mission["updated_at"] = finished_at
     write_entity(mission_path(mission["id"]), mission)
+    dispatch_actor = str(getattr(args, "dispatch_next_queued_by", None) or "").strip()
+    queued_runs = queued_runs_for_thread(thread["id"]) if dispatch_actor else []
     update_thread_context(
         thread["id"],
         mission_id=mission["id"],
@@ -2058,7 +2060,19 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         call_id=run["id"],
         metadata={"verification_status": run["verification_state"]["status"]},
     )
-    return run
+    if not queued_runs:
+        return {"finished_run": run}
+
+    next_run = activate_queued_run(
+        queued_runs[0],
+        thread=require_file(thread_path(thread["id"]), "thread", "thread"),
+        mission=require_file(mission_path(queued_runs[0]["mission_id"]), "mission", "mission"),
+        activated_by=dispatch_actor,
+    )
+    return {
+        "finished_run": run,
+        "dispatched_run": next_run,
+    }
 
 
 def finish_run_command(args: argparse.Namespace) -> int:
@@ -2068,8 +2082,11 @@ def finish_run_command(args: argparse.Namespace) -> int:
     except (ValueError, RuntimeError) as exc:
         print(f"error={exc}")
         return 2
-    print(f"run_id={payload['id']}")
-    print(f"status={payload['status']}")
+    print(f"run_id={payload['finished_run']['id']}")
+    print(f"status={payload['finished_run']['status']}")
+    if payload.get("dispatched_run"):
+        print(f"dispatched_run_id={payload['dispatched_run']['id']}")
+        print(f"dispatched_run_status={payload['dispatched_run']['status']}")
     return 0
 
 
@@ -2685,6 +2702,10 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=["completed", "failed", "blocked", "cancelled"],
         help="Terminal run status.",
+    )
+    finish_run_parser.add_argument(
+        "--dispatch-next-queued-by",
+        help="Optional actor to immediately activate the oldest queued run in the same thread.",
     )
     finish_run_parser.set_defaults(func=finish_run_command)
 
