@@ -56,7 +56,7 @@ python3 scripts/hq_runtime.py spec --task "Example large task" --goal "Define th
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_control_plane.py sync
 python3 scripts/hq_role_prompt_scaffold.py --check
-python3 -m unittest
+python3 -m unittest discover tests
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_private_prompt_lint.py
 python3 scripts/hq_gate.py
@@ -73,11 +73,13 @@ python3 scripts/hq_runtime.py spec --task "Example large task"
 python3 scripts/hq_runtime.py handoff --task "Example large task" --spec-file .hq/specs/example-large-task/LATEST.md
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_role_prompt_scaffold.py --check
-python3 -m unittest
+python3 -m unittest discover tests
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_private_prompt_lint.py
 python3 scripts/hq_gate.py
 ```
+
+The supported local test runner is `python3 -m unittest discover tests`. `pytest` is not a required project dependency or part of the official local/CI gate.
 
 Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
 
