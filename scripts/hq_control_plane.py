@@ -504,6 +504,7 @@ def validate_active_work(
     workflows = get_workflows(workflow_registry)
     ordered_columns, _ = get_board_columns(workflow_registry)
     allowed_columns = set(ordered_columns)
+    queue_updated_at = normalize_text(active_work.get("updated_at"))
 
     seen_task_ids: set[str] = set()
     for index, task in enumerate(tasks):
@@ -575,6 +576,10 @@ def validate_active_work(
                 ensure_file_exists(context, align_text, f"{path}.align_files[{align_index}]")
         for warning in lint_next_step(normalize_text(task.get("next_step"))):
             context.warn(f"{path}.next_step", warning)
+        for warning in lint_role_conflicts(task):
+            context.warn(path, warning)
+        for warning in check_stale_telemetry(task, queue_updated_at):
+            context.warn(path, warning)
 
 
 def lint_next_step(next_step: str) -> list[str]:
@@ -598,6 +603,20 @@ def lint_next_step(next_step: str) -> list[str]:
     first_token = text.split()[0].strip(" :").lower() if text.split() else ""
     if first_token in NON_ACTIONABLE_PREFIXES:
         warnings.append("start next_step with an action verb, not a narrative label")
+
+    return warnings
+
+
+def lint_role_conflicts(task: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    owner = normalize_text(task.get("owner"))
+    manager = normalize_text(task.get("manager"))
+    accepts_result = normalize_text(task.get("accepts_result"))
+
+    if owner and owner == manager:
+        warnings.append(f"owner and manager are the same role: {owner}")
+    if owner and owner == accepts_result:
+        warnings.append(f"owner and accepts_result are the same role: {owner}")
 
     return warnings
 

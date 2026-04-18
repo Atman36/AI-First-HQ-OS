@@ -429,6 +429,46 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("warnings=", output)
         self.assertIn("active-work.json.tasks[0].next_step", output)
 
+    def test_validate_reports_role_conflict_warnings_without_failing(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["validate"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("validation=ok", output)
+        self.assertIn("owner and manager are the same role", output)
+
+    def test_validate_reports_stale_handoff_warning_without_failing(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["updated_at"] = "2026-04-20"
+        payload["tasks"][0]["column"] = "executing"
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
+        workflow_payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+        workflow_payload["board_columns"].append({"id": "executing", "title": "Executing"})
+        workflow_path.write_text(json.dumps(workflow_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        handoff_dir = self.temp_root / ".hq" / "handoffs" / "task-1"
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        (handoff_dir / "LATEST.md").write_text("# Handoff\n\n2026-04-15\n", encoding="utf-8")
+        self.module = load_module(self.temp_root)
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["validate"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("validation=ok", output)
+        self.assertIn("executing task has stale handoff", output)
+
     def test_status_writes_session_bootstrap_json_and_excludes_done_tasks(self):
         (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
         workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
@@ -809,4 +849,3 @@ class HqControlPlaneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
