@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ TASK_TEMPLATES_MD_PATH = CONTROL_PLANE_DIR / "task-templates.md"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
 SESSION_BOOTSTRAP_PATH = REPO_ROOT / ".hq" / "state" / "session-bootstrap.json"
 ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
+QUICK_CONTEXT_PATH = REPO_ROOT / ".hq" / "state" / "QUICK_CONTEXT.md"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
@@ -100,6 +102,11 @@ def load_json(path: Path) -> Any:
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
 
 def normalize_text(value: Any) -> str:
@@ -941,6 +948,240 @@ def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
     return "python3 scripts/hq_control_plane.py validate"
 
 
+def packet_heading(kind: str) -> str:
+    return "Spec" if kind == "spec" else "Handoff"
+
+
+def placeholder_packet_markdown(task: dict[str, Any], kind: str, updated_at: str) -> str:
+    title = normalize_text(task.get("title")) or normalize_text(task.get("id")) or "Untitled task"
+    task_id = normalize_text(task.get("id"))
+    owner = normalize_text(task.get("owner")) or "Unassigned"
+    primary_update_file = normalize_text(task.get("primary_update_file")) or "Not set"
+    next_step = normalize_text(task.get("next_step")) or "Not set"
+    if kind == "spec":
+        sections = [
+            "## Why Now",
+            "",
+            "## In Scope",
+            "",
+            "## Out Of Scope",
+            "",
+            "## Acceptance",
+            "",
+            "## Notes",
+            "",
+        ]
+    else:
+        sections = [
+            "## Done",
+            "",
+            "## Next",
+            "",
+            "## Blockers",
+            "",
+            "## Notes",
+            "",
+        ]
+    return "\n".join(
+        [
+            f"# {packet_heading(kind)}",
+            "",
+            f"- Task ID: {task_id or '-'}",
+            f"- Task: {title}",
+            f"- Updated At: {updated_at}",
+            f"- Owner: {owner}",
+            f"- Primary Update File: {primary_update_file}",
+            f"- Queue Next Step: {next_step}",
+            "",
+            *sections,
+        ]
+    )
+
+
+def placeholder_packet_manifest(task: dict[str, Any], kind: str, packet_path_value: Path, updated_at: str) -> dict[str, str]:
+    relative_packet = relative_display(packet_path_value)
+    return {
+        "task": normalize_text(task.get("title")) or normalize_text(task.get("id")),
+        "task_slug": packet_task_slug(task),
+        "kind": kind,
+        "owner": normalize_text(task.get("owner")),
+        "updated_at": updated_at,
+        "latest_file": relative_packet,
+        "session_file": relative_packet,
+        "primary_file": normalize_text(task.get("primary_update_file")),
+    }
+
+
+def ensure_task_packet(task: dict[str, Any], kind: str) -> bool:
+    current_path = packet_path(task, kind)
+    manifest_path = current_path.parent / "manifest.json"
+    if current_path.exists() and manifest_path.exists():
+        return False
+
+    updated_at = utc_now()
+    if not current_path.exists():
+        write_text(current_path, placeholder_packet_markdown(task, kind, updated_at))
+    if not manifest_path.exists():
+        write_json(manifest_path, placeholder_packet_manifest(task, kind, current_path, updated_at))
+    return True
+
+
+def ensure_task_packets(tasks: list[dict[str, Any]]) -> list[str]:
+    created: list[str] = []
+    for task in tasks:
+        for kind in STALE_PACKET_KINDS:
+            if ensure_task_packet(task, kind):
+                created.append(relative_display(packet_path(task, kind)))
+    return created
+
+
+def find_task(active_work: dict[str, Any], task_id: str) -> dict[str, Any] | None:
+    for task in active_work.get("tasks", []) or []:
+        if isinstance(task, dict) and normalize_text(task.get("id")) == task_id:
+            return task
+    return None
+
+
+def has_meaningful_items(items: list[str]) -> bool:
+    return any(normalize_text(item).lower() not in {"", "none", "none.", "n/a", "na"} for item in items)
+
+
+def task_packet_paths(task: dict[str, Any]) -> dict[str, Path]:
+    return {kind: packet_path(task, kind) for kind in STALE_PACKET_KINDS}
+
+
+def task_missing_for_safe_continue(task: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    paths = task_packet_paths(task)
+    spec_path = paths["spec"]
+    handoff_path = paths["handoff"]
+
+    if not spec_path.exists():
+        missing.append(f"spec packet missing: {relative_display(spec_path)}")
+    if not handoff_path.exists():
+        missing.append(f"handoff packet missing: {relative_display(handoff_path)}")
+
+    if spec_path.exists() and not has_meaningful_items(extract_section_items(spec_path, "Acceptance")):
+        missing.append("spec acceptance is still empty")
+    if handoff_path.exists() and not has_meaningful_items(extract_section_items(handoff_path, "Next")):
+        missing.append("handoff next steps are still empty")
+    if handoff_path.exists() and has_meaningful_items(extract_section_items(handoff_path, "Blockers")):
+        missing.append("handoff still lists blockers")
+
+    primary_update_file = normalize_text(task.get("primary_update_file"))
+    if primary_update_file and not (REPO_ROOT / primary_update_file).exists():
+        missing.append(f"primary update file is missing: {primary_update_file}")
+    if not normalize_text(task.get("done_when")):
+        missing.append("done_when is missing from the task contract")
+    return missing
+
+
+def can_auto_closeout(task: dict[str, Any]) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    if normalize_text(task.get("risk_tier")) not in {"low", "medium"}:
+        reasons.append("closeout only supports low/medium risk tasks")
+    if normalize_text(task.get("autonomy_tier")) == "A1":
+        reasons.append("founder acceptance is still required for A1 work")
+    if normalize_text(task.get("accepts_result")) == "ceo":
+        reasons.append("founder acceptance is still required for this task")
+    if normalize_text(task.get("column")) in {"blocked", "review", "done"}:
+        reasons.append(f"task is currently in '{normalize_text(task.get('column'))}' and is not on the happy path")
+    return not reasons, reasons
+
+
+def task_summary_lines(task: dict[str, Any]) -> list[str]:
+    return [
+        f"- Task ID: {normalize_text(task.get('id'))}",
+        f"- Title: {normalize_text(task.get('title'))}",
+        f"- Project: {normalize_text(task.get('project'))}",
+        f"- Column: {normalize_text(task.get('column'))}",
+        f"- Owner: {normalize_text(task.get('owner'))}",
+        f"- Manager: {normalize_text(task.get('manager'))}",
+        f"- Accepts Result: {normalize_text(task.get('accepts_result'))}",
+        f"- Risk / Autonomy: {normalize_text(task.get('risk_tier'))} / {normalize_text(task.get('autonomy_tier'))}",
+        f"- Done When: {normalize_text(task.get('done_when')) or '-'}",
+    ]
+
+
+def render_recommended_next_command(command: str) -> str:
+    return "\n".join(["", "Recommended Next Command", f"- {command}"])
+
+
+def recommended_task_command(task: dict[str, Any], missing: list[str]) -> str:
+    task_id = normalize_text(task.get("id"))
+    if not missing:
+        closeout_ready, closeout_reasons = can_auto_closeout(task)
+        if closeout_ready and not closeout_reasons:
+            return f"python3 scripts/hq_control_plane.py closeout --task-id {task_id}"
+    return "python3 scripts/hq_control_plane.py status"
+
+
+def quick_context_markdown(task: dict[str, Any], missing: list[str]) -> str:
+    paths = task_packet_paths(task)
+    lines = [
+        "# QUICK_CONTEXT",
+        "",
+        "> Projection only. Source of truth remains `05 AI Control Plane/active-work.json` and the current `.hq/specs/` / `.hq/handoffs/` packets.",
+        "",
+        "## Task Contract Summary",
+        *task_summary_lines(task),
+        "",
+        "## Current Packets",
+        f"- Spec: {relative_display(paths['spec'])}",
+        f"- Handoff: {relative_display(paths['handoff'])}",
+        "",
+        "## Current Next Step",
+        f"- {normalize_text(task.get('next_step')) or '-'}",
+        "",
+        "## Missing For Safe Continue",
+    ]
+    if missing:
+        lines.extend(f"- {item}" for item in missing)
+    else:
+        lines.append("- None")
+    lines.extend(["", "## Recommended Next Command", f"- {recommended_task_command(task, missing)}", ""])
+    return "\n".join(lines)
+
+
+def write_quick_context(task: dict[str, Any], missing: list[str]) -> None:
+    write_text(QUICK_CONTEXT_PATH, quick_context_markdown(task, missing))
+
+
+def render_resume_text(task: dict[str, Any], missing: list[str]) -> str:
+    paths = task_packet_paths(task)
+    lines = [
+        "Resume Task",
+        *task_summary_lines(task),
+        "",
+        "Current Packets",
+        f"- Spec: {relative_display(paths['spec'])}",
+        f"- Handoff: {relative_display(paths['handoff'])}",
+        "",
+        "Current Next Step",
+        f"- {normalize_text(task.get('next_step')) or '-'}",
+        "",
+        "Missing For Safe Continue",
+    ]
+    if missing:
+        lines.extend(f"- {item}" for item in missing)
+    else:
+        lines.append("- None")
+    lines.append(render_recommended_next_command(recommended_task_command(task, missing)))
+    return "\n".join(lines) + "\n"
+
+
+def git_status_lines() -> list[str]:
+    completed = subprocess.run(
+        ["git", "status", "--short", "--branch"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    output = (completed.stdout or completed.stderr or "").strip().splitlines()
+    return output or ["clean"]
+
+
 def load_archived_tasks() -> dict[str, Any]:
     if not ARCHIVED_TASKS_PATH.exists():
         return {"generated_at": "", "source_updated_at": "", "tasks": []}
@@ -1077,6 +1318,12 @@ def render_status_text(payload: dict[str, Any]) -> str:
 
 def status_command(args: argparse.Namespace) -> int:
     bundle = validate_control_plane()
+    live_tasks = [
+        task
+        for task in bundle["active_work"].get("tasks", []) or []
+        if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
+    ]
+    ensure_task_packets(live_tasks)
     payload = build_status_payload(bundle["active_work"], bundle["workflow_registry"])
     SESSION_BOOTSTRAP_PATH.parent.mkdir(parents=True, exist_ok=True)
     SESSION_BOOTSTRAP_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1163,9 +1410,16 @@ def validate_command(_: argparse.Namespace) -> int:
 
 def sync_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
+    live_tasks = [
+        task
+        for task in bundle["active_work"].get("tasks", []) or []
+        if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
+    ]
+    ensure_task_packets(live_tasks)
     write_task_board(bundle["active_work"], bundle["workflow_registry"])
     print(f"validation=ok")
     print(f"board_written={TASK_BOARD_PATH}")
+    print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
     return 0
 
 
@@ -1195,6 +1449,104 @@ def archive_command(args: argparse.Namespace) -> int:
     print(f"live_tasks={len(live_tasks)}")
     if args.dry_run:
         print("dry_run=true")
+    return 0
+
+
+def resume_command(args: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    task_id = normalize_text(args.task_id)
+    task = find_task(bundle["active_work"], task_id)
+    if task is None:
+        print("resume=failed")
+        print(f"reason=task '{task_id}' not found in active-work.json")
+        return 1
+
+    ensure_task_packets([task])
+    missing = task_missing_for_safe_continue(task)
+    write_quick_context(task, missing)
+    print(render_resume_text(task, missing), end="")
+    return 0
+
+
+def closeout_command(args: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    task_id = normalize_text(args.task_id)
+    task = find_task(bundle["active_work"], task_id)
+    if task is None:
+        print("closeout=failed")
+        print(f"reason=task '{task_id}' not found in active-work.json")
+        return 1
+
+    ensure_task_packets([task])
+    missing = task_missing_for_safe_continue(task)
+    closeout_ready, closeout_reasons = can_auto_closeout(task)
+    reasons = [*closeout_reasons, *missing]
+    if not closeout_ready or missing:
+        print("closeout=not_ready")
+        print(f"task_id={task_id}")
+        if reasons:
+            print(f"reasons={len(reasons)}")
+            for reason in reasons:
+                print(f"- {reason}")
+        print(render_recommended_next_command(f"python3 scripts/hq_control_plane.py resume --task-id {task_id}"))
+        return 1
+
+    active_work = dict(bundle["active_work"])
+    updated_tasks: list[dict[str, Any]] = []
+    for current in active_work.get("tasks", []) or []:
+        if not isinstance(current, dict):
+            updated_tasks.append(current)
+            continue
+        if normalize_text(current.get("id")) != task_id:
+            updated_tasks.append(current)
+            continue
+        closed_task = dict(current)
+        closed_task["column"] = "done"
+        closed_task["completed_at"] = utc_today()
+        updated_tasks.append(closed_task)
+    active_work["tasks"] = updated_tasks
+    active_work["updated_at"] = utc_today()
+    write_json(ACTIVE_WORK_PATH, active_work)
+    write_task_board(active_work, bundle["workflow_registry"])
+
+    print("closeout=done")
+    print(f"task_id={task_id}")
+    print(f"completed_at={utc_today()}")
+    print(f"board_written={relative_display(TASK_BOARD_PATH)}")
+    print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
+    return 0
+
+
+def health_command(_: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    live_tasks = [
+        task
+        for task in bundle["active_work"].get("tasks", []) or []
+        if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
+    ]
+    ensure_task_packets(live_tasks)
+    status_payload = build_status_payload(bundle["active_work"], bundle["workflow_registry"])
+    lines = [
+        "HQ Health",
+        "",
+        "Validation",
+        "- validation=ok",
+        f"- warnings={len(bundle['validation_warnings'])}",
+    ]
+    if bundle["validation_warnings"]:
+        lines.extend(f"- warning: {warning}" for warning in bundle["validation_warnings"])
+    lines.extend(
+        [
+            "",
+            "Status Snapshot",
+            render_status_text(status_payload).rstrip(),
+            "",
+            "Git Status",
+        ]
+    )
+    lines.extend(f"- {line}" for line in git_status_lines())
+    lines.append(render_recommended_next_command(status_payload["recommended_next_command"]))
+    print("\n".join(lines) + "\n")
     return 0
 
 
@@ -1448,11 +1800,31 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--json", action="store_true", help="Print the session bootstrap as JSON.")
     status_parser.set_defaults(func=status_command)
 
+    health_parser = subparsers.add_parser(
+        "health",
+        help="Print one report combining validation, status, stale packets, warnings, and git status.",
+    )
+    health_parser.set_defaults(func=health_command)
+
     templates_parser = subparsers.add_parser(
         "templates",
         help="List locally available task templates for shaping new work.",
     )
     templates_parser.set_defaults(func=templates_command)
+
+    resume_parser = subparsers.add_parser(
+        "resume",
+        help="Render a queue-level continuation summary for one task and refresh QUICK_CONTEXT.",
+    )
+    resume_parser.add_argument("--task-id", required=True, help="Task ID to resume.")
+    resume_parser.set_defaults(func=resume_command)
+
+    closeout_parser = subparsers.add_parser(
+        "closeout",
+        help="Close low/medium internal work from the queue happy path when required signals are present.",
+    )
+    closeout_parser.add_argument("--task-id", required=True, help="Task ID to close out.")
+    closeout_parser.set_defaults(func=closeout_command)
 
     preflight_parser = subparsers.add_parser(
         "preflight",

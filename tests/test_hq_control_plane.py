@@ -733,6 +733,174 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("Stale Items", output)
         self.assertIn("Recommended Next Command", output)
 
+    def test_status_scaffolds_missing_runtime_packets_for_live_tasks(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        spec_path = self.temp_root / ".hq" / "specs" / "task-1" / "LATEST.md"
+        handoff_path = self.temp_root / ".hq" / "handoffs" / "task-1" / "LATEST.md"
+        self.assertTrue(spec_path.exists())
+        self.assertTrue(handoff_path.exists())
+        self.assertFalse(
+            any(item["task_id"] == "task-1" and item["status"] == "missing" for item in payload["stale_items"])
+        )
+
+    def test_resume_writes_quick_context_projection(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["resume", "--task-id", "task-1"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("Resume Task", output)
+        self.assertIn("Task ID: task-1", output)
+        self.assertIn(".hq/specs/task-1/LATEST.md", output)
+        self.assertIn(".hq/handoffs/task-1/LATEST.md", output)
+        self.assertIn("Missing For Safe Continue", output)
+        self.assertIn("Recommended Next Command", output)
+
+        quick_context_path = self.temp_root / ".hq" / "state" / "QUICK_CONTEXT.md"
+        self.assertTrue(quick_context_path.exists())
+        quick_context = quick_context_path.read_text(encoding="utf-8")
+        self.assertIn("Projection only", quick_context)
+        self.assertIn("task-1", quick_context)
+        self.assertIn("Route one real task.", quick_context)
+
+    def test_closeout_marks_low_medium_internal_task_done(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        active_work_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-20",
+                    "operating_mode": "stage-2-foundation",
+                    "objective": {
+                        "id": "obj-1",
+                        "title": "Run one governed loop",
+                        "window": {"start": "2026-04-20", "target_end": "2026-05-31"},
+                    },
+                    "tasks": [
+                        {
+                            "id": "task-closeout",
+                            "title": "Close internal delivery slice",
+                            "column": "executing",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "HQ Bootstrap",
+                            "next_step": "Ship the internal closeout helper.",
+                            "done_when": "The queue helper marks low-risk internal work done.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
+        workflow_payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+        workflow_payload["board_columns"].insert(-1, {"id": "executing", "title": "Executing"})
+        workflow_payload["workflows"][0]["states"].insert(-1, "executing")
+        workflow_path.write_text(json.dumps(workflow_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        spec_dir = self.temp_root / ".hq" / "specs" / "task-closeout"
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "LATEST.md").write_text(
+            "\n".join(
+                [
+                    "# Spec",
+                    "",
+                    "## Acceptance",
+                    "- Internal closeout can complete from one command.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        handoff_dir = self.temp_root / ".hq" / "handoffs" / "task-closeout"
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        (handoff_dir / "LATEST.md").write_text(
+            "\n".join(
+                [
+                    "# Handoff",
+                    "",
+                    "## Done",
+                    "- Helper implemented.",
+                    "",
+                    "## Next",
+                    "- Mark the task done.",
+                    "",
+                    "## Blockers",
+                    "- None.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args(["closeout", "--task-id", "task-closeout"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("closeout=done", output)
+        self.assertIn("Recommended Next Command", output)
+
+        active_work = json.loads(active_work_path.read_text(encoding="utf-8"))
+        self.assertEqual(active_work["tasks"][0]["column"], "done")
+        self.assertEqual(active_work["tasks"][0]["completed_at"], self.module.utc_today())
+        board = (self.temp_root / "02 Planning" / "Task Board.md").read_text(encoding="utf-8")
+        self.assertIn("## Done", board)
+        self.assertIn("Close internal delivery slice", board)
+
+    def test_closeout_requires_non_founder_acceptance(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["closeout", "--task-id", "task-1"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 1)
+        output = buffer.getvalue()
+        self.assertIn("closeout=not_ready", output)
+        self.assertIn("founder acceptance", output)
+
+    def test_health_reports_validation_status_warnings_and_git(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["health"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("HQ Health", output)
+        self.assertIn("Validation", output)
+        self.assertIn("warnings=", output)
+        self.assertIn("Active Tasks", output)
+        self.assertIn("Git Status", output)
+        self.assertIn("Recommended Next Command", output)
+
     def test_templates_command_lists_local_task_templates(self):
         templates_path = self.temp_root / "05 AI Control Plane" / "task-templates.json"
         templates_path.write_text(
