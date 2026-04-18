@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Ops Lead"
+  short_description: "Shortcut alias for AI Operations Lead"
+  default_prompt: "Use $ai-operations-lead to route the next HQ slice and keep queue continuity healthy."

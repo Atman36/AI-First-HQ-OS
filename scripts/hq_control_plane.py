@@ -22,6 +22,8 @@ AGENT_REGISTRY_PATH = CONTROL_PLANE_DIR / "agent-registry.json"
 POLICIES_PATH = CONTROL_PLANE_DIR / "operating-policies.json"
 WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
+TASK_TEMPLATES_JSON_PATH = CONTROL_PLANE_DIR / "task-templates.json"
+TASK_TEMPLATES_MD_PATH = CONTROL_PLANE_DIR / "task-templates.md"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
 SESSION_BOOTSTRAP_PATH = REPO_ROOT / ".hq" / "state" / "session-bootstrap.json"
 ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
@@ -1085,6 +1087,69 @@ def status_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def load_task_templates() -> tuple[Path, list[dict[str, str]]]:
+    if TASK_TEMPLATES_JSON_PATH.exists():
+        payload = load_json(TASK_TEMPLATES_JSON_PATH)
+        templates: list[dict[str, str]] = []
+        for item in payload.get("templates", []) or []:
+            if not isinstance(item, dict):
+                continue
+            templates.append(
+                {
+                    "id": normalize_text(item.get("id")),
+                    "title_pattern": normalize_text(item.get("title_pattern")),
+                    "workflow": normalize_text(item.get("workflow")),
+                    "default_owner": normalize_text(item.get("default_owner")),
+                }
+            )
+        return TASK_TEMPLATES_JSON_PATH, templates
+
+    if TASK_TEMPLATES_MD_PATH.exists():
+        templates: list[dict[str, str]] = []
+        current: dict[str, str] | None = None
+        for raw_line in TASK_TEMPLATES_MD_PATH.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if line.startswith("## "):
+                if current:
+                    templates.append(current)
+                current = {
+                    "id": line.removeprefix("## ").strip().lower().replace(" ", "-"),
+                    "title_pattern": "",
+                    "workflow": "",
+                    "default_owner": "",
+                }
+                continue
+            if not current or not line.startswith("- "):
+                continue
+            key, _, value = line.removeprefix("- ").partition(":")
+            normalized_key = key.strip().replace(" ", "_").lower()
+            if normalized_key in current:
+                current[normalized_key] = value.strip()
+        if current:
+            templates.append(current)
+        return TASK_TEMPLATES_MD_PATH, templates
+
+    raise ValidationError(
+        "missing task templates file: expected 05 AI Control Plane/task-templates.json or task-templates.md"
+    )
+
+
+def templates_command(_: argparse.Namespace) -> int:
+    path, templates = load_task_templates()
+    print("templates=ok")
+    print(f"path={relative_display(path)}")
+    print(f"count={len(templates)}")
+    for template in templates:
+        print(
+            "template="
+            f"{template.get('id') or '-'}"
+            f" owner={template.get('default_owner') or '-'}"
+            f" workflow={template.get('workflow') or '-'}"
+            f" title_pattern={template.get('title_pattern') or '-'}"
+        )
+    return 0
+
+
 def validate_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
     print(f"validation=ok")
@@ -1382,6 +1447,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status_parser.add_argument("--json", action="store_true", help="Print the session bootstrap as JSON.")
     status_parser.set_defaults(func=status_command)
+
+    templates_parser = subparsers.add_parser(
+        "templates",
+        help="List locally available task templates for shaping new work.",
+    )
+    templates_parser.set_defaults(func=templates_command)
 
     preflight_parser = subparsers.add_parser(
         "preflight",

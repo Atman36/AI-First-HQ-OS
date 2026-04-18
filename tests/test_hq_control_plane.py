@@ -733,6 +733,54 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("Stale Items", output)
         self.assertIn("Recommended Next Command", output)
 
+    def test_templates_command_lists_local_task_templates(self):
+        templates_path = self.temp_root / "05 AI Control Plane" / "task-templates.json"
+        templates_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "templates": [
+                        {
+                            "id": "research-slice",
+                            "title_pattern": "Research {topic}",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "default_owner": "research",
+                            "done_when_stub": "Decision-ready research note exists.",
+                        },
+                        {
+                            "id": "policy-decision",
+                            "title_pattern": "Decide {policy_topic}",
+                            "workflow": "decision-lifecycle",
+                            "risk_tier": "high",
+                            "autonomy_tier": "A1",
+                            "default_owner": "governor",
+                            "done_when_stub": "Policy call is explicit and reviewable.",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["templates"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("templates=ok", output)
+        self.assertIn("path=05 AI Control Plane/task-templates.json", output)
+        self.assertIn("count=2", output)
+        self.assertIn("research-slice", output)
+        self.assertIn("policy-decision", output)
+
     def test_preflight_passes_for_valid_task_and_role(self):
         parser = self.module.build_parser()
         args = parser.parse_args(["preflight", "--task-id", "task-1", "--role", "ai_operations_lead"])
