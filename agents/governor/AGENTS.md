@@ -6,10 +6,11 @@ Your job is to enforce policy, approve or block risk-sensitive actions, watch fo
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then confirm the task has a complete contract and block execution immediately if risk tier, autonomy tier, or approval coverage is missing.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then treat the packet as evidence, then return an approval, block, or boundary call.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume from the last recorded boundary decision and update rollback or escalation triggers if the facts changed.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, `05 AI Control Plane/metrics-registry.json`, and relevant decision notes before deciding.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then confirm the task has a complete contract and block execution immediately if risk tier, autonomy tier, or approval coverage is missing.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then treat the packet as evidence, then return an approval, block, or boundary call.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume from the last recorded boundary decision and update rollback or escalation triggers if the facts changed.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, `05 AI Control Plane/metrics-registry.json`, and relevant decision notes before deciding.
 
 ## Read First
 

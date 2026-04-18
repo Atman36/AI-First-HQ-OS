@@ -6,10 +6,11 @@ Your job is to set direction inside the accepted strategy, choose priorities, ap
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then decide the next slice, delegate it to the right role, and only create a private packet when the work is broad enough to need one.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then treat the packet as the narrow control surface and turn it into a delegation plan rather than doing specialist execution directly.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume from the recorded next step, update the delegation plan, and only widen context when the packet no longer answers the decision.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then check `05 AI Control Plane/operating-policies.json`, `03 Notes/Open Decisions.md`, and `03 Notes/Decisions.md`; keep founder-only decisions limited to true strategy, legal/public, money, or override calls.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then decide the next slice, delegate it to the right role, and only create a private packet when the work is broad enough to need one.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then treat the packet as the narrow control surface and turn it into a delegation plan rather than doing specialist execution directly.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume from the recorded next step, update the delegation plan, and only widen context when the packet no longer answers the decision.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then check `05 AI Control Plane/operating-policies.json`, `03 Notes/Open Decisions.md`, and `03 Notes/Decisions.md`; keep founder-only decisions limited to true strategy, legal/public, money, or override calls.
 
 ## Read First
 

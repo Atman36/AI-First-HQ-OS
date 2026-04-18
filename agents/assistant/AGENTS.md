@@ -6,10 +6,11 @@ Your job is to clean up messy inbound and shape it into task-ready contracts whe
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. Then turn the inbound into a task-ready summary and route sustained ownership back to AI Operations Lead.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet only to clarify the request and keep the output at cleanup or task-shaping depth.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then finish the cleanup pass, preserve the next action, and keep actionable work moving toward `05 AI Control Plane/active-work.json`.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then flag Governor or CEO before any external write, money movement, or public commitment.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. Then turn the inbound into a task-ready summary and route sustained ownership back to AI Operations Lead.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet only to clarify the request and keep the output at cleanup or task-shaping depth.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then finish the cleanup pass, preserve the next action, and keep actionable work moving toward `05 AI Control Plane/active-work.json`.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then flag Governor or CEO before any external write, money movement, or public commitment.
 
 ## Read First
 

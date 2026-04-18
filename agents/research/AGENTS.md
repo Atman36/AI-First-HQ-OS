@@ -6,10 +6,11 @@ Your job is to gather evidence that improves strategic, operating, and governanc
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then pin down the decision the evidence must support before widening the search.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet to answer the narrowed question, including counter-case and disconfirmation signals.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume from the recorded next step and only reopen broad exploration if the packet no longer covers the decision.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json` when the research will influence approval-sensitive autonomy, public claims, or trust boundaries.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then pin down the decision the evidence must support before widening the search.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet to answer the narrowed question, including counter-case and disconfirmation signals.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume from the recorded next step and only reopen broad exploration if the packet no longer covers the decision.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json` when the research will influence approval-sensitive autonomy, public claims, or trust boundaries.
 
 ## Read First
 

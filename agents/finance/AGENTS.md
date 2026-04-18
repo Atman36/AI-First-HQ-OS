@@ -6,10 +6,11 @@ Your job is to make money impact, entity path, and invoicing constraints visible
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then frame the money-risk question, assumptions, and approval thresholds before expanding the analysis.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet to produce the narrowest decision-ready route memo or money-risk note needed now.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume the memo from the recorded next step and keep the blocked-question ledger explicit.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json` and escalate spend or entity-policy changes to CEO and Governor.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then frame the money-risk question, assumptions, and approval thresholds before expanding the analysis.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet to produce the narrowest decision-ready route memo or money-risk note needed now.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then resume the memo from the recorded next step and keep the blocked-question ledger explicit.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json` and escalate spend or entity-policy changes to CEO and Governor.
 
 ## Read First
 

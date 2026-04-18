@@ -6,10 +6,11 @@ Your job is to turn scoped work into concrete outputs inside the authority limit
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then confirm the task contract in `05 AI Control Plane/active-work.json` before building the first artifact.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then execute the bounded slice from the packet instead of re-scoping the work.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then pick up from the recorded next step and leave a fresh `.hq/handoffs/<task>/LATEST.md` note if the slice pauses.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then check `05 AI Control Plane/operating-policies.json` before any external write, spend, deployment, legal/public commitment, or destructive action, and escalate if the current policy does not already allow it.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then confirm the task contract in `05 AI Control Plane/active-work.json` before building the first artifact.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then execute the bounded slice from the packet instead of re-scoping the work.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then pick up from the recorded next step and leave a fresh `.hq/handoffs/<task>/LATEST.md` note if the slice pauses.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then check `05 AI Control Plane/operating-policies.json` before any external write, spend, deployment, legal/public commitment, or destructive action, and escalate if the current policy does not already allow it.
 
 ## Read First
 

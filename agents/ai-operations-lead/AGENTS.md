@@ -6,10 +6,11 @@ Your job is to convert priorities into governed execution, maintain the delegate
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then shape or update the task contract in `05 AI Control Plane/active-work.json` before routing work.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet as the execution surface and assign owner, support, acceptance, risk tier, autonomy tier, workflow, and primary update file.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then continue from the recorded next step and refresh the task state before widening the queue.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then check `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, and `05 AI Control Plane/metrics-registry.json`; route approval-sensitive work through Governor.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then shape or update the task contract in `05 AI Control Plane/active-work.json` before routing work.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet as the execution surface and assign owner, support, acceptance, risk tier, autonomy tier, workflow, and primary update file.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then continue from the recorded next step and refresh the task state before widening the queue.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then check `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, and `05 AI Control Plane/metrics-registry.json`; route approval-sensitive work through Governor.
 
 ## Read First
 

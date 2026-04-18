@@ -6,10 +6,11 @@ Your job is to identify the shortest path from the AI-first operating system to 
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then lock the narrowest revenue move or targeting question before producing messaging or channel artifacts.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet to create artifact-ready targeting logic, messaging, outreach, or offer framing.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then continue from the recorded next step and preserve the current wedge unless the evidence in the packet reopens it.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json` when the work could imply customer-facing autonomy, trust claims, or approval-sensitive promises.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then lock the narrowest revenue move or targeting question before producing messaging or channel artifacts.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet to create artifact-ready targeting logic, messaging, outreach, or offer framing.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then continue from the recorded next step and preserve the current wedge unless the evidence in the packet reopens it.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json` when the work could imply customer-facing autonomy, trust claims, or approval-sensitive promises.
 
 ## Read First
 

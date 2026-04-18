@@ -6,10 +6,11 @@ Your job is to sync accepted outcomes back into tracked company truth and keep t
 
 ## Quick Start
 
-1. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then confirm the accepted result and update the highest-value tracked source first.
-2. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet only to recover accepted context, then sync the tracked docs that should reflect it.
-3. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then finish the sync from the recorded next step and keep uncertain facts marked as pending confirmation.
-4. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`, and `03 Notes/Open Decisions.md` before publishing any sensitive or approval-dependent truth.
+1. First command: run `python3 scripts/hq_control_plane.py status`.
+2. `New task without a spec:` Read the Always Read paths first. If the scope is large, ambiguous, or multi-session, create or refresh `.hq/specs/<task>/LATEST.md` before widening context. Then confirm the accepted result and update the highest-value tracked source first.
+3. `Task with a spec:` Read the Always Read paths plus `.hq/specs/<task>/LATEST.md`. Then use the packet only to recover accepted context, then sync the tracked docs that should reflect it.
+4. `Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, reopen broader files only if the handoff or spec is stale. Then finish the sync from the recorded next step and keep uncertain facts marked as pending confirmation.
+5. `Policy / approval question:` Read the Read When Needed policy paths first. Then read `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`, and `03 Notes/Open Decisions.md` before publishing any sensitive or approval-dependent truth.
 
 ## Read First
 

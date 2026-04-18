@@ -37,6 +37,7 @@ def shared_quick_start(
         )
 
     return [
+        "First command: run `python3 scripts/hq_control_plane.py status`.",
         f"`New task without a spec:` {new_task_prefix}Then {new_task}",
         (
             "`Task with a spec:` Read the Always Read paths plus "

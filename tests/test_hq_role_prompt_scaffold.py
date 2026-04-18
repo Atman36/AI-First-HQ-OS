@@ -36,6 +36,7 @@ class HqRolePromptScaffoldTests(unittest.TestCase):
         for role_id in self.module.ROLE_PROMPTS:
             with self.subTest(role_id=role_id):
                 rendered = self.module.render_prompt(role_id)
+                self.assertIn("First command: run `python3 scripts/hq_control_plane.py status`.", rendered)
                 self.assertIn("## Quick Start", rendered)
                 self.assertIn("## Read First", rendered)
                 self.assertIn("### Always Read", rendered)
