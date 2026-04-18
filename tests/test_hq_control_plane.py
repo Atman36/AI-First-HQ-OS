@@ -360,6 +360,40 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("Manager: ai_operations_lead", content)
         self.assertIn("Owner: ai_operations_lead", content)
 
+    def test_sync_renders_done_tasks_from_active_work(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"].append(
+            {
+                "id": "task-done",
+                "title": "Closed loop",
+                "column": "done",
+                "completed_at": "2026-04-19",
+                "manager": "ai_operations_lead",
+                "owner": "documentation",
+                "project": "HQ Bootstrap",
+                "next_step": "None.",
+                "done_when": "Done.",
+                "primary_update_file": "README.md",
+                "accepts_result": "governor",
+                "risk_tier": "medium",
+                "autonomy_tier": "A2",
+                "workflow": "intake-to-execution",
+            }
+        )
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["sync"])
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        content = (self.temp_root / "02 Planning" / "Task Board.md").read_text(encoding="utf-8")
+        self.assertIn("## Done", content)
+        self.assertIn("Closed loop", content)
+        self.assertIn("- [x] Closed loop", content)
+
     def test_validate_requires_manager_role(self):
         active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
         payload = json.loads(active_work_path.read_text(encoding="utf-8"))
@@ -373,6 +407,27 @@ class HqControlPlaneTests(unittest.TestCase):
             self.module.validate_control_plane()
 
         self.assertIn("manager", str(error.exception))
+
+    def test_validate_reports_soft_next_step_warnings_without_failing(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"][0]["next_step"] = (
+            "Context: founder asked for a full narrative update before routing this task. "
+            "This sentence should live in a spec instead."
+        )
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["validate"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("validation=ok", output)
+        self.assertIn("warnings=", output)
+        self.assertIn("active-work.json.tasks[0].next_step", output)
 
     def test_status_writes_session_bootstrap_json_and_excludes_done_tasks(self):
         (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
@@ -493,6 +548,136 @@ class HqControlPlaneTests(unittest.TestCase):
             any(item["task_id"] == "task-live" and item["kind"] == "spec" for item in payload["stale_items"])
         )
         self.assertEqual(payload["recommended_next_command"], "python3 scripts/hq_runtime.py route-next-slice")
+
+    def test_archive_moves_done_tasks_to_runtime_archive_and_preserves_ids(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"].append(
+            {
+                "id": "task-done",
+                "title": "Archive me",
+                "column": "done",
+                "completed_at": "2026-04-19",
+                "manager": "ai_operations_lead",
+                "owner": "documentation",
+                "project": "HQ Bootstrap",
+                "next_step": "None.",
+                "done_when": "Done.",
+                "primary_update_file": "README.md",
+                "accepts_result": "governor",
+                "risk_tier": "medium",
+                "autonomy_tier": "A2",
+                "workflow": "intake-to-execution",
+            }
+        )
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        archive_path = self.temp_root / ".hq" / "state" / "archived-tasks.json"
+        archive_path.parent.mkdir(parents=True, exist_ok=True)
+        archive_path.write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-04-18T00:00:00Z",
+                    "source_updated_at": "2026-04-18",
+                    "tasks": [{"id": "task-old", "title": "Already archived"}],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["archive"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("archived=1", buffer.getvalue())
+        active_work = json.loads(active_work_path.read_text(encoding="utf-8"))
+        self.assertEqual([task["id"] for task in active_work["tasks"]], ["task-1"])
+        archive_payload = json.loads(archive_path.read_text(encoding="utf-8"))
+        self.assertEqual([task["id"] for task in archive_payload["tasks"]], ["task-old", "task-done"])
+        self.assertEqual(archive_payload["tasks"][1]["title"], "Archive me")
+        self.assertIn("archived_at", archive_payload["tasks"][1])
+
+    def test_archive_re_renders_task_board_from_updated_active_work(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"].append(
+            {
+                "id": "task-done",
+                "title": "Archive me",
+                "column": "done",
+                "completed_at": "2026-04-19",
+                "manager": "ai_operations_lead",
+                "owner": "documentation",
+                "project": "HQ Bootstrap",
+                "next_step": "None.",
+                "done_when": "Done.",
+                "primary_update_file": "README.md",
+                "accepts_result": "governor",
+                "risk_tier": "medium",
+                "autonomy_tier": "A2",
+                "workflow": "intake-to-execution",
+            }
+        )
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        sync_args = parser.parse_args(["sync"])
+        sync_exit_code = sync_args.func(sync_args)
+
+        self.assertEqual(sync_exit_code, 0)
+        board_path = self.temp_root / "02 Planning" / "Task Board.md"
+        self.assertIn("Archive me", board_path.read_text(encoding="utf-8"))
+
+        archive_args = parser.parse_args(["archive"])
+        archive_exit_code = archive_args.func(archive_args)
+
+        self.assertEqual(archive_exit_code, 0)
+        board_content = board_path.read_text(encoding="utf-8")
+        self.assertNotIn("## Done", board_content)
+        self.assertNotIn("Archive me", board_content)
+        self.assertIn("Run first loop", board_content)
+
+    def test_archive_allows_empty_live_queue_after_archiving_all_done_tasks(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"] = [
+            {
+                "id": "task-done",
+                "title": "Archive me",
+                "column": "done",
+                "completed_at": "2026-04-19",
+                "manager": "ai_operations_lead",
+                "owner": "documentation",
+                "project": "HQ Bootstrap",
+                "next_step": "None.",
+                "done_when": "Done.",
+                "primary_update_file": "README.md",
+                "accepts_result": "governor",
+                "risk_tier": "medium",
+                "autonomy_tier": "A2",
+                "workflow": "intake-to-execution",
+            }
+        ]
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["archive"])
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        bundle = self.module.validate_control_plane()
+        self.assertEqual(bundle["active_work"]["tasks"], [])
+        status_payload = self.module.build_status_payload(bundle["active_work"], bundle["workflow_registry"])
+        self.assertEqual(status_payload["active_tasks"], [])
 
     def test_status_text_output_groups_active_blocked_and_stale_sections(self):
         parser = self.module.build_parser()

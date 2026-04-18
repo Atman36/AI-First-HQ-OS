@@ -24,6 +24,7 @@ WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
 SESSION_BOOTSTRAP_PATH = REPO_ROOT / ".hq" / "state" / "session-bootstrap.json"
+ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
@@ -39,6 +40,20 @@ STALE_PACKET_KINDS = ("spec", "handoff")
 MARKDOWN_HEADING_PREFIX = "## "
 DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:Z|[+-][0-9]{2}:[0-9]{2})?)?\b")
 RUNTIME_REFERENCE_PATTERN = re.compile(r"(\.hq/(?:specs|handoffs)/[^\s`'\"),:;]+)")
+NEXT_STEP_SOFT_LIMIT = 120
+NON_ACTIONABLE_PREFIXES = {
+    "background",
+    "context",
+    "none",
+    "note",
+    "notes",
+    "n/a",
+    "na",
+    "status",
+    "summary",
+    "tbd",
+    "todo",
+}
 
 
 class ValidationError(Exception):
@@ -57,9 +72,13 @@ class ValidationIssue:
 class ValidationContext:
     def __init__(self) -> None:
         self.issues: list[ValidationIssue] = []
+        self.warnings: list[ValidationIssue] = []
 
     def add(self, path: str, message: str) -> None:
         self.issues.append(ValidationIssue(path, message))
+
+    def warn(self, path: str, message: str) -> None:
+        self.warnings.append(ValidationIssue(path, message))
 
     def raise_if_any(self) -> None:
         if self.issues:
@@ -74,6 +93,11 @@ def load_json(path: Path) -> Any:
         raise ValidationError(f"missing required file: {path}") from exc
     except json.JSONDecodeError as exc:
         raise ValidationError(f"invalid JSON in {path}: {exc}") from exc
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def normalize_text(value: Any) -> str:
@@ -549,6 +573,35 @@ def validate_active_work(
             align_text = normalize_text(align_path)
             if align_text:
                 ensure_file_exists(context, align_text, f"{path}.align_files[{align_index}]")
+        for warning in lint_next_step(normalize_text(task.get("next_step"))):
+            context.warn(f"{path}.next_step", warning)
+
+
+def lint_next_step(next_step: str) -> list[str]:
+    text = normalize_text(next_step)
+    if not text:
+        return []
+
+    warnings: list[str] = []
+    if "\n" in text:
+        warnings.append("keep next_step to one line; move extra context into .hq/specs/ or .hq/handoffs/")
+
+    sentences = [item for item in re.split(r"(?<=[.!?])\s+", text) if item.strip()]
+    if len(sentences) > 1:
+        warnings.append("keep next_step to one sentence; move narrative context into .hq/specs/ or .hq/handoffs/")
+
+    if len(text) > NEXT_STEP_SOFT_LIMIT:
+        warnings.append(
+            f"keep next_step short and actionable (recommended <= {NEXT_STEP_SOFT_LIMIT} chars)"
+        )
+
+    first_token = text.split()[0].strip(" :").lower() if text.split() else ""
+    if first_token in NON_ACTIONABLE_PREFIXES:
+        warnings.append("start next_step with an action verb, not a narrative label")
+
+    return warnings
+
+
 def load_control_plane() -> dict[str, Any]:
     return {
         "active_work": load_json(ACTIVE_WORK_PATH),
@@ -587,6 +640,7 @@ def validate_control_plane() -> dict[str, Any]:
         context,
     )
     context.raise_if_any()
+    bundle["validation_warnings"] = [str(item) for item in context.warnings]
     return bundle
 
 
@@ -653,8 +707,17 @@ def render_board(active_work: dict[str, Any], workflow_registry: dict[str, Any])
     return "\n".join(lines) + "\n"
 
 
+def write_task_board(active_work: dict[str, Any], workflow_registry: dict[str, Any]) -> None:
+    TASK_BOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TASK_BOARD_PATH.write_text(render_board(active_work, workflow_registry), encoding="utf-8")
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def utc_today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 def parse_datetime(value: str) -> datetime | None:
@@ -857,6 +920,58 @@ def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
     return "python3 scripts/hq_control_plane.py validate"
 
 
+def load_archived_tasks() -> dict[str, Any]:
+    if not ARCHIVED_TASKS_PATH.exists():
+        return {"generated_at": "", "source_updated_at": "", "tasks": []}
+    payload = load_json(ARCHIVED_TASKS_PATH)
+    if not isinstance(payload, dict):
+        raise ValidationError(f"invalid archive payload in {relative_display(ARCHIVED_TASKS_PATH)}: expected object")
+    tasks = payload.get("tasks", [])
+    if tasks is None:
+        tasks = []
+    if not isinstance(tasks, list):
+        raise ValidationError(f"invalid archive payload in {relative_display(ARCHIVED_TASKS_PATH)}: tasks must be a list")
+    return {
+        "generated_at": normalize_text(payload.get("generated_at")),
+        "source_updated_at": normalize_text(payload.get("source_updated_at")),
+        "tasks": [task for task in tasks if isinstance(task, dict)],
+    }
+
+
+def merge_archived_tasks(existing: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for task in existing:
+        task_id = normalize_text(task.get("id"))
+        if not task_id or task_id in merged:
+            continue
+        order.append(task_id)
+        merged[task_id] = task
+    for task in new:
+        task_id = normalize_text(task.get("id"))
+        if not task_id:
+            continue
+        if task_id not in merged:
+            order.append(task_id)
+        merged[task_id] = task
+    return [merged[task_id] for task_id in order]
+
+
+def archive_projection(active_work: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    tasks = [task for task in active_work.get("tasks", []) or [] if isinstance(task, dict)]
+    done_tasks = [task for task in tasks if normalize_text(task.get("column")) == "done"]
+    live_tasks = [task for task in tasks if normalize_text(task.get("column")) != "done"]
+    archived_at = utc_now()
+    archived_tasks = [{**task, "archived_at": archived_at} for task in done_tasks]
+    existing_archive = load_archived_tasks()
+    archive_payload = {
+        "generated_at": archived_at,
+        "source_updated_at": normalize_text(active_work.get("updated_at")),
+        "tasks": merge_archived_tasks(existing_archive.get("tasks", []), archived_tasks),
+    }
+    return done_tasks, live_tasks, archive_payload
+
+
 def build_status_payload(
     active_work: dict[str, Any],
     workflow_registry: dict[str, Any],
@@ -954,6 +1069,9 @@ def status_command(args: argparse.Namespace) -> int:
 def validate_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
     print(f"validation=ok")
+    print(f"warnings={len(bundle['validation_warnings'])}")
+    for warning in bundle["validation_warnings"]:
+        print(f"warning: {warning}")
     print(f"tasks={len(bundle['active_work'].get('tasks', []))}")
     print(f"board={relative_display(TASK_BOARD_PATH)}")
     return 0
@@ -961,11 +1079,7 @@ def validate_command(_: argparse.Namespace) -> int:
 
 def sync_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
-    TASK_BOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TASK_BOARD_PATH.write_text(
-        render_board(bundle["active_work"], bundle["workflow_registry"]),
-        encoding="utf-8",
-    )
+    write_task_board(bundle["active_work"], bundle["workflow_registry"])
     print(f"validation=ok")
     print(f"board_written={TASK_BOARD_PATH}")
     return 0
@@ -974,6 +1088,29 @@ def sync_command(_: argparse.Namespace) -> int:
 def render_board_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
     print(render_board(bundle["active_work"], bundle["workflow_registry"]), end="")
+    return 0
+
+
+def archive_command(args: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    done_tasks, live_tasks, archive_payload = archive_projection(bundle["active_work"])
+
+    if not args.dry_run:
+        write_json(ARCHIVED_TASKS_PATH, archive_payload)
+        active_work = dict(bundle["active_work"])
+        active_work["tasks"] = live_tasks
+        if done_tasks:
+            active_work["updated_at"] = utc_today()
+            write_json(ACTIVE_WORK_PATH, active_work)
+            write_task_board(active_work, bundle["workflow_registry"])
+
+    print("validation=ok")
+    print(f"archive={relative_display(ARCHIVED_TASKS_PATH)}")
+    print(f"archived={len(done_tasks)}")
+    print(f"archived_total={len(archive_payload['tasks'])}")
+    print(f"live_tasks={len(live_tasks)}")
+    if args.dry_run:
+        print("dry_run=true")
     return 0
 
 
@@ -989,6 +1126,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     render_parser = subparsers.add_parser("render-board", help="Print the rendered task board to stdout.")
     render_parser.set_defaults(func=render_board_command)
+
+    archive_parser = subparsers.add_parser(
+        "archive",
+        help="Archive done tasks into .hq/state/archived-tasks.json and remove them from active-work.json.",
+    )
+    archive_parser.add_argument("--dry-run", action="store_true", help="Show archive counts without writing files.")
+    archive_parser.set_defaults(func=archive_command)
 
     status_parser = subparsers.add_parser(
         "status",
