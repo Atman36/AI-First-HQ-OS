@@ -1114,6 +1114,229 @@ def archive_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def check_role_conflict(task: dict[str, Any], role_id: str, role_ids: set[str]) -> list[str]:
+    """Check for role conflicts in task assignment."""
+    issues: list[str] = []
+    owner = normalize_text(task.get("owner"))
+    manager = normalize_text(task.get("manager"))
+    accepts_result = normalize_text(task.get("accepts_result"))
+    
+    if role_id not in role_ids:
+        issues.append(f"role '{role_id}' is not registered in agent-registry.json")
+    
+    if role_id != owner and role_id not in (task.get("support") or []):
+        issues.append(f"role '{role_id}' is not the owner or in support list")
+    
+    if owner == manager and owner:
+        issues.append(f"owner and manager are the same role: {owner}")
+    
+    if owner == accepts_result and owner:
+        issues.append(f"owner and accepts_result are the same role: {owner}")
+    
+    return issues
+
+
+def check_task_completeness(task: dict[str, Any], workflow: dict[str, Any] | None) -> list[str]:
+    """Check if task has all required fields filled."""
+    issues: list[str] = []
+    
+    if not workflow:
+        return issues
+    
+    required_fields = [
+        normalize_text(item)
+        for item in workflow.get("required_task_fields", [])
+        if normalize_text(item)
+    ]
+    
+    for field in required_fields:
+        value = task.get(field)
+        if value is None:
+            issues.append(f"required field '{field}' is missing")
+        elif isinstance(value, str) and not value.strip():
+            issues.append(f"required field '{field}' is empty")
+    
+    return issues
+
+
+def check_policy_compliance(
+    task: dict[str, Any],
+    autonomy_tiers: set[str],
+    risk_tiers: set[str],
+) -> list[str]:
+    """Check if task risk and autonomy tiers are valid."""
+    issues: list[str] = []
+    
+    risk_tier = normalize_text(task.get("risk_tier"))
+    autonomy_tier = normalize_text(task.get("autonomy_tier"))
+    
+    if risk_tier and risk_tier not in risk_tiers:
+        issues.append(f"unknown risk_tier: {risk_tier}")
+    
+    if autonomy_tier and autonomy_tier not in autonomy_tiers:
+        issues.append(f"unknown autonomy_tier: {autonomy_tier}")
+    
+    return issues
+
+
+def check_stale_telemetry(task: dict[str, Any], queue_updated_at: str) -> list[str]:
+    """Check for stale telemetry or missing closeout signals."""
+    warnings: list[str] = []
+    column = normalize_text(task.get("column"))
+    
+    # Check for done tasks without completion signal
+    if column == "done":
+        completed_at = normalize_text(task.get("completed_at"))
+        if not completed_at:
+            warnings.append("task is done but missing completed_at timestamp")
+    
+    # Check for executing tasks without recent updates
+    if column == "executing":
+        queue_updated = parse_datetime(queue_updated_at)
+        if queue_updated:
+            # Check if handoff exists and is recent
+            handoff_path = packet_path(task, "handoff")
+            if handoff_path.exists():
+                handoff_updated = parse_datetime(packet_updated_at(handoff_path))
+                if handoff_updated and queue_updated:
+                    days_stale = (queue_updated.date() - handoff_updated.date()).days
+                    if days_stale > 3:
+                        warnings.append(f"executing task has stale handoff ({days_stale} days old)")
+    
+    # Check for accepted tasks without sync
+    if column == "accepted":
+        queue_updated = parse_datetime(queue_updated_at)
+        if queue_updated:
+            handoff_path = packet_path(task, "handoff")
+            if handoff_path.exists():
+                handoff_updated = parse_datetime(packet_updated_at(handoff_path))
+                if handoff_updated and queue_updated:
+                    days_stale = (queue_updated.date() - handoff_updated.date()).days
+                    if days_stale > 2:
+                        warnings.append(f"accepted task without recent sync ({days_stale} days old)")
+    
+    return warnings
+
+
+def preflight_check(
+    task_id: str,
+    role_id: str,
+    bundle: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Run preflight checks for a task before starting work."""
+    failures: list[str] = []
+    warnings: list[str] = []
+    
+    active_work = bundle["active_work"]
+    agent_registry = bundle["agent_registry"]
+    policies = bundle["policies"]
+    workflow_registry = bundle["workflow_registry"]
+    
+    # Find the task
+    tasks = [t for t in active_work.get("tasks", []) if normalize_text(t.get("id")) == task_id]
+    if not tasks:
+        failures.append(f"task '{task_id}' not found in active-work.json")
+        return failures, warnings
+    
+    task = tasks[0]
+    column = normalize_text(task.get("column"))
+    
+    # Check if task is done
+    if column == "done":
+        failures.append(f"task '{task_id}' is already done")
+    
+    # Get reference data
+    role_ids = get_role_ids(agent_registry)
+    workflows = get_workflows(workflow_registry)
+    autonomy_tiers, risk_tiers = get_policy_sets(policies)
+    
+    # Check workflow exists
+    workflow_id = normalize_text(task.get("workflow"))
+    workflow = workflows.get(workflow_id)
+    if not workflow:
+        failures.append(f"task workflow '{workflow_id}' not found in workflow-registry.json")
+    
+    # Check role conflicts
+    role_issues = check_role_conflict(task, role_id, role_ids)
+    for issue in role_issues:
+        if "not registered" in issue or "not the owner" in issue:
+            failures.append(issue)
+        else:
+            warnings.append(issue)
+    
+    # Check task completeness
+    completeness_issues = check_task_completeness(task, workflow)
+    failures.extend(completeness_issues)
+    
+    # Check policy compliance
+    policy_issues = check_policy_compliance(task, autonomy_tiers, risk_tiers)
+    failures.extend(policy_issues)
+    
+    # Check for stale state
+    queue_updated_at = normalize_text(active_work.get("updated_at"))
+    stale_warnings = check_stale_telemetry(task, queue_updated_at)
+    warnings.extend(stale_warnings)
+    
+    # Check for missing packets
+    for kind in STALE_PACKET_KINDS:
+        for packet in packet_candidates(task, kind):
+            if not packet.exists():
+                warnings.append(f"missing {kind} packet: {relative_display(packet)}")
+    
+    return failures, warnings
+
+
+def preflight_command(args: argparse.Namespace) -> int:
+    """Run preflight checks before starting work on a task."""
+    try:
+        bundle = validate_control_plane()
+    except ValidationError as exc:
+        print("preflight=failed")
+        print("reason=control_plane_validation_failed")
+        print(str(exc))
+        return 2
+    
+    task_id = normalize_text(args.task_id)
+    role_id = normalize_text(args.role)
+    
+    if not task_id:
+        print("preflight=failed")
+        print("reason=task_id is required")
+        return 2
+    
+    if not role_id:
+        print("preflight=failed")
+        print("reason=role is required")
+        return 2
+    
+    failures, warnings = preflight_check(task_id, role_id, bundle)
+    
+    if failures:
+        print("preflight=failed")
+        print(f"task_id={task_id}")
+        print(f"role={role_id}")
+        print(f"failures={len(failures)}")
+        for failure in failures:
+            print(f"fail: {failure}")
+        if warnings:
+            print(f"warnings={len(warnings)}")
+            for warning in warnings:
+                print(f"warn: {warning}")
+        return 1
+    
+    print("preflight=ok")
+    print(f"task_id={task_id}")
+    print(f"role={role_id}")
+    if warnings:
+        print(f"warnings={len(warnings)}")
+        for warning in warnings:
+            print(f"warn: {warning}")
+    else:
+        print("warnings=0")
+    
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate and render the HQ control plane.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1140,6 +1363,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status_parser.add_argument("--json", action="store_true", help="Print the session bootstrap as JSON.")
     status_parser.set_defaults(func=status_command)
+
+    preflight_parser = subparsers.add_parser(
+        "preflight",
+        help="Run preflight checks before starting work on a task.",
+    )
+    preflight_parser.add_argument("--task-id", required=True, help="Task ID to check.")
+    preflight_parser.add_argument("--role", required=True, help="Role that will execute the task.")
+    preflight_parser.set_defaults(func=preflight_command)
     return parser
 
 
