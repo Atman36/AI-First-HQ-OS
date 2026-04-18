@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ POLICIES_PATH = CONTROL_PLANE_DIR / "operating-policies.json"
 WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
+SESSION_BOOTSTRAP_PATH = REPO_ROOT / ".hq" / "state" / "session-bootstrap.json"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
@@ -31,6 +34,11 @@ SCHEMA_PATHS = {
 }
 SPECIAL_TRANSITION_OWNERS = {"task_owner", "task_manager", "accepting_role"}
 VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
+ACTIONABLE_COLUMNS = {"review", "executing", "this_week", "scheduled", "policy_check", "triage", "intake"}
+STALE_PACKET_KINDS = ("spec", "handoff")
+MARKDOWN_HEADING_PREFIX = "## "
+DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:Z|[+-][0-9]{2}:[0-9]{2})?)?\b")
+RUNTIME_REFERENCE_PATTERN = re.compile(r"(\.hq/(?:specs|handoffs)/[^\s`'\"),:;]+)")
 
 
 class ValidationError(Exception):
@@ -645,6 +653,304 @@ def render_board(active_work: dict[str, Any], workflow_registry: dict[str, Any])
     return "\n".join(lines) + "\n"
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_datetime(value: str) -> datetime | None:
+    text = normalize_text(value)
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    for candidate in (normalized, normalized.split("T", 1)[0]):
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    return None
+
+
+def packet_task_slug(task: dict[str, Any]) -> str:
+    return normalize_text(task.get("id"))
+
+
+def packet_path(task: dict[str, Any], kind: str) -> Path:
+    root_name = "specs" if kind == "spec" else "handoffs"
+    return REPO_ROOT / ".hq" / root_name / packet_task_slug(task) / "LATEST.md"
+
+
+def normalize_runtime_reference(path_text: str) -> Path | None:
+    candidate = (REPO_ROOT / path_text).resolve()
+    if candidate.is_dir():
+        latest = candidate / "LATEST.md"
+        if latest.exists():
+            return latest
+        return None
+    return candidate
+
+
+def packet_candidates(task: dict[str, Any], kind: str) -> list[Path]:
+    references: list[Path] = []
+    scanned_values = [
+        normalize_text(task.get("next_step")),
+        normalize_text(task.get("primary_update_file")),
+        *(normalize_text(item) for item in task.get("align_files", []) or []),
+    ]
+    for value in scanned_values:
+        for match in RUNTIME_REFERENCE_PATTERN.findall(value):
+            candidate = normalize_runtime_reference(match)
+            parts = Path(match).parts
+            if kind == "spec" and len(parts) >= 3 and parts[1] == "handoffs":
+                inferred_spec = REPO_ROOT / ".hq" / "specs" / parts[2] / "LATEST.md"
+                if inferred_spec.exists():
+                    references.append(inferred_spec)
+            if candidate is None:
+                continue
+            if f"/{kind}s/" not in candidate.as_posix():
+                continue
+            references.append(candidate)
+    if not references:
+        return [packet_path(task, kind)]
+    deduplicated: list[Path] = []
+    seen: set[str] = set()
+    for item in references:
+        key = item.as_posix()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduplicated.append(item)
+    return deduplicated
+
+
+def extract_section_items(path: Path, heading: str) -> list[str]:
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    items: list[str] = []
+    in_section = False
+    expected_heading = heading.strip().lower()
+    for line in lines:
+        if line.startswith(MARKDOWN_HEADING_PREFIX):
+            current_heading = line[len(MARKDOWN_HEADING_PREFIX) :].strip().lower()
+            if in_section:
+                break
+            in_section = current_heading == expected_heading
+            continue
+        if not in_section:
+            continue
+        stripped = line.strip()
+        if stripped.startswith(("- ", "* ")):
+            items.append(stripped[2:].strip())
+            continue
+        match = re.match(r"^\d+\.\s+(.*)$", stripped)
+        if match:
+            items.append(match.group(1).strip())
+    return items
+
+
+def packet_updated_at(path: Path) -> str:
+    manifest_path = path.parent / "manifest.json"
+    if manifest_path.exists():
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        updated_at = normalize_text(payload.get("updated_at"))
+        if updated_at:
+            return updated_at
+    if not path.exists():
+        return ""
+    content = path.read_text(encoding="utf-8")
+    matches = DATE_PATTERN.findall("\n".join(content.splitlines()[:80]))
+    parsed_matches = [parse_datetime(item) for item in matches]
+    parsed = [item for item in parsed_matches if item is not None]
+    if not parsed:
+        return ""
+    latest = max(parsed)
+    return latest.date().isoformat()
+
+
+def sort_tasks(
+    tasks: list[dict[str, Any]],
+    workflow_registry: dict[str, Any],
+) -> list[dict[str, Any]]:
+    column_order, _ = get_board_columns(workflow_registry)
+    priority = {column: index for index, column in enumerate(column_order)}
+    return sorted(
+        tasks,
+        key=lambda task: (
+            priority.get(normalize_text(task.get("column")), len(priority)),
+            normalize_text(task.get("project")),
+            normalize_text(task.get("title")),
+        ),
+    )
+
+
+def project_live_task(task: dict[str, Any]) -> dict[str, str]:
+    return {
+        "id": normalize_text(task.get("id")),
+        "title": normalize_text(task.get("title")),
+        "project": normalize_text(task.get("project")),
+        "owner": normalize_text(task.get("owner")),
+        "manager": normalize_text(task.get("manager")),
+        "column": normalize_text(task.get("column")),
+        "next_step": normalize_text(task.get("next_step")),
+        "primary_update_file": normalize_text(task.get("primary_update_file")),
+        "accepts_result": normalize_text(task.get("accepts_result")),
+    }
+
+
+def blocked_reason(task: dict[str, Any]) -> str:
+    handoff = packet_path(task, "handoff")
+    blockers = extract_section_items(handoff, "Blockers")
+    if blockers:
+        return " ".join(blockers[:2])
+    next_step = normalize_text(task.get("next_step"))
+    if next_step:
+        return next_step
+    return "No blocker note found in the current control surface."
+
+
+def collect_stale_items(tasks: list[dict[str, Any]], queue_updated_at: str) -> list[dict[str, str]]:
+    queue_updated = parse_datetime(queue_updated_at)
+    stale_items: list[dict[str, str]] = []
+    for task in tasks:
+        task_id = normalize_text(task.get("id"))
+        task_title = normalize_text(task.get("title"))
+        for kind in STALE_PACKET_KINDS:
+            for current_path in packet_candidates(task, kind):
+                relative_path = relative_display(current_path)
+                if not current_path.exists():
+                    stale_items.append(
+                        {
+                            "task_id": task_id,
+                            "task_title": task_title,
+                            "kind": kind,
+                            "status": "missing",
+                            "path": relative_path,
+                            "reason": f"Missing {kind} packet for live task.",
+                        }
+                    )
+                    continue
+                packet_updated = parse_datetime(packet_updated_at(current_path))
+                if queue_updated and packet_updated and packet_updated.date() < queue_updated.date():
+                    stale_items.append(
+                        {
+                            "task_id": task_id,
+                            "task_title": task_title,
+                            "kind": kind,
+                            "status": "stale",
+                            "path": relative_path,
+                            "updated_at": packet_updated.date().isoformat(),
+                            "reason": f"{kind} packet predates active-work.json updated_at.",
+                        }
+                    )
+    return stale_items
+
+
+def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
+    if any(normalize_text(task.get("column")) in ACTIONABLE_COLUMNS for task in active_tasks):
+        return "python3 scripts/hq_runtime.py route-next-slice"
+    return "python3 scripts/hq_control_plane.py validate"
+
+
+def build_status_payload(
+    active_work: dict[str, Any],
+    workflow_registry: dict[str, Any],
+) -> dict[str, Any]:
+    live_tasks = [
+        task
+        for task in active_work.get("tasks", []) or []
+        if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
+    ]
+    ordered_live_tasks = sort_tasks(live_tasks, workflow_registry)
+    blocked_tasks = [
+        {
+            "id": normalize_text(task.get("id")),
+            "title": normalize_text(task.get("title")),
+            "project": normalize_text(task.get("project")),
+            "owner": normalize_text(task.get("owner")),
+            "column": normalize_text(task.get("column")),
+            "reason": blocked_reason(task),
+            "next_step": normalize_text(task.get("next_step")),
+        }
+        for task in ordered_live_tasks
+        if normalize_text(task.get("column")) == "blocked"
+    ]
+    payload = {
+        "generated_at": utc_now(),
+        "updated_at": normalize_text(active_work.get("updated_at")),
+        "objective": normalize_text(active_work.get("objective", {}).get("title")),
+        "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
+        "blocked": blocked_tasks,
+        "stale_items": collect_stale_items(ordered_live_tasks, normalize_text(active_work.get("updated_at"))),
+        "recommended_next_command": recommended_next_command(ordered_live_tasks),
+    }
+    return payload
+
+
+def render_status_text(payload: dict[str, Any]) -> str:
+    lines = [
+        "Session Bootstrap",
+        f"Objective: {payload.get('objective') or '-'}",
+        f"Updated At: {payload.get('updated_at') or '-'}",
+        f"Bootstrap File: {relative_display(SESSION_BOOTSTRAP_PATH)}",
+        "",
+        "Active Tasks",
+    ]
+    active_tasks = payload.get("active_tasks", []) or []
+    if active_tasks:
+        for task in active_tasks:
+            lines.append(
+                f"- {task['id']} [{task['column']}] {task['title']} ({task['owner']}) | next_step: {task['next_step'] or '-'}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "Blocked Tasks"])
+    blocked = payload.get("blocked", []) or []
+    if blocked:
+        for task in blocked:
+            lines.append(f"- {task['id']} [{task['column']}] {task['title']} | reason: {task['reason']}")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "Stale Items"])
+    stale_items = payload.get("stale_items", []) or []
+    if stale_items:
+        for item in stale_items:
+            updated_at = f" | updated_at: {item['updated_at']}" if item.get("updated_at") else ""
+            lines.append(
+                f"- {item['task_id']} {item['kind']} [{item['status']}] {item['path']}{updated_at} | {item['reason']}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(
+        [
+            "",
+            "Recommended Next Command",
+            f"- {payload.get('recommended_next_command') or '-'}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def status_command(args: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    payload = build_status_payload(bundle["active_work"], bundle["workflow_registry"])
+    SESSION_BOOTSTRAP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_BOOTSTRAP_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(render_status_text(payload), end="")
+    return 0
+
+
 def validate_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
     print(f"validation=ok")
@@ -683,6 +989,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     render_parser = subparsers.add_parser("render-board", help="Print the rendered task board to stdout.")
     render_parser.set_defaults(func=render_board_command)
+
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Write and print a compact session bootstrap view from the live control plane.",
+    )
+    status_parser.add_argument("--json", action="store_true", help="Print the session bootstrap as JSON.")
+    status_parser.set_defaults(func=status_command)
     return parser
 
 

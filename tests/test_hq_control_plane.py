@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import json
 import os
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 
@@ -371,6 +373,140 @@ class HqControlPlaneTests(unittest.TestCase):
             self.module.validate_control_plane()
 
         self.assertIn("manager", str(error.exception))
+
+    def test_status_writes_session_bootstrap_json_and_excludes_done_tasks(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
+        workflow_payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+        workflow_payload["board_columns"].insert(-1, {"id": "blocked", "title": "Blocked"})
+        workflow_payload["workflows"][0]["states"].insert(-1, "blocked")
+        workflow_path.write_text(
+            json.dumps(workflow_payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        active_work_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-20",
+                    "operating_mode": "stage-2-foundation",
+                    "objective": {
+                        "id": "obj-1",
+                        "title": "Run one governed loop",
+                        "window": {"start": "2026-04-15", "target_end": "2026-05-31"},
+                    },
+                    "tasks": [
+                        {
+                            "id": "task-live",
+                            "title": "Ship session bootstrap",
+                            "column": "this_week",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "HQ Bootstrap",
+                            "next_step": "Add the status projection command.",
+                            "done_when": "The command works end to end.",
+                            "primary_update_file": "scripts/hq_control_plane.py",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
+                            "id": "task-blocked",
+                            "title": "Resolve blocked review",
+                            "column": "blocked",
+                            "manager": "ai_operations_lead",
+                            "owner": "governor",
+                            "project": "HQ Bootstrap",
+                            "next_step": "Wait for founder review on the legal wording.",
+                            "done_when": "The founder review lands.",
+                            "primary_update_file": "04 Projects/HQ Bootstrap.md",
+                            "accepts_result": "ceo",
+                            "risk_tier": "high",
+                            "autonomy_tier": "A1",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
+                            "id": "task-done",
+                            "title": "Already finished",
+                            "column": "done",
+                            "completed_at": "2026-04-19",
+                            "manager": "ai_operations_lead",
+                            "owner": "documentation",
+                            "project": "HQ Bootstrap",
+                            "next_step": "None.",
+                            "done_when": "Done.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        handoff_dir = self.temp_root / ".hq" / "handoffs" / "task-blocked"
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        (handoff_dir / "LATEST.md").write_text(
+            "\n".join(
+                [
+                    "# Handoff: Resolve blocked review",
+                    "",
+                    "## Blockers",
+                    "",
+                    "- Founder review on legal wording is still required.",
+                    "- The trust boundary cannot be widened until approval lands.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        bootstrap_path = self.temp_root / ".hq" / "state" / "session-bootstrap.json"
+        self.assertTrue(bootstrap_path.exists())
+
+        written_payload = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload, written_payload)
+        self.assertEqual(payload["objective"], "Run one governed loop")
+        self.assertEqual([task["id"] for task in payload["active_tasks"]], ["task-live", "task-blocked"])
+        self.assertEqual(payload["active_tasks"][0]["next_step"], "Add the status projection command.")
+        self.assertEqual(payload["blocked"][0]["id"], "task-blocked")
+        self.assertIn("Founder review on legal wording", payload["blocked"][0]["reason"])
+        self.assertTrue(payload["stale_items"])
+        self.assertTrue(
+            any(item["task_id"] == "task-live" and item["kind"] == "spec" for item in payload["stale_items"])
+        )
+        self.assertEqual(payload["recommended_next_command"], "python3 scripts/hq_runtime.py route-next-slice")
+
+    def test_status_text_output_groups_active_blocked_and_stale_sections(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("Active Tasks", output)
+        self.assertIn("Blocked Tasks", output)
+        self.assertIn("Stale Items", output)
+        self.assertIn("Recommended Next Command", output)
 
 
 if __name__ == "__main__":
