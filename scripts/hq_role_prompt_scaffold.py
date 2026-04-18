@@ -15,38 +15,41 @@ GENERATED_NOTE = (
 )
 
 
-def shared_rules(
-    *,
-    include_private_packets: bool = True,
-    include_best_effort: bool = True,
-    include_work_long: bool = True,
-    include_wait_contract: bool = True,
-) -> list[str]:
-    rules = [
+def shared_rules() -> list[str]:
+    return [
         "Root `AGENTS.md` and the current control plane outrank this prompt when they conflict.",
     ]
-    if include_best_effort:
-        rules.append(
-            "Default to best-effort execution. Do not ask a clarifying question unless blocked by missing access, irreversible risk, or a genuinely unresolved fork that current HQ state does not answer."
+
+
+def shared_quick_start(
+    *,
+    new_task: str,
+    with_spec: str,
+    continuation: str,
+    policy: str,
+    create_spec: bool = True,
+) -> list[str]:
+    new_task_prefix = "Read the Always Read paths first. "
+    if create_spec:
+        new_task_prefix += (
+            "If the scope is large, ambiguous, or multi-session, create or refresh "
+            "`.hq/specs/<task>/LATEST.md` before widening context. "
         )
-        rules.append("If a blocker question is required, ask one bundled question at most.")
-    if include_private_packets:
-        rules.append(
-            "For large, ambiguous, multi-session, or fan-out work, create or refresh `.hq/specs/<task>/LATEST.md` before widening context."
-        )
-        rules.append(
-            "Prefer the relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` over broad repo rereads when the task already has private continuity."
-        )
-    if include_work_long:
-        rules.append("Work long by default on the current slice.")
-    if include_wait_contract:
-        rules.append(
-            "If a sub-step depends on a long-running tool or delegated slice, either wait for it or use a bounded timeout and leave a precise handoff in `.hq/handoffs/<task>/LATEST.md`."
-        )
-        rules.append(
-            "Do not return control to the founder only because a delegated slice is still running."
-        )
-    return rules
+
+    return [
+        f"`New task without a spec:` {new_task_prefix}Then {new_task}",
+        (
+            "`Task with a spec:` Read the Always Read paths plus "
+            "`.hq/specs/<task>/LATEST.md`. Then "
+            f"{with_spec}"
+        ),
+        (
+            "`Continuation via handoff:` Start with `.hq/handoffs/<task>/LATEST.md`, "
+            "reopen broader files only if the handoff or spec is stale. Then "
+            f"{continuation}"
+        ),
+        f"`Policy / approval question:` Read the Read When Needed policy paths first. Then {policy}",
+    ]
 
 
 ROLE_PROMPTS: dict[str, dict[str, object]] = {
@@ -56,14 +59,34 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to convert priorities into governed execution, maintain the delegated-work queue, "
             "keep telemetry and runtime discipline healthy, and reduce execution drag between sessions."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "shape or update the task contract in `05 AI Control Plane/active-work.json` "
+                "before routing work."
+            ),
+            with_spec=(
+                "use the packet as the execution surface and assign owner, support, "
+                "acceptance, risk tier, autonomy tier, workflow, and primary update file."
+            ),
+            continuation=(
+                "continue from the recorded next step and refresh the task state before widening the queue."
+            ),
+            policy=(
+                "check `05 AI Control Plane/operating-policies.json`, "
+                "`05 AI Control Plane/workflow-registry.json`, and "
+                "`05 AI Control Plane/metrics-registry.json`; route approval-sensitive work through Governor."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`now.md`",
             "`projects.md`",
             "`05 AI Control Plane/active-work.json`",
             "`05 AI Control Plane/workflow-registry.json`",
             "`05 AI Control Plane/operating-policies.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`05 AI Control Plane/metrics-registry.json`",
             "relevant page in `04 Projects/` when the task belongs to a project",
         ],
@@ -106,13 +129,33 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to clean up messy inbound and shape it into task-ready contracts when "
             "AI Operations Lead needs a non-standing helper for inbox hygiene."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "turn the inbound into a task-ready summary and route sustained ownership back to "
+                "AI Operations Lead."
+            ),
+            with_spec=(
+                "use the packet only to clarify the request and keep the output at cleanup or task-shaping depth."
+            ),
+            continuation=(
+                "finish the cleanup pass, preserve the next action, and keep actionable work moving toward "
+                "`05 AI Control Plane/active-work.json`."
+            ),
+            policy=(
+                "flag Governor or CEO before any external write, money movement, or public commitment."
+            ),
+            create_spec=False,
+        ),
+        "always_read": [
             "`AGENTS.md`",
             "`03 Notes/Inbox.md`",
             "`now.md`",
             "`projects.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
             "`05 AI Control Plane/operating-policies.json`",
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the inbound already has private continuity",
         ],
         "outputs": [
             "Clean request summaries",
@@ -124,7 +167,7 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Do not become a standing routing layer or a second AI Operations Lead.",
             "Do not keep actionable work trapped in Inbox cleanup.",
         ],
-        "rules": shared_rules(include_private_packets=False)
+        "rules": shared_rules()
         + [
             "This is a helper role, not a standing routing layer.",
             "Move actionable work toward `active-work.json`, not into permanent Inbox clutter.",
@@ -143,12 +186,33 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to set direction inside the accepted strategy, choose priorities, approve high-risk "
             "changes, and orchestrate the next execution slice without becoming the routine specialist executor."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "decide the next slice, delegate it to the right role, and only create a private packet when the "
+                "work is broad enough to need one."
+            ),
+            with_spec=(
+                "treat the packet as the narrow control surface and turn it into a delegation plan rather than "
+                "doing specialist execution directly."
+            ),
+            continuation=(
+                "resume from the recorded next step, update the delegation plan, and only widen context when the "
+                "packet no longer answers the decision."
+            ),
+            policy=(
+                "check `05 AI Control Plane/operating-policies.json`, `03 Notes/Open Decisions.md`, and "
+                "`03 Notes/Decisions.md`; keep founder-only decisions limited to true strategy, legal/public, "
+                "money, or override calls."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the current topic already has a private packet",
             "`now.md`",
             "`projects.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the current topic already has a private packet",
             "`05 AI Control Plane/operating-policies.json`",
             "`stack.md`",
             "`03 Notes/Decisions.md`",
@@ -194,13 +258,30 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
         "intro": (
             "Your job is to turn scoped work into concrete outputs inside the authority limits of the control plane."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "confirm the task contract in `05 AI Control Plane/active-work.json` before building the first artifact."
+            ),
+            with_spec=(
+                "execute the bounded slice from the packet instead of re-scoping the work."
+            ),
+            continuation=(
+                "pick up from the recorded next step and leave a fresh `.hq/handoffs/<task>/LATEST.md` note if the slice pauses."
+            ),
+            policy=(
+                "check `05 AI Control Plane/operating-policies.json` before any external write, spend, deployment, "
+                "legal/public commitment, or destructive action, and escalate if the current policy does not already allow it."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`now.md`",
             "`projects.md`",
             "`stack.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`05 AI Control Plane/operating-policies.json`",
             "relevant page in `04 Projects/` when the task belongs to a project",
         ],
@@ -235,13 +316,30 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to sync accepted outcomes back into tracked company truth and keep the "
             "human-readable layer aligned with the control plane."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "confirm the accepted result and update the highest-value tracked source first."
+            ),
+            with_spec=(
+                "use the packet only to recover accepted context, then sync the tracked docs that should reflect it."
+            ),
+            continuation=(
+                "finish the sync from the recorded next step and keep uncertain facts marked as pending confirmation."
+            ),
+            policy=(
+                "read `05 AI Control Plane/operating-policies.json`, `03 Notes/Decisions.md`, and "
+                "`03 Notes/Open Decisions.md` before publishing any sensitive or approval-dependent truth."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when accepted work already has private continuity",
-            "`README.md`",
             "`now.md`",
             "`projects.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when accepted work already has private continuity",
+            "`README.md`",
             "`02 Planning/Weekly Plan.md`",
             "`03 Notes/Decisions.md`",
             "`03 Notes/Open Decisions.md`",
@@ -277,13 +375,29 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to make money impact, entity path, and invoicing constraints visible before and "
             "after AI-first operating decisions."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "frame the money-risk question, assumptions, and approval thresholds before expanding the analysis."
+            ),
+            with_spec=(
+                "use the packet to produce the narrowest decision-ready route memo or money-risk note needed now."
+            ),
+            continuation=(
+                "resume the memo from the recorded next step and keep the blocked-question ledger explicit."
+            ),
+            policy=(
+                "read `05 AI Control Plane/operating-policies.json` and escalate spend or entity-policy changes to CEO and Governor."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`now.md`",
             "`projects.md`",
-            "`stack.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
+            "`stack.md`",
             "`05 AI Control Plane/operating-policies.json`",
             "relevant page in `04 Projects/` when supporting a live task",
         ],
@@ -319,14 +433,32 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to enforce policy, approve or block risk-sensitive actions, watch for unsafe autonomy, "
             "and trigger rollback or human escalation when needed."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "confirm the task has a complete contract and block execution immediately if risk tier, autonomy tier, "
+                "or approval coverage is missing."
+            ),
+            with_spec=(
+                "treat the packet as evidence, then return an approval, block, or boundary call."
+            ),
+            continuation=(
+                "resume from the last recorded boundary decision and update rollback or escalation triggers if the facts changed."
+            ),
+            policy=(
+                "read `05 AI Control Plane/operating-policies.json`, `05 AI Control Plane/workflow-registry.json`, "
+                "`05 AI Control Plane/metrics-registry.json`, and relevant decision notes before deciding."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
-            "`stack.md`",
             "`05 AI Control Plane/operating-policies.json`",
             "`05 AI Control Plane/workflow-registry.json`",
-            "`05 AI Control Plane/metrics-registry.json`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
+            "`stack.md`",
+            "`05 AI Control Plane/metrics-registry.json`",
             "`03 Notes/Decisions.md`",
             "`03 Notes/Open Decisions.md`",
         ],
@@ -362,13 +494,30 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to identify the shortest path from the AI-first operating system to revenue, "
             "conversion, or founder leverage."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "lock the narrowest revenue move or targeting question before producing messaging or channel artifacts."
+            ),
+            with_spec=(
+                "use the packet to create artifact-ready targeting logic, messaging, outreach, or offer framing."
+            ),
+            continuation=(
+                "continue from the recorded next step and preserve the current wedge unless the evidence in the packet reopens it."
+            ),
+            policy=(
+                "read `05 AI Control Plane/operating-policies.json` when the work could imply customer-facing autonomy, trust claims, or approval-sensitive promises."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`now.md`",
             "`projects.md`",
-            "`stack.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
+            "`stack.md`",
+            "`05 AI Control Plane/operating-policies.json`",
             "relevant page in `04 Projects/` when supporting a live task",
         ],
         "outputs": [
@@ -405,13 +554,30 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
             "Your job is to gather evidence that improves strategic, operating, and governance decisions for "
             "the AI-first company."
         ),
-        "read_first": [
+        "quick_start": shared_quick_start(
+            new_task=(
+                "pin down the decision the evidence must support before widening the search."
+            ),
+            with_spec=(
+                "use the packet to answer the narrowed question, including counter-case and disconfirmation signals."
+            ),
+            continuation=(
+                "resume from the recorded next step and only reopen broad exploration if the packet no longer covers the decision."
+            ),
+            policy=(
+                "read `05 AI Control Plane/operating-policies.json` when the research will influence approval-sensitive autonomy, public claims, or trust boundaries."
+            ),
+        ),
+        "always_read": [
             "`AGENTS.md`",
-            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
             "`now.md`",
             "`projects.md`",
-            "`stack.md`",
             "`05 AI Control Plane/active-work.json`",
+        ],
+        "conditional_read": [
+            "relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` when the task already has private continuity",
+            "`stack.md`",
+            "`05 AI Control Plane/operating-policies.json`",
             "relevant page in `04 Projects/` when supporting a live task",
         ],
         "outputs": [
@@ -453,6 +619,15 @@ def render_bullet_section(title: str, items: list[str]) -> list[str]:
     return lines
 
 
+def render_read_first_section(always_read: list[str], conditional_read: list[str]) -> list[str]:
+    lines = ["## Read First", "", "### Always Read", ""]
+    lines.extend(f"- {item}" for item in always_read)
+    lines.extend(["", "### Read When Needed", ""])
+    lines.extend(f"- {item}" for item in conditional_read)
+    lines.append("")
+    return lines
+
+
 def render_numbered_section(title: str, items: list[str]) -> list[str]:
     lines = [f"## {title}", ""]
     lines.extend(f"{index}. {item}" for index, item in enumerate(items, start=1))
@@ -470,7 +645,8 @@ def render_prompt(role_id: str) -> str:
         config["intro"],
         "",
     ]
-    lines.extend(render_bullet_section("Read First", config["read_first"]))
+    lines.extend(render_numbered_section("Quick Start", list(config["quick_start"])))
+    lines.extend(render_read_first_section(list(config["always_read"]), list(config["conditional_read"])))
     lines.extend(render_bullet_section("Outputs", config["outputs"]))
     non_goals = config.get("non_goals")
     if non_goals:

@@ -98,7 +98,7 @@ Use `spec` for large or ambiguous work. The spec is a private, task-scoped conte
 
 `scripts/hq_runtime.py` remains the compatibility surface for bootstrap, spec, and handoff helpers. `scripts/hq_mission_runtime.py` is the additive runtime nucleus for first-class `Mission`, `Run`, `Step`, `Approval`, and `Artifact` records; it should grow before any deep rewrite of the older helper surface.
 
-Tracked role prompts are generated from the shared skeleton. After changing the scaffold, run `python3 scripts/hq_role_prompt_scaffold.py --write` and then `python3 scripts/hq_role_prompt_scaffold.py --check`.
+Tracked role prompts are generated from the shared skeleton. The generated prompts now include a short `Quick Start` plus split `Always Read` / `Read When Needed` paths, so update `scripts/hq_role_prompt_scaffold.py` and regenerate instead of hand-editing `agents/*/AGENTS.md`. After changing the scaffold, run `python3 scripts/hq_role_prompt_scaffold.py --write` and then `python3 scripts/hq_role_prompt_scaffold.py --check`.
 
 When `.hq/prompts/` exists locally, run `python3 scripts/hq_private_prompt_lint.py` to catch broken local paths, invalid absolute references, and weak audit-prompt feedback loops before relying on those prompts in a new session.
 
