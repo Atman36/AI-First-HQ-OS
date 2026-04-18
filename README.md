@@ -52,9 +52,10 @@ This repository packages the reusable public shell of an AI-first company operat
 python3 -m pip install -r requirements-dev.txt
 python3 scripts/hq_runtime.py bootstrap
 python3 scripts/hq_mission_runtime.py init
-python3 scripts/hq_runtime.py spec --task "Example large task" --goal "Define the next narrow slice"
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_control_plane.py sync
+python3 scripts/hq_control_plane.py status
+python3 scripts/hq_runtime.py spec --task "Example large task" --goal "Define the next narrow slice"
 python3 scripts/hq_role_prompt_scaffold.py --check
 python3 -m unittest discover tests
 python3 scripts/hq_public_safety.py
@@ -69,9 +70,11 @@ python3 scripts/hq_gate.py
 ```bash
 python3 scripts/hq_runtime.py bootstrap
 python3 scripts/hq_mission_runtime.py init
+python3 scripts/hq_control_plane.py status
 python3 scripts/hq_runtime.py spec --task "Example large task"
 python3 scripts/hq_runtime.py handoff --task "Example large task" --spec-file .hq/specs/example-large-task/LATEST.md
 python3 scripts/hq_control_plane.py validate
+python3 scripts/hq_control_plane.py sync
 python3 scripts/hq_role_prompt_scaffold.py --check
 python3 -m unittest discover tests
 python3 scripts/hq_public_safety.py
@@ -80,6 +83,16 @@ python3 scripts/hq_gate.py
 ```
 
 The supported local test runner is `python3 -m unittest discover tests`. `pytest` is not a required project dependency or part of the official local/CI gate.
+
+Start a new session with `python3 scripts/hq_control_plane.py status`. That command writes `.hq/state/session-bootstrap.json` and prints a compact live-state projection with:
+
+- active tasks without `done`
+- blocked tasks with a short reason
+- the current `next_step` per live task
+- stale spec/handoff signals in a separate block
+- the recommended next command for the next slice
+
+Use `python3 scripts/hq_control_plane.py status --json` when another script or tool needs the same projection in machine-readable form.
 
 Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
 

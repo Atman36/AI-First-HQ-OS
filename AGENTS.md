@@ -107,6 +107,7 @@ These files make the control plane legible for humans, but they are local-only a
 
 ## Coordination Rules
 
+- Start new sessions from `python3 scripts/hq_control_plane.py status` or the generated `.hq/state/session-bootstrap.json` before widening context across multiple files.
 - Change `05 AI Control Plane/active-work.json` first when delegated task state changes.
 - Re-render `02 Planning/Task Board.md` with `python3 scripts/hq_control_plane.py sync` after material task-state changes.
 - Confirm local tool availability before routing a workflow through a specific CLI or runner.
