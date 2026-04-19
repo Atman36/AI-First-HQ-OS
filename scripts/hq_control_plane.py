@@ -472,6 +472,48 @@ def validate_policies(
                     "hook_events must be a non-empty list",
                 )
 
+    subagent_context_protocol = policies.get("subagent_context_protocol")
+    if subagent_context_protocol is not None:
+        if not isinstance(subagent_context_protocol, dict):
+            context.add(
+                "operating-policies.json.subagent_context_protocol",
+                "subagent_context_protocol must be an object",
+            )
+        else:
+            owner = normalize_text(subagent_context_protocol.get("owner"))
+            if owner and owner not in role_ids:
+                context.add(
+                    "operating-policies.json.subagent_context_protocol.owner",
+                    f"unknown role: {owner}",
+                )
+            applies_to_roles = subagent_context_protocol.get("applies_to_roles")
+            if not isinstance(applies_to_roles, list) or not applies_to_roles:
+                context.add(
+                    "operating-policies.json.subagent_context_protocol.applies_to_roles",
+                    "applies_to_roles must be a non-empty list",
+                )
+            else:
+                for index, role in enumerate(applies_to_roles):
+                    role_id = normalize_text(role)
+                    if role_id and role_id not in role_ids:
+                        context.add(
+                            f"operating-policies.json.subagent_context_protocol.applies_to_roles[{index}]",
+                            f"unknown role: {role_id}",
+                        )
+            child_session_defaults = subagent_context_protocol.get("child_session_defaults")
+            if not isinstance(child_session_defaults, dict):
+                context.add(
+                    "operating-policies.json.subagent_context_protocol.child_session_defaults",
+                    "child_session_defaults must be an object",
+                )
+            else:
+                blocked_tool_classes = child_session_defaults.get("blocked_tool_classes")
+                if not isinstance(blocked_tool_classes, list) or not blocked_tool_classes:
+                    context.add(
+                        "operating-policies.json.subagent_context_protocol.child_session_defaults.blocked_tool_classes",
+                        "blocked_tool_classes must be a non-empty list",
+                    )
+
     metric_thresholds = policies.get("metric_thresholds", []) or []
     if metric_thresholds and not isinstance(metric_thresholds, list):
         context.add("operating-policies.json.metric_thresholds", "metric_thresholds must be a list")

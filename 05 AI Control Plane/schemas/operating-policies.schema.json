@@ -59,6 +59,92 @@
           "type": "string"
         }
       }
+    },
+    "subagent_context_protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "applies_to_roles",
+        "inherit_parent_history",
+        "require_explicit_context_packet",
+        "require_original_source_material",
+        "context_packet_sections",
+        "required_packet_fields",
+        "return_handoff_requirements",
+        "child_session_defaults"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applies_to_roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "inherit_parent_history": {
+          "type": "boolean"
+        },
+        "require_explicit_context_packet": {
+          "type": "boolean"
+        },
+        "require_original_source_material": {
+          "type": "boolean"
+        },
+        "context_packet_sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_packet_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "return_handoff_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "child_session_defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scope",
+            "blocked_tool_classes"
+          ],
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "child_isolated"
+              ]
+            },
+            "blocked_tool_classes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
     }
   },
   "type": "object",
@@ -71,6 +157,7 @@
     "approvals",
     "weekly_metric_review",
     "eval_policy",
+    "subagent_context_protocol",
     "metric_thresholds"
   ],
   "properties": {
@@ -148,6 +235,9 @@
         "policy_surface",
         "hook_events"
       ]
+    },
+    "subagent_context_protocol": {
+      "$ref": "#/$defs/subagent_context_protocol"
     },
     "metric_thresholds": {
       "type": "array",

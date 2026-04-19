@@ -172,6 +172,46 @@ def sample_policies() -> dict[str, Any]:
             "minimum_checks_for_repeated_work": ["task-cycle"],
             "control_plane_change_requires": ["python3 scripts/hq_control_plane.py validate"],
         },
+        "subagent_context_protocol": {
+            "owner": "ai_operations_lead",
+            "applies_to_roles": ["ceo", "ai_operations_lead", "governor"],
+            "inherit_parent_history": False,
+            "require_explicit_context_packet": True,
+            "require_original_source_material": True,
+            "context_packet_sections": [
+                "task_contract",
+                "constraints_and_decisions",
+                "prior_agent_outputs",
+                "original_source_material",
+                "write_scope",
+                "verification_and_acceptance",
+            ],
+            "required_packet_fields": [
+                "task",
+                "done_when",
+                "source_paths",
+                "relevant_outputs",
+                "write_scope",
+                "verification_commands",
+                "accepting_role",
+            ],
+            "return_handoff_requirements": [
+                "outcome_summary",
+                "evidence_or_verification",
+                "files_touched",
+                "open_questions",
+                "recommended_next_step",
+            ],
+            "child_session_defaults": {
+                "scope": "child_isolated",
+                "blocked_tool_classes": [
+                    "delegation",
+                    "user_interaction",
+                    "shared_memory_write",
+                    "external_side_effect",
+                ],
+            },
+        },
         "metric_thresholds": [
             {
                 "metric_id": "autonomous_completion_rate",
