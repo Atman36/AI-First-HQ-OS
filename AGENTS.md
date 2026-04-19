@@ -108,6 +108,7 @@ These files make the control plane legible for humans, but they are local-only a
 ## Coordination Rules
 
 - Start new sessions from `python3 scripts/hq_control_plane.py status` or the generated `.hq/state/session-bootstrap.json` before widening context across multiple files.
+- When founder-run Deep Research or GPT analysis packets arrive, do not reopen broad portfolio exploration by default; first distill them into a private spec or handoff with one primary move, one cheap parallel validation, one shaped challenger, and parked directions.
 - Change `05 AI Control Plane/active-work.json` first when delegated task state changes.
 - Re-render `02 Planning/Task Board.md` with `python3 scripts/hq_control_plane.py sync` after material task-state changes.
 - Confirm local tool availability before routing a workflow through a specific CLI or runner.
@@ -125,6 +126,7 @@ These files make the control plane legible for humans, but they are local-only a
 - Use `.hq/evals/` for eval runs and `.hq/releases/` for rollout notes.
 - Do not auto-edit `AGENTS.md`, `agents/*/AGENTS.md`, access rules, safety rules, or production logic from the improvement loop.
 - Candidate improvements remain review artifacts until applied manually.
+- When applying a founder-approved improvement from external analysis, update the smallest governing prompt or rule surface needed and preserve the accepted/shared-truth boundary.
 
 ## Default Routing
 
