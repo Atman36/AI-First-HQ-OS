@@ -16,6 +16,8 @@
     "approval_key",
     "status",
     "decision",
+    "tool_scope",
+    "policy_context",
     "summary",
     "rationale",
     "requested_at",
@@ -88,6 +90,16 @@
         "rejected",
         "blocked"
       ]
+    },
+    "tool_scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "policy_context": {
+      "type": "object"
     },
     "summary": {
       "type": "string"

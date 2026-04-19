@@ -516,6 +516,119 @@ def normalize_approval_key(payload: dict[str, Any] | None) -> dict[str, Any]:
     return normalized
 
 
+def runtime_policy_path() -> Path:
+    configured = str(os.environ.get("HQ_RUNTIME_POLICY_FILE") or "").strip()
+    if configured:
+        path = Path(configured)
+        return path if path.is_absolute() else (REPO_ROOT / path).resolve()
+    return PRIVATE_ROOT / "runtime" / "policy.json"
+
+
+def load_runtime_policy() -> tuple[dict[str, Any] | None, str]:
+    path = runtime_policy_path()
+    if not path.exists():
+        return None, ""
+    return hq_policy_hooks.load_policy(path), path_reference(path)
+
+
+def build_step_policy_summary(decision: str, tool_classes: list[str], blocked_tool_classes: list[str]) -> str:
+    tool_label = ", ".join(tool_classes) if tool_classes else "no explicit tool classes"
+    if decision == "allow_with_review":
+        return f"Tool policy requires review for: {tool_label}."
+    if decision == "pause_for_founder_approval":
+        return f"Tool policy paused execution pending approval for: {tool_label}."
+    if decision == "block":
+        if blocked_tool_classes:
+            blocked_label = ", ".join(blocked_tool_classes)
+            return f"Tool policy blocked execution for: {blocked_label}."
+        return f"Tool policy blocked execution for: {tool_label}."
+    return f"Tool policy allowed: {tool_label}."
+
+
+def evaluate_step_tool_policy(
+    *,
+    step_id: str,
+    step_key: str,
+    run: dict[str, Any],
+    allowed_tool_classes: list[str] | None,
+) -> dict[str, Any]:
+    requested_tool_classes = normalize_string_list(allowed_tool_classes)
+    execution_context = run.get("execution_context", {})
+    blocked_tool_classes = normalize_string_list(
+        execution_context.get("blocked_tool_classes")
+        if isinstance(execution_context, dict) and isinstance(execution_context.get("blocked_tool_classes"), list)
+        else []
+    )
+    directly_blocked = [item for item in requested_tool_classes if item in blocked_tool_classes]
+    matched_rules: list[dict[str, Any]] = []
+    effective_decision = "allow"
+    decision_sources: list[str] = []
+
+    for tool_class in directly_blocked:
+        matched_rules.append(
+            {
+                "id": "execution-context-blocked-tool-class",
+                "decision": "block",
+                "justification": "Run execution_context blocks this tool class.",
+                "actionPrefix": ["hq", "step", "tool", tool_class],
+                "namespace": "hq.step.tool_policy",
+                "toolName": tool_class,
+                "callId": step_id,
+            }
+        )
+    if directly_blocked:
+        effective_decision = "block"
+        decision_sources.append("execution_context")
+
+    policy, policy_file = load_runtime_policy()
+    if policy is not None:
+        for tool_class in requested_tool_classes:
+            result = hq_policy_hooks.evaluate_policy(
+                policy,
+                {
+                    "action": ["hq", "step", "tool", tool_class],
+                    "path": "",
+                    "namespace": "hq.step.tool_policy",
+                    "tool_name": tool_class,
+                    "call_id": step_id,
+                    "risk_tier": "",
+                    "autonomy_tier": "",
+                },
+            )
+            if result["matchedRules"]:
+                decision_sources.append("runtime_policy")
+                matched_rules.extend(result["matchedRules"])
+            if (
+                hq_policy_hooks.DECISION_ORDER[result["decision"]]
+                > hq_policy_hooks.DECISION_ORDER[effective_decision]
+            ):
+                effective_decision = str(result["decision"]).strip()
+
+    if not decision_sources:
+        decision_sources.append("default")
+    summary = build_step_policy_summary(
+        effective_decision,
+        requested_tool_classes,
+        directly_blocked,
+    )
+    return {
+        "allowed_tool_classes": requested_tool_classes,
+        "policy_action": effective_decision,
+        "policy_context": {
+            "step_key": step_key,
+            "requested_tool_classes": requested_tool_classes,
+            "blocked_tool_classes": directly_blocked,
+            "matched_rules": matched_rules,
+            "decision_sources": normalize_string_list(decision_sources),
+            "policy_file": policy_file,
+            "summary": summary,
+            "review_required": effective_decision == "allow_with_review",
+            "tripwire_triggered": effective_decision in {"pause_for_founder_approval", "block"},
+            "approval_id": "",
+        },
+    }
+
+
 def ensure_runtime() -> None:
     for path in RUNTIME_DIRS.values():
         path.mkdir(parents=True, exist_ok=True)
@@ -632,6 +745,7 @@ def emit_runtime_hook_event(
     status: str,
     summary: str,
     actor: str,
+    decision: str = "",
     thread_id: str = "",
     mission_id: str = "",
     run_id: str = "",
@@ -652,6 +766,7 @@ def emit_runtime_hook_event(
         "status": status,
         "summary": summary,
         "actor": actor or "runtime",
+        "decision": decision,
         "thread_id": thread_id,
         "mission_id": mission_id,
         "run_id": run_id,
@@ -762,6 +877,22 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
             default_trace_id=str(upgraded.get("id") or "").strip(),
             snapshot_at=snapshot_at,
         )
+    elif entity_type == "step":
+        upgraded["allowed_tool_classes"] = normalize_string_list(
+            upgraded.get("allowed_tool_classes")
+            if isinstance(upgraded.get("allowed_tool_classes"), list)
+            else []
+        )
+        upgraded["policy_action"] = str(upgraded.get("policy_action") or "allow").strip() or "allow"
+        if upgraded["policy_action"] not in ALLOWED_POLICY_ACTIONS:
+            raise ValueError(
+                "step policy_action must be one of: " + ", ".join(sorted(ALLOWED_POLICY_ACTIONS))
+            )
+        upgraded["policy_context"] = (
+            upgraded.get("policy_context", {})
+            if isinstance(upgraded.get("policy_context"), dict)
+            else {}
+        )
     elif entity_type == "approval":
         upgraded["approval_key"] = normalize_approval_key(
             upgraded.get("approval_key", {})
@@ -772,6 +903,14 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
                 "call_id": "",
                 "action": [str(upgraded.get("policy_action") or "allow").strip()],
             }
+        )
+        upgraded["tool_scope"] = normalize_string_list(
+            upgraded.get("tool_scope") if isinstance(upgraded.get("tool_scope"), list) else []
+        )
+        upgraded["policy_context"] = (
+            upgraded.get("policy_context", {})
+            if isinstance(upgraded.get("policy_context"), dict)
+            else {}
         )
     return upgraded
 
@@ -1525,6 +1664,17 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
 
     step_id = make_id("step", f"{args.key}-{args.actor or 'actor'}")
     created_at = utc_now()
+    tool_policy = evaluate_step_tool_policy(
+        step_id=step_id,
+        step_key=args.key.strip(),
+        run=run,
+        allowed_tool_classes=getattr(args, "allowed_tool_class", None) or [],
+    )
+    effective_status = args.status
+    if tool_policy["policy_action"] == "block":
+        effective_status = "blocked"
+    elif tool_policy["policy_action"] == "pause_for_founder_approval":
+        effective_status = "waiting_approval"
     payload = {
         "schema_version": 1,
         "entity_type": "step",
@@ -1534,37 +1684,40 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         "mission_id": run["mission_id"],
         "key": args.key.strip(),
         "actor": str(args.actor or "").strip(),
-        "status": args.status,
+        "status": effective_status,
         "error_type": error_type,
         "retry_count": retry_count,
+        "allowed_tool_classes": tool_policy["allowed_tool_classes"],
+        "policy_action": tool_policy["policy_action"],
+        "policy_context": tool_policy["policy_context"],
         "summary": str(args.summary or "").strip(),
         "evidence": [item for item in args.evidence if item.strip()],
         "metadata": args.metadata or {},
         "created_at": created_at,
         "updated_at": created_at,
-        "completed_at": created_at if args.status == "completed" else "",
+        "completed_at": created_at if effective_status == "completed" else "",
     }
     write_entity(step_path(step_id), payload)
     run["step_ids"] = list(dict.fromkeys([*run.get("step_ids", []), step_id]))
     run["current_step_id"] = step_id
-    if args.status == "completed":
+    if payload["status"] == "completed":
         run["checkpoint_count"] = int(run.get("checkpoint_count", 0)) + 1
         run["resume_from_step_id"] = step_id
         run["last_successful_step_id"] = step_id
         run["status"] = "running"
-    elif args.status == "waiting_approval":
+    elif payload["status"] == "waiting_approval":
         run["status"] = "waiting_approval"
-    elif args.status == "failed" and error_type == "transient" and retry_count <= MAX_TRANSIENT_RETRIES:
+    elif payload["status"] == "failed" and error_type == "transient" and retry_count <= MAX_TRANSIENT_RETRIES:
         # Transient error within retry cap: keep run in running state for automatic retry
         run["status"] = "running"
-    elif args.status == "failed" and error_type == "recoverable":
+    elif payload["status"] == "failed" and error_type == "recoverable":
         # Recoverable: return error as context, keep run running
         run["status"] = "running"
-    elif args.status == "failed" and error_type == "user_fixable":
+    elif payload["status"] == "failed" and error_type == "user_fixable":
         # User-fixable: map to existing pause_for_founder_approval pattern
         run["status"] = "waiting_approval"
-    elif args.status in {"blocked", "failed"}:
-        run["status"] = args.status
+    elif payload["status"] in {"blocked", "failed"}:
+        run["status"] = payload["status"]
     else:
         run["status"] = "running"
     run["updated_at"] = created_at
@@ -1586,6 +1739,35 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         snapshot_at=created_at,
     )
     write_entity(run_path(run["id"]), run)
+    if payload["policy_action"] == "pause_for_founder_approval":
+        approval = request_approval(
+            argparse.Namespace(
+                run_id=run["id"],
+                step_id=payload["id"],
+                requested_by=payload["actor"] or run["actor"] or "runtime",
+                requested_for="founder",
+                policy_action=payload["policy_action"],
+                summary=payload["policy_context"]["summary"],
+                approval_kind="runtime_action",
+                approval_namespace="hq.step.tool_policy",
+                approval_name=payload["key"],
+                approval_call_id=payload["id"],
+                approval_action=["hq", "step", "tool_policy", payload["policy_action"]],
+                metadata={"origin": "step_tool_policy"},
+                tool_scope=payload["allowed_tool_classes"],
+                policy_context={
+                    "origin": "step_tool_policy",
+                    "step_key": payload["key"],
+                    "matched_rules": payload["policy_context"]["matched_rules"],
+                },
+            )
+        )
+        payload = require_file(step_path(step_id), "step", "step")
+        payload["policy_context"] = dict(payload.get("policy_context", {}))
+        payload["policy_context"]["approval_id"] = approval["id"]
+        payload["updated_at"] = created_at
+        write_entity(step_path(step_id), payload)
+        run = require_file(run_path(run["id"]), "run", "run")
     update_thread_context(
         run["thread_id"],
         mission_id=mission["id"],
@@ -1599,6 +1781,18 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
         payload={"run_id": run["id"], "actor": payload["actor"], "thread_id": run["thread_id"]},
     )
+    record_event(
+        event_type="step_tool_policy_evaluated",
+        entity_id=step_id,
+        summary=payload["policy_context"]["summary"],
+        payload={
+            "run_id": run["id"],
+            "thread_id": run["thread_id"],
+            "policy_action": payload["policy_action"],
+            "allowed_tool_classes": payload["allowed_tool_classes"],
+            "approval_id": str(payload["policy_context"].get("approval_id") or "").strip(),
+        },
+    )
     emit_runtime_telemetry(
         event_type="step_checkpointed",
         status=payload["status"],
@@ -1610,7 +1804,32 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         workflow=mission["workflow"],
         run_id=run["id"],
         step_id=payload["id"],
-        metadata={"entity_type": "step", "step_key": payload["key"]},
+        metadata={
+            "entity_type": "step",
+            "step_key": payload["key"],
+            "policy_action": payload["policy_action"],
+            "allowed_tool_classes": payload["allowed_tool_classes"],
+        },
+    )
+    emit_runtime_telemetry(
+        event_type="step_tool_policy_evaluated",
+        status=payload["policy_action"],
+        summary=payload["policy_context"]["summary"],
+        actor=payload["actor"] or run["actor"] or "runtime",
+        thread_id=run["thread_id"],
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=payload["id"],
+        approval_id=str(payload["policy_context"].get("approval_id") or "").strip(),
+        metadata={
+            "entity_type": "step",
+            "step_key": payload["key"],
+            "allowed_tool_classes": payload["allowed_tool_classes"],
+            "blocked_tool_classes": payload["policy_context"].get("blocked_tool_classes", []),
+            "matched_rules": payload["policy_context"].get("matched_rules", []),
+        },
     )
     emit_runtime_hook_event(
         event="run_checkpointed",
@@ -1618,13 +1837,39 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         status=payload["status"],
         summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
         actor=payload["actor"] or run["actor"] or "runtime",
+        decision=payload["policy_action"],
         thread_id=run["thread_id"],
         mission_id=mission["id"],
         run_id=run["id"],
         step_id=payload["id"],
         tool_name=payload["key"],
         call_id=payload["id"],
-        metadata={"step_key": payload["key"]},
+        metadata={
+            "step_key": payload["key"],
+            "allowed_tool_classes": payload["allowed_tool_classes"],
+            "policy_action": payload["policy_action"],
+        },
+    )
+    emit_runtime_hook_event(
+        event="step_tool_policy_evaluated",
+        action=["hq", "step", "tool_policy", payload["policy_action"]],
+        status=payload["status"],
+        summary=payload["policy_context"]["summary"],
+        actor=payload["actor"] or run["actor"] or "runtime",
+        decision=payload["policy_action"],
+        thread_id=run["thread_id"],
+        mission_id=mission["id"],
+        run_id=run["id"],
+        step_id=payload["id"],
+        approval_id=str(payload["policy_context"].get("approval_id") or "").strip(),
+        namespace="hq.step.tool_policy",
+        tool_name="tool_policy",
+        call_id=payload["id"],
+        metadata={
+            "step_key": payload["key"],
+            "allowed_tool_classes": payload["allowed_tool_classes"],
+            "blocked_tool_classes": payload["policy_context"].get("blocked_tool_classes", []),
+        },
     )
     lifecycle_event = "agent_started" if payload["status"] in {"planned", "running"} else "agent_finished"
     lifecycle_action = (
@@ -1636,6 +1881,7 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         status=payload["status"],
         summary=f"Agent step '{payload['key']}' is now '{payload['status']}'.",
         actor=payload["actor"] or run["actor"] or "runtime",
+        decision=payload["policy_action"],
         thread_id=run["thread_id"],
         mission_id=mission["id"],
         run_id=run["id"],
@@ -1875,6 +2121,14 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
             "action": getattr(args, "approval_action", None) or [args.policy_action],
         }
     )
+    tool_scope = normalize_string_list(
+        getattr(args, "tool_scope", None) or step.get("allowed_tool_classes", [])
+    )
+    policy_context = (
+        getattr(args, "policy_context", None)
+        if isinstance(getattr(args, "policy_context", None), dict)
+        else {}
+    )
     payload = {
         "schema_version": 1,
         "entity_type": "approval",
@@ -1889,6 +2143,8 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         "approval_key": approval_key,
         "status": "pending",
         "decision": "",
+        "tool_scope": tool_scope,
+        "policy_context": policy_context,
         "summary": str(args.summary or "").strip(),
         "rationale": "",
         "requested_at": created_at,
@@ -1945,6 +2201,7 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
             "approval_namespace": approval_key["namespace"],
             "approval_name": approval_key["name"],
             "approval_call_id": approval_key["call_id"],
+            "tool_scope": payload["tool_scope"],
         },
     )
     emit_runtime_hook_event(
@@ -1953,6 +2210,7 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         status="waiting_approval",
         summary=f"Requested approval for step '{step['key']}'.",
         actor=payload["requested_by"] or "runtime",
+        decision=payload["policy_action"],
         thread_id=run["thread_id"],
         mission_id=mission["id"],
         run_id=run["id"],
@@ -1961,7 +2219,7 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         namespace=approval_key["namespace"],
         tool_name=approval_key["name"],
         call_id=approval_key["call_id"] or payload["id"],
-        metadata={"policy_action": payload["policy_action"]},
+        metadata={"policy_action": payload["policy_action"], "tool_scope": payload["tool_scope"]},
     )
     update_thread_context(
         run["thread_id"],
@@ -3051,6 +3309,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Error classification when status is failed: transient, recoverable, user_fixable, unexpected.",
     )
+    checkpoint_step_parser.add_argument(
+        "--allowed-tool-class",
+        action="append",
+        default=[],
+        help="Repeat for each tool class the step is allowed to use explicitly.",
+    )
     checkpoint_step_parser.set_defaults(func=checkpoint_step_command)
 
     verify_run_parser = subparsers.add_parser(
@@ -3118,6 +3382,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Repeat for each action token describing the target identity.",
+    )
+    request_approval_parser.add_argument(
+        "--tool-scope",
+        action="append",
+        default=[],
+        help="Repeat for each tool class covered by the approval envelope.",
+    )
+    request_approval_parser.add_argument(
+        "--policy-context",
+        type=parse_json_object,
+        help="Optional inline JSON policy context object.",
     )
     request_approval_parser.add_argument(
         "--metadata",

@@ -48,6 +48,7 @@ class HqMissionRuntimeTests(unittest.TestCase):
         os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         os.environ.pop("HQ_POLICY_HOOKS_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_HOOKS_FILE", None)
+        os.environ.pop("HQ_RUNTIME_POLICY_FILE", None)
         self.temp_dir.cleanup()
 
     def test_create_mission_and_start_run_persist_first_class_records(self):
@@ -1061,6 +1062,209 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(step["error_type"], "user_fixable")
         run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
         self.assertEqual(run_state["status"], "waiting_approval")
+
+    def test_checkpoint_step_records_allowed_tool_classes_with_allow_decision(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Tool Allow Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--allowed-tool-class",
+                    "workspace_read",
+                    "--allowed-tool-class",
+                    "repo_query",
+                ]
+            )
+        )
+
+        self.assertEqual(step["allowed_tool_classes"], ["workspace_read", "repo_query"])
+        self.assertEqual(step["policy_action"], "allow")
+        self.assertFalse(step["policy_context"]["tripwire_triggered"])
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "running")
+
+    def test_checkpoint_step_marks_review_required_when_policy_returns_allow_with_review(self):
+        policy_path = self.temp_root / ".hq" / "runtime" / "policy.json"
+        policy_path.parent.mkdir(parents=True, exist_ok=True)
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "default_decision": "allow",
+                    "rules": [
+                        {
+                            "id": "tracked-write-review",
+                            "action_prefix": ["hq", "step", "tool", "tracked_write"],
+                            "decision": "allow_with_review",
+                            "match": [["hq", "step", "tool", "tracked_write"]],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.environ["HQ_RUNTIME_POLICY_FILE"] = str(policy_path)
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Tool Review Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "writer",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--allowed-tool-class",
+                    "tracked_write",
+                ]
+            )
+        )
+
+        self.assertEqual(step["policy_action"], "allow_with_review")
+        self.assertTrue(step["policy_context"]["review_required"])
+        self.assertEqual(step["status"], "completed")
+        self.assertEqual(step["policy_context"]["matched_rules"][0]["id"], "tracked-write-review")
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "running")
+        self.assertEqual(run_state["approval_ids"], [])
+
+    def test_checkpoint_step_pauses_for_founder_approval_when_tool_policy_requires_it(self):
+        policy_path = self.temp_root / ".hq" / "runtime" / "policy.json"
+        policy_path.parent.mkdir(parents=True, exist_ok=True)
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "default_decision": "allow",
+                    "rules": [
+                        {
+                            "id": "external-send-pause",
+                            "action_prefix": ["hq", "step", "tool", "external_side_effect"],
+                            "decision": "pause_for_founder_approval",
+                            "match": [["hq", "step", "tool", "external_side_effect"]],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.environ["HQ_RUNTIME_POLICY_FILE"] = str(policy_path)
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Tool Pause Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "outreach",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--allowed-tool-class",
+                    "external_side_effect",
+                ]
+            )
+        )
+
+        self.assertEqual(step["policy_action"], "pause_for_founder_approval")
+        self.assertEqual(step["status"], "waiting_approval")
+        self.assertTrue(step["policy_context"]["tripwire_triggered"])
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "waiting_approval")
+        self.assertEqual(len(run_state["approval_ids"]), 1)
+        approval = json.loads(
+            self.module.approval_path(run_state["approval_ids"][0]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(approval["policy_action"], "pause_for_founder_approval")
+        self.assertEqual(approval["tool_scope"], ["external_side_effect"])
+        self.assertEqual(step["policy_context"]["approval_id"], approval["id"])
+
+    def test_checkpoint_step_blocks_when_tool_class_is_blocked_by_execution_context(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Tool Block Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission["id"],
+                    "--actor",
+                    "delivery",
+                    "--blocked-tool-class",
+                    "external_side_effect",
+                ]
+            )
+        )
+
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "outreach",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--allowed-tool-class",
+                    "external_side_effect",
+                ]
+            )
+        )
+
+        self.assertEqual(step["policy_action"], "block")
+        self.assertEqual(step["status"], "blocked")
+        self.assertEqual(step["policy_context"]["blocked_tool_classes"], ["external_side_effect"])
+        self.assertTrue(step["policy_context"]["tripwire_triggered"])
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "blocked")
+        self.assertEqual(run_state["approval_ids"], [])
 
     def test_unexpected_error_fails_run(self):
         _mission, run = self._create_run_for_error_tests()

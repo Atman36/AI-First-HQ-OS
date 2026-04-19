@@ -14,6 +14,9 @@
     "status",
     "error_type",
     "retry_count",
+    "allowed_tool_classes",
+    "policy_action",
+    "policy_context",
     "summary",
     "evidence",
     "metadata",
@@ -78,6 +81,25 @@
     "retry_count": {
       "type": "integer",
       "minimum": 0
+    },
+    "allowed_tool_classes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "policy_action": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "allow_with_review",
+        "pause_for_founder_approval",
+        "block"
+      ]
+    },
+    "policy_context": {
+      "type": "object"
     },
     "summary": {
       "type": "string"
