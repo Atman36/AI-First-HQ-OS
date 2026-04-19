@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,8 @@ TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
 SESSION_BOOTSTRAP_PATH = REPO_ROOT / ".hq" / "state" / "session-bootstrap.json"
 ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
 QUICK_CONTEXT_PATH = REPO_ROOT / ".hq" / "state" / "QUICK_CONTEXT.md"
+PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
+TELEMETRY_ROOT = PRIVATE_ROOT / "telemetry"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
@@ -1131,6 +1134,42 @@ def can_auto_closeout(task: dict[str, Any]) -> tuple[bool, list[str]]:
     return not reasons, reasons
 
 
+def write_closeout_telemetry(task: dict[str, Any], completed_at: str) -> int:
+    """Write minimal acceptance + sync telemetry events for a closeout.
+
+    Returns the number of events written.  Telemetry is stored as JSONL
+    under TELEMETRY_ROOT, mirroring the layout used by hq_telemetry_store.
+    """
+    task_id = normalize_text(task.get("id"))
+    day = completed_at[:10]
+    month = day[:7]
+    telemetry_dir = TELEMETRY_ROOT / month
+    telemetry_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = telemetry_dir / f"{day}.jsonl"
+
+    events = []
+    for event_type in ("acceptance", "sync"):
+        events.append(
+            {
+                "id": str(uuid.uuid4()),
+                "created_at": completed_at,
+                "event_type": event_type,
+                "agent": "hq_control_plane",
+                "task_id": task_id,
+                "status": "ok",
+                "workflow": normalize_text(task.get("workflow")),
+                "risk_tier": normalize_text(task.get("risk_tier")),
+                "autonomy_tier": normalize_text(task.get("autonomy_tier")),
+                "summary": f"Auto-closeout {event_type} for task {task_id}.",
+            }
+        )
+
+    with jsonl_path.open("a", encoding="utf-8") as fh:
+        for event in events:
+            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+    return len(events)
+
+
 def task_summary_lines(task: dict[str, Any]) -> list[str]:
     return [
         f"- Task ID: {normalize_text(task.get('id'))}",
@@ -1389,6 +1428,9 @@ def load_task_templates() -> tuple[Path, list[dict[str, str]]]:
                     "title_pattern": normalize_text(item.get("title_pattern")),
                     "workflow": normalize_text(item.get("workflow")),
                     "default_owner": normalize_text(item.get("default_owner")),
+                    "risk_tier": normalize_text(item.get("risk_tier")),
+                    "autonomy_tier": normalize_text(item.get("autonomy_tier")),
+                    "done_when_stub": normalize_text(item.get("done_when_stub")),
                 }
             )
         return TASK_TEMPLATES_JSON_PATH, templates
@@ -1436,6 +1478,105 @@ def templates_command(_: argparse.Namespace) -> int:
             f" workflow={template.get('workflow') or '-'}"
             f" title_pattern={template.get('title_pattern') or '-'}"
         )
+    return 0
+
+
+def slugify_task_id(title: str) -> str:
+    """Generate a kebab-case task ID from a title."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return slug[:60] if slug else f"task-{utc_today().replace('-', '')}"
+
+
+def create_task_command(args: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    title = normalize_text(args.title)
+    project = normalize_text(args.project)
+    owner = normalize_text(args.owner) if args.owner else ""
+    manager = normalize_text(args.manager) if args.manager else ""
+    accepts_result = normalize_text(args.accepts_result) if args.accepts_result else ""
+    workflow_id = normalize_text(args.workflow) if args.workflow else "intake-to-execution"
+    risk_tier = normalize_text(args.risk_tier) if args.risk_tier else "medium"
+    autonomy_tier = normalize_text(args.autonomy_tier) if args.autonomy_tier else "A2"
+    done_when = normalize_text(args.done_when) if args.done_when else ""
+    next_step = normalize_text(args.next_step) if args.next_step else "Triage and route."
+    primary_update_file = normalize_text(args.primary_update_file) if args.primary_update_file else ""
+    template_id = normalize_text(args.template) if args.template else ""
+    task_id = normalize_text(args.task_id) if args.task_id else slugify_task_id(title)
+
+    # Apply template defaults if requested
+    if template_id:
+        try:
+            _, templates = load_task_templates()
+        except ValidationError:
+            templates = []
+        template = next((t for t in templates if t.get("id") == template_id), None)
+        if template:
+            if not owner:
+                owner = template.get("default_owner", "")
+            if not workflow_id or workflow_id == "intake-to-execution":
+                workflow_id = template.get("workflow", workflow_id) or workflow_id
+            risk_tier = template.get("risk_tier", risk_tier) or risk_tier
+            autonomy_tier = template.get("autonomy_tier", autonomy_tier) or autonomy_tier
+            if not done_when:
+                done_when = template.get("done_when_stub", "")
+
+    # Validate roles
+    role_ids = {
+        normalize_text(role.get("id"))
+        for role in bundle["agent_registry"].get("roles", []) or []
+        if isinstance(role, dict)
+    }
+    errors: list[str] = []
+    if owner and owner not in role_ids:
+        errors.append(f"owner '{owner}' is not in agent-registry.json")
+    if manager and manager not in role_ids:
+        errors.append(f"manager '{manager}' is not in agent-registry.json")
+    if accepts_result and accepts_result not in role_ids:
+        errors.append(f"accepts_result '{accepts_result}' is not in agent-registry.json")
+
+    # Check for duplicate task_id
+    existing = find_task(bundle["active_work"], task_id)
+    if existing is not None:
+        errors.append(f"task_id '{task_id}' already exists in active-work.json")
+
+    if errors:
+        print("create_task=failed")
+        print(f"reasons={len(errors)}")
+        for err in errors:
+            print(f"- {err}")
+        return 1
+
+    new_task: dict[str, Any] = {
+        "id": task_id,
+        "title": title,
+        "column": "intake",
+        "project": project,
+        "owner": owner,
+        "manager": manager,
+        "accepts_result": accepts_result,
+        "risk_tier": risk_tier,
+        "autonomy_tier": autonomy_tier,
+        "workflow": workflow_id,
+        "next_step": next_step,
+        "done_when": done_when,
+        "primary_update_file": primary_update_file,
+    }
+
+    active_work = dict(bundle["active_work"])
+    tasks = list(active_work.get("tasks", []) or [])
+    tasks.append(new_task)
+    active_work["tasks"] = tasks
+    active_work["updated_at"] = utc_today()
+    write_json(ACTIVE_WORK_PATH, active_work)
+
+    ensure_task_packets([new_task])
+    write_task_board(active_work, bundle["workflow_registry"])
+
+    print("create_task=ok")
+    print(f"task_id={task_id}")
+    print(f"column=intake")
+    print(f"board_written={relative_display(TASK_BOARD_PATH)}")
+    print(render_recommended_next_command(f"python3 scripts/hq_control_plane.py resume --task-id {task_id}"))
     return 0
 
 
@@ -1551,15 +1692,18 @@ def closeout_command(args: argparse.Namespace) -> int:
     write_json(ACTIVE_WORK_PATH, active_work)
     write_task_board(active_work, bundle["workflow_registry"])
 
+    telemetry_count = write_closeout_telemetry(task, utc_now())
+
     print("closeout=done")
     print(f"task_id={task_id}")
     print(f"completed_at={utc_today()}")
+    print(f"telemetry={telemetry_count}")
     print(f"board_written={relative_display(TASK_BOARD_PATH)}")
     print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
     return 0
 
 
-def health_command(_: argparse.Namespace) -> int:
+def health_command(args: argparse.Namespace) -> int:
     bundle = validate_control_plane()
     live_tasks = [
         task
@@ -1568,6 +1712,20 @@ def health_command(_: argparse.Namespace) -> int:
     ]
     ensure_task_packets(live_tasks)
     status_payload = build_status_payload(bundle["active_work"], bundle["workflow_registry"])
+
+    if getattr(args, "json", False):
+        payload = {
+            "validation": {
+                "status": "ok",
+                "warnings": [str(w) for w in bundle["validation_warnings"]],
+                "warning_count": len(bundle["validation_warnings"]),
+            },
+            "status": status_payload,
+            "git_status": git_status_lines(),
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
     lines = [
         "HQ Health",
         "",
@@ -1846,6 +2004,7 @@ def build_parser() -> argparse.ArgumentParser:
         "health",
         help="Print one report combining validation, status, stale packets, warnings, and git status.",
     )
+    health_parser.add_argument("--json", action="store_true", help="Print the health report as JSON.")
     health_parser.set_defaults(func=health_command)
 
     templates_parser = subparsers.add_parser(
@@ -1853,6 +2012,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="List locally available task templates for shaping new work.",
     )
     templates_parser.set_defaults(func=templates_command)
+
+    create_task_parser = subparsers.add_parser(
+        "create-task",
+        help="Create a new task in active-work.json with spec/handoff packets.",
+    )
+    create_task_parser.add_argument("--title", required=True, help="Task title.")
+    create_task_parser.add_argument("--project", required=True, help="Project name.")
+    create_task_parser.add_argument("--owner", default="", help="Owner role (must exist in agent-registry).")
+    create_task_parser.add_argument("--manager", default="", help="Manager role.")
+    create_task_parser.add_argument("--accepts-result", default="", help="Role that accepts the result.")
+    create_task_parser.add_argument("--workflow", default="intake-to-execution", help="Workflow ID.")
+    create_task_parser.add_argument("--risk-tier", default="medium", help="Risk tier (low/medium/high).")
+    create_task_parser.add_argument("--autonomy-tier", default="A2", help="Autonomy tier (A1/A2/A3).")
+    create_task_parser.add_argument("--done-when", default="", help="Done-when criteria.")
+    create_task_parser.add_argument("--next-step", default="Triage and route.", help="Initial next step.")
+    create_task_parser.add_argument("--primary-update-file", default="", help="Primary update file path.")
+    create_task_parser.add_argument("--template", default="", help="Template ID for defaults.")
+    create_task_parser.add_argument("--task-id", default="", help="Override auto-generated task ID.")
+    create_task_parser.set_defaults(func=create_task_command)
 
     resume_parser = subparsers.add_parser(
         "resume",

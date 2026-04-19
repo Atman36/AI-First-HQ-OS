@@ -1116,6 +1116,343 @@ class HqControlPlaneTests(unittest.TestCase):
         # Note: stale check only applies to "executing" and "accepted" columns
         # task-1 is in "this_week" so no stale warning expected
 
+    # -------------------------------------------------------------------
+    # closeout telemetry contract tests
+    # -------------------------------------------------------------------
+
+    def _setup_closeable_task(self, task_id="task-closeout", accepts="governor",
+                              risk="medium", autonomy="A2"):
+        """Helper: set up a task that passes can_auto_closeout with filled packets."""
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        active_work_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-20",
+                    "operating_mode": "stage-2-foundation",
+                    "objective": {
+                        "id": "obj-1",
+                        "title": "Run one governed loop",
+                        "window": {"start": "2026-04-20", "target_end": "2026-05-31"},
+                    },
+                    "tasks": [
+                        {
+                            "id": task_id,
+                            "title": "Close internal delivery slice",
+                            "column": "executing",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "HQ Bootstrap",
+                            "next_step": "Ship the internal closeout helper.",
+                            "done_when": "The queue helper marks low-risk internal work done.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": accepts,
+                            "risk_tier": risk,
+                            "autonomy_tier": autonomy,
+                            "workflow": "intake-to-execution",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
+        workflow_payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+        if not any(c["id"] == "executing" for c in workflow_payload["board_columns"]):
+            workflow_payload["board_columns"].insert(-1, {"id": "executing", "title": "Executing"})
+            workflow_payload["workflows"][0]["states"].insert(-1, "executing")
+        workflow_path.write_text(json.dumps(workflow_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        spec_dir = self.temp_root / ".hq" / "specs" / task_id
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "LATEST.md").write_text(
+            "# Spec\n\n## Acceptance\n- Internal closeout can complete from one command.\n\n",
+            encoding="utf-8",
+        )
+        handoff_dir = self.temp_root / ".hq" / "handoffs" / task_id
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        (handoff_dir / "LATEST.md").write_text(
+            "# Handoff\n\n## Done\n- Helper implemented.\n\n## Next\n- Mark the task done.\n\n## Blockers\n- None.\n\n",
+            encoding="utf-8",
+        )
+        self.module = load_module(self.temp_root)
+
+    def test_closeout_writes_acceptance_and_sync_telemetry(self):
+        self._setup_closeable_task()
+        parser = self.module.build_parser()
+        args = parser.parse_args(["closeout", "--task-id", "task-closeout"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("closeout=done", output)
+        self.assertIn("telemetry=2", output)
+
+        telemetry_root = self.temp_root / ".hq" / "telemetry"
+        self.assertTrue(telemetry_root.exists())
+        events = []
+        for jsonl_path in telemetry_root.glob("**/*.jsonl"):
+            for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    events.append(json.loads(line))
+        event_types = {e["event_type"] for e in events}
+        self.assertIn("acceptance", event_types)
+        self.assertIn("sync", event_types)
+        for event in events:
+            self.assertEqual(event["task_id"], "task-closeout")
+            self.assertIn("id", event)
+            self.assertIn("created_at", event)
+
+    def test_closeout_skips_telemetry_for_blocked_founder_task(self):
+        self._setup_closeable_task(accepts="ceo", risk="high", autonomy="A1")
+        parser = self.module.build_parser()
+        args = parser.parse_args(["closeout", "--task-id", "task-closeout"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 1)
+        output = buffer.getvalue()
+        self.assertIn("closeout=not_ready", output)
+        telemetry_root = self.temp_root / ".hq" / "telemetry"
+        if telemetry_root.exists():
+            events = list(telemetry_root.glob("**/*.jsonl"))
+            self.assertEqual(len(events), 0)
+
+    # -------------------------------------------------------------------
+    # create-task command tests
+    # -------------------------------------------------------------------
+
+    def _setup_templates(self):
+        templates_path = self.temp_root / "05 AI Control Plane" / "task-templates.json"
+        templates_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-19",
+                    "templates": [
+                        {
+                            "id": "research-slice",
+                            "title_pattern": "Research {topic}",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "default_owner": "research",
+                            "done_when_stub": "Decision-ready research note exists.",
+                        },
+                        {
+                            "id": "implementation-slice",
+                            "title_pattern": "Implement {artifact}",
+                            "workflow": "intake-to-execution",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "default_owner": "delivery",
+                            "done_when_stub": "The bounded artifact exists.",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_create_task_adds_task_to_active_work(self):
+        self._setup_templates()
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args([
+            "create-task",
+            "--title", "Research subagent context protocol",
+            "--project", "HQ Bootstrap",
+            "--owner", "delivery",
+            "--manager", "ai_operations_lead",
+            "--accepts-result", "governor",
+        ])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        output = buffer.getvalue()
+        self.assertIn("create_task=ok", output)
+        self.assertIn("task_id=", output)
+
+        active_work = json.loads(
+            (self.temp_root / "05 AI Control Plane" / "active-work.json").read_text(encoding="utf-8")
+        )
+        new_tasks = [t for t in active_work["tasks"] if t["title"] == "Research subagent context protocol"]
+        self.assertEqual(len(new_tasks), 1)
+        task = new_tasks[0]
+        self.assertEqual(task["owner"], "delivery")
+        self.assertEqual(task["column"], "intake")
+        self.assertEqual(task["workflow"], "intake-to-execution")
+
+    def test_create_task_scaffolds_spec_and_handoff_packets(self):
+        self._setup_templates()
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args([
+            "create-task",
+            "--title", "Build verification skill",
+            "--project", "HQ Bootstrap",
+            "--owner", "delivery",
+            "--manager", "ai_operations_lead",
+            "--accepts-result", "governor",
+        ])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        # extract task_id from output
+        task_id = None
+        for line in buffer.getvalue().splitlines():
+            if line.startswith("task_id="):
+                task_id = line.split("=", 1)[1].strip()
+        self.assertIsNotNone(task_id)
+        spec_path = self.temp_root / ".hq" / "specs" / task_id / "LATEST.md"
+        handoff_path = self.temp_root / ".hq" / "handoffs" / task_id / "LATEST.md"
+        self.assertTrue(spec_path.exists())
+        self.assertTrue(handoff_path.exists())
+
+    def test_create_task_uses_template_defaults(self):
+        self._setup_templates()
+        # Add 'research' role to fixture since template uses it as default_owner
+        agent_registry_path = self.temp_root / "05 AI Control Plane" / "agent-registry.json"
+        agent_registry = json.loads(agent_registry_path.read_text(encoding="utf-8"))
+        agent_registry["roles"].append({
+            "id": "research",
+            "display_name": "Research",
+            "role_type": "ai",
+            "default_autonomy_tier": "A2",
+            "mission": "Conduct bounded research.",
+        })
+        agent_registry_path.write_text(
+            json.dumps(agent_registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args([
+            "create-task",
+            "--title", "Research memory index layer",
+            "--project", "HQ Bootstrap",
+            "--template", "research-slice",
+            "--manager", "ai_operations_lead",
+            "--accepts-result", "governor",
+        ])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        active_work = json.loads(
+            (self.temp_root / "05 AI Control Plane" / "active-work.json").read_text(encoding="utf-8")
+        )
+        new_tasks = [t for t in active_work["tasks"] if t["title"] == "Research memory index layer"]
+        self.assertEqual(len(new_tasks), 1)
+        task = new_tasks[0]
+        self.assertEqual(task["owner"], "research")
+        self.assertEqual(task["risk_tier"], "medium")
+        self.assertEqual(task["autonomy_tier"], "A2")
+        self.assertIn("Decision-ready research note", task["done_when"])
+
+    def test_create_task_rejects_unknown_role(self):
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args([
+            "create-task",
+            "--title", "Bad task",
+            "--project", "HQ Bootstrap",
+            "--owner", "nonexistent_role",
+            "--manager", "ai_operations_lead",
+            "--accepts-result", "governor",
+        ])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 1)
+        output = buffer.getvalue()
+        self.assertIn("create_task=failed", output)
+        self.assertIn("nonexistent_role", output)
+
+    def test_create_task_syncs_board(self):
+        self._setup_templates()
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args([
+            "create-task",
+            "--title", "New task for board",
+            "--project", "HQ Bootstrap",
+            "--owner", "delivery",
+            "--manager", "ai_operations_lead",
+            "--accepts-result", "governor",
+        ])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        board = (self.temp_root / "02 Planning" / "Task Board.md").read_text(encoding="utf-8")
+        self.assertIn("New task for board", board)
+
+    # -------------------------------------------------------------------
+    # health --json tests
+    # -------------------------------------------------------------------
+
+    def test_health_json_returns_structured_payload(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["health", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertIn("validation", payload)
+        self.assertEqual(payload["validation"]["status"], "ok")
+        self.assertIn("warnings", payload["validation"])
+        self.assertIn("status", payload)
+        self.assertIn("active_tasks", payload["status"])
+        self.assertIn("stale_items", payload["status"])
+        self.assertIn("recommended_next_command", payload["status"])
+        self.assertIn("git_status", payload)
+        self.assertIsInstance(payload["git_status"], list)
+
+    def test_health_json_includes_all_text_report_sections(self):
+        parser = self.module.build_parser()
+        # Run text health first to confirm it works
+        args_text = parser.parse_args(["health"])
+        buffer_text = io.StringIO()
+        with redirect_stdout(buffer_text):
+            exit_text = args_text.func(args_text)
+        self.assertEqual(exit_text, 0)
+
+        # Now run JSON health
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args_json = parser.parse_args(["health", "--json"])
+        buffer_json = io.StringIO()
+        with redirect_stdout(buffer_json):
+            exit_json = args_json.func(args_json)
+        self.assertEqual(exit_json, 0)
+
+        payload = json.loads(buffer_json.getvalue())
+        # Validation section
+        self.assertIn("status", payload["validation"])
+        self.assertIn("warning_count", payload["validation"])
+        # Status section
+        self.assertIn("objective", payload["status"])
+        self.assertIn("blocked", payload["status"])
+
 
 if __name__ == "__main__":
     unittest.main()
