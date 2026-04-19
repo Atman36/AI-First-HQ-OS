@@ -935,5 +935,217 @@ class HqMissionRuntimeTests(unittest.TestCase):
             )
 
 
+    def _create_run_for_error_tests(self):
+        """Helper: create a mission + run for error taxonomy tests."""
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                ["create-mission", "--title", "Error Taxonomy Mission"]
+            )
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        return mission, run
+
+    def test_checkpoint_step_stores_error_type_and_retry_count(self):
+        _mission, run = self._create_run_for_error_tests()
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "fetch-data",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "transient",
+                    "--summary", "Network timeout.",
+                ]
+            )
+        )
+        self.assertEqual(step["error_type"], "transient")
+        self.assertEqual(step["retry_count"], 1)
+
+    def test_completed_step_has_empty_error_type_and_zero_retry_count(self):
+        _mission, run = self._create_run_for_error_tests()
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "planner",
+                    "--actor", "delivery",
+                    "--status", "completed",
+                    "--summary", "Plan done.",
+                ]
+            )
+        )
+        self.assertEqual(step["error_type"], "")
+        self.assertEqual(step["retry_count"], 0)
+
+    def test_transient_error_keeps_run_running_within_retry_cap(self):
+        _mission, run = self._create_run_for_error_tests()
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "api-call",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "transient",
+                    "--summary", "Timeout #1.",
+                ]
+            )
+        )
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "running")
+
+    def test_transient_error_escalates_to_unexpected_after_retry_cap(self):
+        _mission, run = self._create_run_for_error_tests()
+        # Exhaust the retry cap (MAX_TRANSIENT_RETRIES = 2)
+        for i in range(3):
+            step = self.module.checkpoint_step(
+                self.module.build_parser().parse_args(
+                    [
+                        "checkpoint-step",
+                        "--run-id", run["id"],
+                        "--key", "api-call",
+                        "--actor", "delivery",
+                        "--status", "failed",
+                        "--error-type", "transient",
+                        "--summary", f"Timeout #{i + 1}.",
+                    ]
+                )
+            )
+        # The 3rd attempt should be escalated to unexpected
+        self.assertEqual(step["error_type"], "unexpected")
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "failed")
+
+    def test_recoverable_error_keeps_run_running(self):
+        _mission, run = self._create_run_for_error_tests()
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "parse-output",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "recoverable",
+                    "--summary", "JSON parse error returned as context.",
+                ]
+            )
+        )
+        self.assertEqual(step["error_type"], "recoverable")
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "running")
+
+    def test_user_fixable_error_pauses_run_for_approval(self):
+        _mission, run = self._create_run_for_error_tests()
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "credential-check",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "user_fixable",
+                    "--summary", "Missing API key.",
+                ]
+            )
+        )
+        self.assertEqual(step["error_type"], "user_fixable")
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "waiting_approval")
+
+    def test_unexpected_error_fails_run(self):
+        _mission, run = self._create_run_for_error_tests()
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "critical-step",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "unexpected",
+                    "--summary", "Unhandled exception.",
+                ]
+            )
+        )
+        self.assertEqual(step["error_type"], "unexpected")
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "failed")
+
+    def test_error_type_rejected_when_status_is_not_failed(self):
+        _mission, run = self._create_run_for_error_tests()
+        with self.assertRaises(ValueError):
+            self.module.checkpoint_step(
+                self.module.build_parser().parse_args(
+                    [
+                        "checkpoint-step",
+                        "--run-id", run["id"],
+                        "--key", "bad-combo",
+                        "--actor", "delivery",
+                        "--status", "completed",
+                        "--error-type", "transient",
+                        "--summary", "Should fail validation.",
+                    ]
+                )
+            )
+
+    def test_transient_retry_count_resets_after_different_key(self):
+        _mission, run = self._create_run_for_error_tests()
+        # First transient failure
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "api-call",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "transient",
+                    "--summary", "Timeout #1.",
+                ]
+            )
+        )
+        # Different key step
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "parser",
+                    "--actor", "delivery",
+                    "--status", "completed",
+                    "--summary", "Parsed output.",
+                ]
+            )
+        )
+        # Same key again — retry count should restart because
+        # the consecutive chain was broken by 'parser'
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "api-call",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "transient",
+                    "--summary", "Timeout after reset.",
+                ]
+            )
+        )
+        self.assertEqual(step["retry_count"], 1)
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["status"], "running")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,8 @@ ALLOWED_STEP_STATUSES = {
     "failed",
     "skipped",
 }
+ALLOWED_ERROR_TYPES = {"", "transient", "recoverable", "user_fixable", "unexpected"}
+MAX_TRANSIENT_RETRIES = 2
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
 ALLOWED_VERIFICATION_STATUSES = {"pending", "changes_requested", "verified", "failed"}
@@ -1486,11 +1488,41 @@ def dispatch_queued_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _count_transient_retries_for_key(run: dict[str, Any], step_key: str) -> int:
+    """Count the number of consecutive transient-error retries for a step key."""
+    count = 0
+    for step_id in reversed(run.get("step_ids", [])):
+        sp = step_path(step_id)
+        if not sp.exists():
+            continue
+        step = load_json(sp)
+        if step.get("key") != step_key:
+            break
+        if step.get("error_type") == "transient" and step.get("status") == "failed":
+            count += 1
+        else:
+            break
+    return count
+
+
 def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
     if args.status not in ALLOWED_STEP_STATUSES:
         raise ValueError("status must be one of: " + ", ".join(sorted(ALLOWED_STEP_STATUSES)))
+    error_type = str(getattr(args, "error_type", None) or "").strip()
+    if error_type and error_type not in ALLOWED_ERROR_TYPES:
+        raise ValueError("error_type must be one of: " + ", ".join(sorted(ALLOWED_ERROR_TYPES - {""})))
+    if error_type and args.status != "failed":
+        raise ValueError("error_type can only be set when status is 'failed'")
     run = require_file(run_path(args.run_id), "run", "run")
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+
+    # --- Transient retry logic ---
+    retry_count = 0
+    if error_type == "transient":
+        retry_count = _count_transient_retries_for_key(run, args.key.strip()) + 1
+        if retry_count > MAX_TRANSIENT_RETRIES:
+            error_type = "unexpected"
+
     step_id = make_id("step", f"{args.key}-{args.actor or 'actor'}")
     created_at = utc_now()
     payload = {
@@ -1503,6 +1535,8 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         "key": args.key.strip(),
         "actor": str(args.actor or "").strip(),
         "status": args.status,
+        "error_type": error_type,
+        "retry_count": retry_count,
         "summary": str(args.summary or "").strip(),
         "evidence": [item for item in args.evidence if item.strip()],
         "metadata": args.metadata or {},
@@ -1519,6 +1553,15 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         run["last_successful_step_id"] = step_id
         run["status"] = "running"
     elif args.status == "waiting_approval":
+        run["status"] = "waiting_approval"
+    elif args.status == "failed" and error_type == "transient" and retry_count <= MAX_TRANSIENT_RETRIES:
+        # Transient error within retry cap: keep run in running state for automatic retry
+        run["status"] = "running"
+    elif args.status == "failed" and error_type == "recoverable":
+        # Recoverable: return error as context, keep run running
+        run["status"] = "running"
+    elif args.status == "failed" and error_type == "user_fixable":
+        # User-fixable: map to existing pause_for_founder_approval pattern
         run["status"] = "waiting_approval"
     elif args.status in {"blocked", "failed"}:
         run["status"] = args.status
@@ -2352,6 +2395,7 @@ def verify_run(args: argparse.Namespace) -> dict[str, Any]:
             key=step_key,
             actor=actor,
             status=step_status,
+            error_type="",
             summary=summary,
             evidence=evidence,
             metadata=metadata,
@@ -3000,6 +3044,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--metadata",
         type=parse_json_object,
         help="Optional inline JSON metadata object.",
+    )
+    checkpoint_step_parser.add_argument(
+        "--error-type",
+        choices=sorted(ALLOWED_ERROR_TYPES - {""}) + [""],
+        default="",
+        help="Error classification when status is failed: transient, recoverable, user_fixable, unexpected.",
     )
     checkpoint_step_parser.set_defaults(func=checkpoint_step_command)
 

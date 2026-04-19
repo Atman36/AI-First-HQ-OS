@@ -12,6 +12,8 @@
     "key",
     "actor",
     "status",
+    "error_type",
+    "retry_count",
     "summary",
     "evidence",
     "metadata",
@@ -62,6 +64,20 @@
         "failed",
         "skipped"
       ]
+    },
+    "error_type": {
+      "type": "string",
+      "enum": [
+        "",
+        "transient",
+        "recoverable",
+        "user_fixable",
+        "unexpected"
+      ]
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0
     },
     "summary": {
       "type": "string"
