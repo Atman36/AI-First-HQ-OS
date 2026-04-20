@@ -1360,7 +1360,7 @@ def build_runtime_recovery_payload() -> dict[str, Any]:
             "stale_inputs": [normalize_text(value) for value in stale_inputs if normalize_text(value)],
             "error": resume_error if resume_status is None else "",
             "recommended_next_command": (
-                f"python3 scripts/hq_mission_runtime.py show-resume-status --run-id {run_id}"
+                f"python3 scripts/hq_mission_runtime.py export-recovery-bundle --run-id {run_id}"
                 if run_id
                 else ""
             ),

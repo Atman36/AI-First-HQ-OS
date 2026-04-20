@@ -936,7 +936,7 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(workflow_input["active_tasks"][0]["workflow"], "intake-to-execution")
         self.assertEqual(workflow_input["active_tasks"][0]["risk_tier"], "medium")
 
-    def test_status_includes_runtime_recovery_queue_and_prioritizes_resume_command(self):
+    def test_status_includes_runtime_recovery_queue_and_prioritizes_export_bundle_command(self):
         runtime_root = self.temp_root / ".hq" / "state" / "mission-runtime"
         runs_dir = runtime_root / "runs"
         resume_dir = runtime_root / "resume-status"
@@ -1010,16 +1010,63 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(recovery["items"][0]["resume_epoch"], 2)
         self.assertEqual(
             recovery["items"][0]["recommended_next_command"],
-            "python3 scripts/hq_mission_runtime.py show-resume-status --run-id run-1",
+            "python3 scripts/hq_mission_runtime.py export-recovery-bundle --run-id run-1",
         )
         self.assertEqual(
             payload["recommended_next_command"],
-            "python3 scripts/hq_mission_runtime.py show-resume-status --run-id run-1",
+            "python3 scripts/hq_mission_runtime.py export-recovery-bundle --run-id run-1",
         )
         memory_index = json.loads(
             (self.temp_root / ".hq" / "state" / "memory-index.json").read_text(encoding="utf-8")
         )
         self.assertEqual(memory_index["runtime_recovery"]["summary"]["safe_to_resume"], 1)
+
+    def test_status_includes_interrupted_run_with_missing_resume_status_via_export_bundle(self):
+        runtime_root = self.temp_root / ".hq" / "state" / "mission-runtime"
+        runs_dir = runtime_root / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+
+        checkpoint_path = ".hq/state/mission-runtime/checkpoints/checkpoint-2.json"
+        (runs_dir / "run-2.json").write_text(
+            json.dumps(
+                {
+                    "id": "run-2",
+                    "mission_id": "mission-2",
+                    "thread_id": "thread-2",
+                    "status": "interrupted",
+                    "updated_at": "2026-04-20T12:02:00Z",
+                    "latest_checkpoint_id": "checkpoint-2",
+                    "latest_checkpoint_path": checkpoint_path,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        recovery = payload["runtime_recovery"]
+        self.assertEqual(recovery["summary"]["total"], 1)
+        self.assertEqual(recovery["summary"]["interrupted"], 1)
+        self.assertEqual(recovery["summary"]["missing_resume_status"], 1)
+        self.assertEqual(recovery["items"][0]["run_id"], "run-2")
+        self.assertEqual(recovery["items"][0]["resume_status_state"], "missing")
+        self.assertEqual(
+            recovery["items"][0]["recommended_next_command"],
+            "python3 scripts/hq_mission_runtime.py export-recovery-bundle --run-id run-2",
+        )
+        self.assertEqual(
+            payload["recommended_next_command"],
+            "python3 scripts/hq_mission_runtime.py export-recovery-bundle --run-id run-2",
+        )
 
     def test_status_ignores_completed_runs_without_resume_status(self):
         runs_dir = self.temp_root / ".hq" / "state" / "mission-runtime" / "runs"
