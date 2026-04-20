@@ -127,6 +127,8 @@ These files make the control plane legible for humans, but they are local-only a
 - Do not auto-edit `AGENTS.md`, `agents/*/AGENTS.md`, access rules, safety rules, or production logic from the improvement loop.
 - Candidate improvements remain review artifacts until applied manually.
 - When applying a founder-approved improvement from external analysis, update the smallest governing prompt or rule surface needed and preserve the accepted/shared-truth boundary.
+- At session close, check whether the reusable lesson is concrete enough to improve the current session prompt, the relevant role prompt, or `AGENTS.md`; prefer the smallest governing surface that fixes the issue without widening prompt scope.
+- Apply the prompt/rule change immediately only when the improvement is specific, minimal, and clearly better than leaving it as a private artifact; otherwise keep it in `.hq/reflections/` or `.hq/improvements/` for later review.
 
 ## Default Routing
 
