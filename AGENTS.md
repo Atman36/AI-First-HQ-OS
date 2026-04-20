@@ -34,6 +34,11 @@ These files define current company truth for humans and must stay local-only:
 - `03 Notes/Open Decisions.md`
 - `04 Projects/`
 
+### Human-readable working layer
+
+- `02 Planning/Weekly Plan.md` - weekly commitments, review, and carry-forward decisions
+- `02 Planning/Task Board.md` - generated mirror of `active-work.json`, not an independent task system
+
 ### Machine-readable control plane
 
 These files define executable operating contracts:
@@ -50,14 +55,19 @@ These files define executable operating contracts:
 
 These artifacts are mirrors, not hand-authored source of truth:
 
-- `02 Planning/Task Board.md` - rendered mirror of `active-work.json`
 - `.hq/state/WORKFLOW.generated.md` - generated operating summary from the control plane
 - `.hq/state/session-bootstrap.json` - generated startup packet
+
+### Support material
+
+- `reports/` is support input, not source of truth.
+- Reports change company state only after their accepted conclusion is summarized into source-of-truth files.
+- Keep sensitive research, imports, transcripts, and runtime artifacts local-only and out of public Git history unless explicitly approved for publication.
 
 ### Private runtime
 
 - `.hq/` is the only repo-local private runtime path and must remain git-ignored.
-- Reports, raw imports, transcripts, telemetry, evals, reflections, and handoffs belong under `.hq/` or outside the repo unless explicitly approved otherwise.
+- Raw imports, transcripts, telemetry, evals, reflections, and handoffs belong under `.hq/` or outside the repo unless explicitly approved otherwise.
 
 ## Minimal Artifact Rule
 
@@ -66,7 +76,7 @@ These artifacts are mirrors, not hand-authored source of truth:
 - Keep operating summaries generated from the control plane.
 - Do not hand-maintain duplicate workflow summaries when a generated artifact can render them.
 
-## Instruction Precedence
+## Instruction Precedence And Conflict Rule
 
 When instructions conflict, use this order:
 
@@ -76,7 +86,8 @@ When instructions conflict, use this order:
 4. Task-scoped private packets in `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md`.
 5. Active role prompt in `agents/<role>/AGENTS.md`.
 6. Current project and notes files.
-7. Historical reviews and archived notes.
+7. Skills as convenience wrappers only.
+8. Historical reviews and archived notes.
 
 Additional rules:
 
@@ -95,6 +106,7 @@ Start narrow and widen only when needed:
 5. Validate control-plane integrity with `python3 scripts/hq_control_plane.py validate` when contracts or queue state changed materially.
 6. For large or ambiguous work, create or refresh `.hq/specs/<task>/LATEST.md` before splitting execution across agents or sessions.
 7. Use `.hq/handoffs/<task>/LATEST.md` for bounded continuity when work will resume later or time out.
+8. Confirm local tool availability before routing a workflow through a specific CLI or runner.
 
 ## Load Rules
 
@@ -122,7 +134,7 @@ Load constraints:
 - Prefer one config contract plus one generated summary over parallel prose documents.
 - Narrow policy packs are the right next step for HQ, but until they exist, emulate that behavior by reading only the relevant control-plane files above.
 
-## Policy Contract
+## Execution Mode
 
 HQ is AI-first, but not approval-free.
 
@@ -130,6 +142,15 @@ HQ is AI-first, but not approval-free.
 - Do not ask a clarifying question unless blocked by missing access, irreversible risk, or a truly unresolved fork that current HQ state does not answer.
 - If a question is required, ask one bundled blocker question at most.
 - Work long by default: continue until the current slice is complete, truly blocked, or reduced to a founder-only decision.
+- The active operator decides how much to finish in one session; optimize for maximum coherent progress inside the current corridor.
+- If a subagent or long-running tool is used, choose one of two modes:
+  - `wait`: wait for the result and continue orchestration yourself.
+  - `timeout_wait`: wait for a bounded interval, write the partial result or blocker into `.hq/handoffs/<task>/LATEST.md`, then continue everything else that is unblocked.
+- Do not return control only because a subagent or long-running tool is still working.
+- When founder-run Deep Research or GPT analysis packets arrive, distill them into a narrow spec or handoff before reopening broader exploration.
+
+### Policy Contract
+
 - AI may make low- and medium-risk operating decisions only when the task has an owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
 - Humans retain strategy, budget, legal, public, destructive, hiring, and override authority.
 - Governor can block or pause work that lacks policy coverage, telemetry coverage, or required approval.
