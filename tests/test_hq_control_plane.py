@@ -852,6 +852,14 @@ class HqControlPlaneTests(unittest.TestCase):
         payload = json.loads(buffer.getvalue())
         workflow_input = payload["workflow_inputs"]["founder_weekly_review"]
         self.assertEqual(workflow_input["contract_version"], 1)
+        self.assertEqual(workflow_input["contract_policy"]["contract_name"], "founder_weekly_review_snapshot")
+        self.assertEqual(
+            workflow_input["contract_policy"]["schema_path"],
+            "05 AI Control Plane/schemas/founder-weekly-review-bridge.schema.json",
+        )
+        self.assertEqual(workflow_input["contract_policy"]["versioning"]["current_version"], 1)
+        self.assertEqual(workflow_input["contract_policy"]["versioning"]["minimum_consumer_version"], 1)
+        self.assertEqual(workflow_input["contract_policy"]["versioning"]["maximum_consumer_version"], 1)
         self.assertEqual(workflow_input["source_files"]["active_work"], "05 AI Control Plane/active-work.json")
         self.assertEqual(workflow_input["workflow_requirements"]["intake-to-execution"][0], "id")
         self.assertEqual(workflow_input["breached_metrics"], ["decision_latency_hours", "documentation_lag_hours | review"])

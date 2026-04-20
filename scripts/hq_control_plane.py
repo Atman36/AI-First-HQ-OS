@@ -34,6 +34,9 @@ PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")
 TELEMETRY_ROOT = PRIVATE_ROOT / "telemetry"
 TELEMETRY_REVIEW_PATH = TELEMETRY_ROOT / "reviews" / "LATEST.json"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
+FOUNDER_WEEKLY_REVIEW_BRIDGE_SCHEMA_PATH = (
+    SCHEMA_DIR / "founder-weekly-review-bridge.schema.json"
+)
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
     "agent_registry": SCHEMA_DIR / "agent-registry.schema.json",
@@ -1053,6 +1056,35 @@ def workflow_requirements(workflow_registry: dict[str, Any]) -> dict[str, list[s
     return requirements
 
 
+def founder_weekly_review_contract_policy() -> dict[str, Any]:
+    return {
+        "policy_version": 1,
+        "contract_name": "founder_weekly_review_snapshot",
+        "schema_path": relative_display(FOUNDER_WEEKLY_REVIEW_BRIDGE_SCHEMA_PATH),
+        "schema_version": 1,
+        "versioning": {
+            "current_version": 1,
+            "minimum_consumer_version": 1,
+            "maximum_consumer_version": 1,
+            "additive_change_rule": "New fields must remain optional within a contract version.",
+            "breaking_change_rule": (
+                "Renamed, removed, or newly required fields require a contract_version bump."
+            ),
+        },
+    }
+
+
+def validate_founder_weekly_review_input(payload: dict[str, Any]) -> None:
+    context = ValidationContext()
+    validate_schema(
+        payload,
+        FOUNDER_WEEKLY_REVIEW_BRIDGE_SCHEMA_PATH,
+        "workflow_inputs.founder_weekly_review",
+        context,
+    )
+    context.raise_if_any()
+
+
 def build_founder_weekly_review_input(
     active_work: dict[str, Any],
     workflow_registry: dict[str, Any],
@@ -1078,8 +1110,9 @@ def build_founder_weekly_review_input(
             or normalize_text(task.get("column")) == "review"
         )
     )
-    return {
+    payload = {
         "contract_version": 1,
+        "contract_policy": founder_weekly_review_contract_policy(),
         "source_files": {
             "active_work": relative_display(ACTIVE_WORK_PATH),
             "workflow_registry": relative_display(WORKFLOW_REGISTRY_PATH),
@@ -1098,6 +1131,8 @@ def build_founder_weekly_review_input(
             "founder_review_tasks": founder_review_count,
         },
     }
+    validate_founder_weekly_review_input(payload)
+    return payload
 
 
 def scaffolded_packet_stale_items(
