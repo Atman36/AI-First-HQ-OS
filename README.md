@@ -86,6 +86,8 @@ The supported local test runner is `python3 -m unittest discover tests`. `pytest
 
 Start a new session with `python3 scripts/hq_control_plane.py status`. That command writes `.hq/state/session-bootstrap.json` and prints a compact live-state projection with:
 
+- one `startup_focus` task with the current primary move
+- up to two adjacent `support_tracks` for the same session corridor
 - active tasks without `done`
 - blocked tasks with a short reason
 - the current `next_step` per live task
@@ -93,6 +95,7 @@ Start a new session with `python3 scripts/hq_control_plane.py status`. That comm
 - the recommended next command for the next slice
 
 Use `python3 scripts/hq_control_plane.py status --json` when another script or tool needs the same projection in machine-readable form.
+The same run also refreshes `.hq/state/memory-index.json` as a smaller startup capsule for future runtime consumers.
 
 Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
 

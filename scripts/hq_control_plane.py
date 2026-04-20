@@ -28,6 +28,7 @@ TASK_TEMPLATES_JSON_PATH = CONTROL_PLANE_DIR / "task-templates.json"
 TASK_TEMPLATES_MD_PATH = CONTROL_PLANE_DIR / "task-templates.md"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
 SESSION_BOOTSTRAP_PATH = REPO_ROOT / ".hq" / "state" / "session-bootstrap.json"
+MEMORY_INDEX_PATH = REPO_ROOT / ".hq" / "state" / "memory-index.json"
 ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
 QUICK_CONTEXT_PATH = REPO_ROOT / ".hq" / "state" / "QUICK_CONTEXT.md"
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
@@ -1180,6 +1181,24 @@ def summarize_stale_items(stale_items: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
+    active_tasks = status_payload.get("active_tasks", []) or []
+    blocked_tasks = status_payload.get("blocked", []) or []
+    return {
+        "generated_at": status_payload.get("generated_at") or "",
+        "updated_at": status_payload.get("updated_at") or "",
+        "objective": status_payload.get("objective") or "",
+        "startup_focus": status_payload.get("startup_focus") or {},
+        "support_tracks": status_payload.get("support_tracks", []) or [],
+        "stale_summary": status_payload.get("stale_summary") or {},
+        "recommended_next_command": status_payload.get("recommended_next_command") or "",
+        "counts": {
+            "active_tasks": len(active_tasks),
+            "blocked_tasks": len(blocked_tasks),
+        },
+    }
+
+
 def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
     if any(normalize_text(task.get("column")) in ACTIONABLE_COLUMNS for task in active_tasks):
         return "python3 scripts/hq_runtime.py route-next-slice"
@@ -1328,6 +1347,29 @@ def startup_focus_projection(task: dict[str, Any] | None) -> dict[str, Any]:
         "minimal_read_first": minimal_read_first(task),
         "recommended_next_command": recommended_task_command(task, task_missing_for_safe_continue(task)),
     }
+
+
+def support_track_projection(tasks: list[dict[str, Any]], startup_task: dict[str, Any] | None) -> list[dict[str, Any]]:
+    startup_task_id = normalize_text(startup_task.get("id")) if startup_task else ""
+    support_tracks: list[dict[str, Any]] = []
+    for task in tasks:
+        if normalize_text(task.get("id")) == startup_task_id:
+            continue
+        support_tracks.append(
+            {
+                "id": normalize_text(task.get("id")),
+                "title": normalize_text(task.get("title")),
+                "column": normalize_text(task.get("column")),
+                "owner": normalize_text(task.get("owner")),
+                "project": normalize_text(task.get("project")),
+                "next_step": normalize_text(task.get("next_step")),
+                "minimal_read_first": minimal_read_first(task),
+                "recommended_next_command": recommended_task_command(task, task_missing_for_safe_continue(task)),
+            }
+        )
+        if len(support_tracks) == 2:
+            break
+    return support_tracks
 
 
 def startup_focus_task(tasks: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -1591,6 +1633,7 @@ def build_status_payload(
         "updated_at": normalize_text(active_work.get("updated_at")),
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "startup_focus": startup_focus_projection(startup_task),
+        "support_tracks": support_track_projection(ordered_live_tasks, startup_task),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
         "minimal_read_first": minimal_read_first(startup_task) if startup_task else [],
@@ -1624,6 +1667,11 @@ def write_session_bootstrap(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    MEMORY_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MEMORY_INDEX_PATH.write_text(
+        json.dumps(build_memory_index(payload), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return payload
 
 
@@ -1649,6 +1697,15 @@ def render_status_text(payload: dict[str, Any]) -> str:
                 f"- task_command: {startup_focus.get('recommended_next_command') or '-'}",
             ]
         )
+    lines.extend(["", "Support Tracks"])
+    support_tracks = payload.get("support_tracks", []) or []
+    if support_tracks:
+        for task in support_tracks:
+            lines.append(
+                f"- {task['id']} [{task['column']}] {task['title']} ({task['owner']}) | next_step: {task['next_step'] or '-'}"
+            )
+    else:
+        lines.append("- None")
     lines.extend(["", "Active Tasks"])
     active_tasks = payload.get("active_tasks", []) or []
     if active_tasks:
