@@ -922,6 +922,7 @@ def extract_section_items(path: Path, heading: str) -> list[str]:
 
 
 def packet_updated_at(path: Path) -> str:
+    candidates: list[datetime] = []
     manifest_path = path.parent / "manifest.json"
     if manifest_path.exists():
         try:
@@ -930,16 +931,18 @@ def packet_updated_at(path: Path) -> str:
             payload = {}
         updated_at = normalize_text(payload.get("updated_at"))
         if updated_at:
-            return updated_at
+            parsed_manifest = parse_datetime(updated_at)
+            if parsed_manifest is not None:
+                candidates.append(parsed_manifest)
     if not path.exists():
-        return ""
+        return max(candidates).date().isoformat() if candidates else ""
     content = path.read_text(encoding="utf-8")
     matches = DATE_PATTERN.findall("\n".join(content.splitlines()[:80]))
     parsed_matches = [parse_datetime(item) for item in matches]
-    parsed = [item for item in parsed_matches if item is not None]
-    if not parsed:
+    candidates.extend(item for item in parsed_matches if item is not None)
+    if not candidates:
         return ""
-    latest = max(parsed)
+    latest = max(candidates)
     return latest.date().isoformat()
 
 
@@ -949,14 +952,16 @@ def sort_tasks(
 ) -> list[dict[str, Any]]:
     column_order, _ = get_board_columns(workflow_registry)
     priority = {column: index for index, column in enumerate(column_order)}
-    return sorted(
-        tasks,
-        key=lambda task: (
-            priority.get(normalize_text(task.get("column")), len(priority)),
-            normalize_text(task.get("project")),
-            normalize_text(task.get("title")),
-        ),
-    )
+    return [
+        task
+        for _, task in sorted(
+            enumerate(tasks),
+            key=lambda item: (
+                priority.get(normalize_text(item[1].get("column")), len(priority)),
+                item[0],
+            ),
+        )
+    ]
 
 
 def project_live_task(task: dict[str, Any]) -> dict[str, str]:

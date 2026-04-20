@@ -941,23 +941,23 @@ def actionable_tasks(
     project: str = "",
 ) -> list[dict[str, Any]]:
     priority = {column: index for index, column in enumerate(AUTOPILOT_COLUMN_PRIORITY)}
-    filtered: list[dict[str, Any]] = []
-    for task in tasks:
+    filtered: list[tuple[int, dict[str, Any]]] = []
+    for index, task in enumerate(tasks):
         column = str(task.get("column") or "").strip()
         task_project = str(task.get("project") or "").strip()
         if project and task_project != project:
             continue
         if column in {"blocked", "waiting", "accepted", "synced", "done"}:
             continue
-        filtered.append(task)
-    return sorted(
+        filtered.append((index, task))
+    ordered = sorted(
         filtered,
-        key=lambda task: (
-            priority.get(str(task.get("column") or "").strip(), len(priority)),
-            str(task.get("project") or "").strip(),
-            str(task.get("title") or "").strip(),
+        key=lambda item: (
+            priority.get(str(item[1].get("column") or "").strip(), len(priority)),
+            item[0],
         ),
     )
+    return [task for _, task in ordered]
 
 
 def founder_attention_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -971,6 +971,25 @@ def founder_attention_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]
         if accepts_result == "ceo" or risk_tier == "high" or autonomy_tier == "A1":
             items.append(task)
     return items
+
+
+def routing_execution_tasks(
+    tasks: list[dict[str, Any]],
+    founder_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    founder_ids = {
+        hq_control_plane.normalize_text(task.get("id"))
+        for task in founder_items
+        if hq_control_plane.normalize_text(task.get("id"))
+    }
+    if not founder_ids:
+        return tasks
+    execution_tasks = [
+        task
+        for task in tasks
+        if hq_control_plane.normalize_text(task.get("id")) not in founder_ids
+    ]
+    return execution_tasks or tasks
 
 
 def choose_parallel_support_tasks(
@@ -1022,9 +1041,10 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
             print("error=no actionable tasks in active-work.json")
         return 2
 
-    primary = tasks[0]
-    support_tasks = choose_parallel_support_tasks(primary, tasks, limit=2)
     founder_items = founder_attention_tasks(payload["tasks"])
+    route_tasks = routing_execution_tasks(tasks, founder_items)
+    primary = route_tasks[0]
+    support_tasks = choose_parallel_support_tasks(primary, route_tasks, limit=2)
     founder_lines = [task_route_line("Founder review", task) for task in founder_items]
     spec_task_name = args.task_name or "Route next slice"
     session = args.session or f"session-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
@@ -1046,8 +1066,16 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
         primary_file=str(primary.get("primary_update_file") or "").strip(),
         why=[
             "The founder should not need to relaunch Codex and restate the next move.",
-            f"The highest-priority actionable task is currently '{primary.get('title')}' in column "
-            f"'{primary.get('column')}'.",
+            (
+                f"Founder-review items stay explicit, and the current primary move is the "
+                f"highest-priority execution-ready task '{primary.get('title')}' in column "
+                f"'{primary.get('column')}'."
+                if route_tasks != tasks
+                else (
+                    f"The highest-priority actionable task is currently '{primary.get('title')}' "
+                    f"in column '{primary.get('column')}'."
+                )
+            ),
             (
                 f"Founder-only review is pending on {len(founder_items)} item(s)."
                 if founder_items
@@ -1076,7 +1104,7 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
         ],
         acceptance=[
             "A future wake-up can identify the primary move, up to two adjacent support tracks, and founder-only review items from this packet alone.",
-            "The selected task aligns with the highest-priority actionable column ordering.",
+            "The selected task keeps founder-review items visible without displacing live execution.",
         ],
         question=[
             "Should the heartbeat stay daily or move to a tighter interval after the loop proves stable?"

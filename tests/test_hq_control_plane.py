@@ -509,6 +509,61 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("validation=ok", output)
         self.assertIn("executing task has stale handoff", output)
 
+    def test_status_uses_newer_markdown_date_when_manifest_is_stale(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["updated_at"] = "2026-04-20"
+        payload["tasks"][0]["column"] = "this_week"
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        spec_dir = self.temp_root / ".hq" / "specs" / "task-1"
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "LATEST.md").write_text(
+            "\n".join(
+                [
+                    "# Spec",
+                    "",
+                    "- Updated At: 2026-04-20T08:05:00Z",
+                    "- Task: Run first loop",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (spec_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "task": "Run first loop",
+                    "task_slug": "task-1",
+                    "kind": "spec",
+                    "owner": "delivery",
+                    "updated_at": "2026-04-18T23:31:17Z",
+                    "latest_file": ".hq/specs/task-1/LATEST.md",
+                    "session_file": ".hq/specs/task-1/LATEST.md",
+                    "primary_file": "README.md",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertFalse(
+            any(
+                item["task_id"] == "task-1" and item["kind"] == "spec" and item["status"] == "stale"
+                for item in payload["stale_items"]
+            )
+        )
+
     def test_validate_requires_known_subagent_context_protocol_role(self):
         policies_path = self.temp_root / "05 AI Control Plane" / "operating-policies.json"
         payload = json.loads(policies_path.read_text(encoding="utf-8"))
@@ -689,6 +744,80 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(memory_index["support_tracks"][0]["project"], "HQ Bootstrap")
         self.assertEqual(memory_index["support_tracks"][1]["id"], "task-other-project")
         self.assertEqual(memory_index["counts"]["active_tasks"], 4)
+
+    def test_status_preserves_queue_order_within_same_column_for_startup_focus(self):
+        (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
+        workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
+        workflow_payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+        workflow_payload["board_columns"].insert(-1, {"id": "executing", "title": "Executing"})
+        workflow_payload["workflows"][0]["states"].insert(-1, "executing")
+        workflow_path.write_text(
+            json.dumps(workflow_payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        active_work_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-20",
+                    "operating_mode": "stage-2-foundation",
+                    "objective": {
+                        "id": "obj-1",
+                        "title": "Run one governed loop",
+                        "window": {"start": "2026-04-15", "target_end": "2026-05-31"},
+                    },
+                    "tasks": [
+                        {
+                            "id": "task-ready-accounts",
+                            "title": "Work ready accounts",
+                            "column": "executing",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "Founder Revenue Sprint",
+                            "next_step": "Work the ready accounts first.",
+                            "done_when": "Accounts are worked.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "ceo",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
+                            "id": "task-alpha-pilot",
+                            "title": "Alpha pilot",
+                            "column": "executing",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "Founder Revenue Sprint",
+                            "next_step": "Run the pilot second.",
+                            "done_when": "Pilot is run.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "ceo",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertEqual(payload["startup_focus"]["id"], "task-ready-accounts")
+        self.assertEqual(payload["support_tracks"][0]["id"], "task-alpha-pilot")
 
     def test_archive_moves_done_tasks_to_runtime_archive_and_preserves_ids(self):
         (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
