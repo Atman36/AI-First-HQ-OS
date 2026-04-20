@@ -633,11 +633,15 @@ class HqControlPlaneTests(unittest.TestCase):
         written_payload = json.loads(bootstrap_path.read_text(encoding="utf-8"))
         self.assertEqual(payload, written_payload)
         self.assertEqual(payload["objective"], "Run one governed loop")
+        self.assertEqual(payload["startup_focus"]["id"], "task-live")
+        self.assertEqual(payload["startup_focus"]["title"], "Ship session bootstrap")
+        self.assertEqual(payload["startup_focus"]["recommended_next_command"], "python3 scripts/hq_control_plane.py status")
         self.assertEqual([task["id"] for task in payload["active_tasks"]], ["task-live", "task-blocked"])
         self.assertEqual(payload["active_tasks"][0]["next_step"], "Add the status projection command.")
         self.assertEqual(payload["blocked"][0]["id"], "task-blocked")
         self.assertIn("Founder review on legal wording", payload["blocked"][0]["reason"])
         self.assertTrue(payload["stale_items"])
+        self.assertEqual(payload["stale_summary"]["total"], len(payload["stale_items"]))
         self.assertTrue(
             any(item["task_id"] == "task-live" and item["kind"] == "spec" for item in payload["stale_items"])
         )
@@ -782,6 +786,8 @@ class HqControlPlaneTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         output = buffer.getvalue()
+        self.assertIn("Startup Focus", output)
+        self.assertIn("task_command:", output)
         self.assertIn("Active Tasks", output)
         self.assertIn("Current Packets", output)
         self.assertIn("Minimal Read First", output)
@@ -789,6 +795,7 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn(".hq/handoffs/task-1/LATEST.md", output)
         self.assertIn("Blocked Tasks", output)
         self.assertIn("Stale Items", output)
+        self.assertIn("total=", output)
         self.assertIn("Recommended Next Command", output)
 
     def test_status_scaffolds_missing_runtime_packets_for_live_tasks(self):
@@ -806,6 +813,8 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertTrue(handoff_path.exists())
         self.assertEqual(payload["current_packets"][0]["spec"], ".hq/specs/task-1/LATEST.md")
         self.assertEqual(payload["current_packets"][0]["handoff"], ".hq/handoffs/task-1/LATEST.md")
+        self.assertEqual(payload["startup_focus"]["id"], "task-1")
+        self.assertEqual(payload["startup_focus"]["minimal_read_first"], payload["minimal_read_first"])
         self.assertIn("05 AI Control Plane/active-work.json", payload["minimal_read_first"])
         self.assertIn(".hq/specs/task-1/LATEST.md", payload["minimal_read_first"])
         self.assertIn(".hq/handoffs/task-1/LATEST.md", payload["minimal_read_first"])
@@ -831,6 +840,7 @@ class HqControlPlaneTests(unittest.TestCase):
                 for item in payload["stale_items"]
             )
         )
+        self.assertEqual(payload["stale_summary"]["by_status"]["stale"], len(payload["stale_items"]))
 
     def test_status_includes_founder_weekly_review_workflow_input(self):
         telemetry_review_path = self.temp_root / ".hq" / "telemetry" / "reviews" / "LATEST.json"

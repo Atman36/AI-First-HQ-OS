@@ -1165,6 +1165,21 @@ def scaffolded_packet_stale_items(
     return stale_items
 
 
+def summarize_stale_items(stale_items: list[dict[str, str]]) -> dict[str, Any]:
+    by_status: dict[str, int] = {}
+    by_kind: dict[str, int] = {}
+    for item in stale_items:
+        status = normalize_text(item.get("status")) or "unknown"
+        kind = normalize_text(item.get("kind")) or "unknown"
+        by_status[status] = by_status.get(status, 0) + 1
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+    return {
+        "total": len(stale_items),
+        "by_status": by_status,
+        "by_kind": by_kind,
+    }
+
+
 def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
     if any(normalize_text(task.get("column")) in ACTIONABLE_COLUMNS for task in active_tasks):
         return "python3 scripts/hq_runtime.py route-next-slice"
@@ -1296,6 +1311,23 @@ def minimal_read_first(task: dict[str, Any]) -> list[str]:
     items.extend(relative_display(path) for path in task_packet_paths(task).values())
     normalized = [item for item in items if item]
     return list(dict.fromkeys(normalized))
+
+
+def startup_focus_projection(task: dict[str, Any] | None) -> dict[str, Any]:
+    if not task:
+        return {}
+    return {
+        "id": normalize_text(task.get("id")),
+        "title": normalize_text(task.get("title")),
+        "column": normalize_text(task.get("column")),
+        "owner": normalize_text(task.get("owner")),
+        "manager": normalize_text(task.get("manager")),
+        "project": normalize_text(task.get("project")),
+        "next_step": normalize_text(task.get("next_step")),
+        "primary_update_file": normalize_text(task.get("primary_update_file")),
+        "minimal_read_first": minimal_read_first(task),
+        "recommended_next_command": recommended_task_command(task, task_missing_for_safe_continue(task)),
+    }
 
 
 def startup_focus_task(tasks: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -1558,11 +1590,13 @@ def build_status_payload(
         "generated_at": utc_now(),
         "updated_at": normalize_text(active_work.get("updated_at")),
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
+        "startup_focus": startup_focus_projection(startup_task),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
         "minimal_read_first": minimal_read_first(startup_task) if startup_task else [],
         "blocked": blocked_tasks,
         "stale_items": stale_items,
+        "stale_summary": summarize_stale_items(stale_items),
         "workflow_inputs": {
             "founder_weekly_review": build_founder_weekly_review_input(
                 active_work,
@@ -1599,9 +1633,23 @@ def render_status_text(payload: dict[str, Any]) -> str:
         f"Objective: {payload.get('objective') or '-'}",
         f"Updated At: {payload.get('updated_at') or '-'}",
         f"Bootstrap File: {relative_display(SESSION_BOOTSTRAP_PATH)}",
-        "",
-        "Active Tasks",
     ]
+    startup_focus = payload.get("startup_focus") or {}
+    if startup_focus:
+        lines.extend(
+            [
+                "",
+                "Startup Focus",
+                (
+                    f"- {startup_focus.get('id') or '-'} [{startup_focus.get('column') or '-'}] "
+                    f"{startup_focus.get('title') or '-'} ({startup_focus.get('owner') or '-'})"
+                ),
+                f"- next_step: {startup_focus.get('next_step') or '-'}",
+                f"- primary_update_file: {startup_focus.get('primary_update_file') or '-'}",
+                f"- task_command: {startup_focus.get('recommended_next_command') or '-'}",
+            ]
+        )
+    lines.extend(["", "Active Tasks"])
     active_tasks = payload.get("active_tasks", []) or []
     if active_tasks:
         for task in active_tasks:
@@ -1638,12 +1686,31 @@ def render_status_text(payload: dict[str, Any]) -> str:
 
     lines.extend(["", "Stale Items"])
     stale_items = payload.get("stale_items", []) or []
+    stale_summary = payload.get("stale_summary") or {}
     if stale_items:
-        for item in stale_items:
+        summary_parts: list[str] = []
+        total = stale_summary.get("total")
+        if isinstance(total, int):
+            summary_parts.append(f"total={total}")
+        by_status = stale_summary.get("by_status")
+        if isinstance(by_status, dict) and by_status:
+            summary_parts.append(
+                "status=" + ", ".join(f"{key}:{value}" for key, value in sorted(by_status.items()))
+            )
+        by_kind = stale_summary.get("by_kind")
+        if isinstance(by_kind, dict) and by_kind:
+            summary_parts.append(
+                "kind=" + ", ".join(f"{key}:{value}" for key, value in sorted(by_kind.items()))
+            )
+        if summary_parts:
+            lines.append("- " + " | ".join(summary_parts))
+        for item in stale_items[:5]:
             updated_at = f" | updated_at: {item['updated_at']}" if item.get("updated_at") else ""
             lines.append(
                 f"- {item['task_id']} {item['kind']} [{item['status']}] {item['path']}{updated_at} | {item['reason']}"
             )
+        if len(stale_items) > 5:
+            lines.append(f"- ... {len(stale_items) - 5} more stale items hidden")
     else:
         lines.append("- None")
 
