@@ -1280,6 +1280,17 @@ def task_packet_paths(task: dict[str, Any]) -> dict[str, Path]:
     return {kind: packet_path(task, kind) for kind in STALE_PACKET_KINDS}
 
 
+def task_packet_summary(task: dict[str, Any]) -> dict[str, str]:
+    paths = task_packet_paths(task)
+    return {
+        "id": normalize_text(task.get("id")),
+        "title": normalize_text(task.get("title")),
+        "column": normalize_text(task.get("column")),
+        "spec": relative_display(paths["spec"]),
+        "handoff": relative_display(paths["handoff"]),
+    }
+
+
 def task_missing_for_safe_continue(task: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     paths = task_packet_paths(task)
@@ -1532,6 +1543,7 @@ def build_status_payload(
         "updated_at": normalize_text(active_work.get("updated_at")),
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
+        "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
         "blocked": blocked_tasks,
         "stale_items": stale_items,
         "workflow_inputs": {
@@ -1578,6 +1590,16 @@ def render_status_text(payload: dict[str, Any]) -> str:
         for task in active_tasks:
             lines.append(
                 f"- {task['id']} [{task['column']}] {task['title']} ({task['owner']}) | next_step: {task['next_step'] or '-'}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "Current Packets"])
+    current_packets = payload.get("current_packets", []) or []
+    if current_packets:
+        for item in current_packets:
+            lines.append(
+                f"- {item['id']} [{item['column']}] | spec: {item['spec']} | handoff: {item['handoff']}"
             )
     else:
         lines.append("- None")

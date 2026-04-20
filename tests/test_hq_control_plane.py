@@ -783,6 +783,9 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         output = buffer.getvalue()
         self.assertIn("Active Tasks", output)
+        self.assertIn("Current Packets", output)
+        self.assertIn(".hq/specs/task-1/LATEST.md", output)
+        self.assertIn(".hq/handoffs/task-1/LATEST.md", output)
         self.assertIn("Blocked Tasks", output)
         self.assertIn("Stale Items", output)
         self.assertIn("Recommended Next Command", output)
@@ -800,6 +803,8 @@ class HqControlPlaneTests(unittest.TestCase):
         handoff_path = self.temp_root / ".hq" / "handoffs" / "task-1" / "LATEST.md"
         self.assertTrue(spec_path.exists())
         self.assertTrue(handoff_path.exists())
+        self.assertEqual(payload["current_packets"][0]["spec"], ".hq/specs/task-1/LATEST.md")
+        self.assertEqual(payload["current_packets"][0]["handoff"], ".hq/handoffs/task-1/LATEST.md")
         self.assertFalse(
             any(item["task_id"] == "task-1" and item["status"] == "missing" for item in payload["stale_items"])
         )
