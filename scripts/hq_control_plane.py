@@ -24,6 +24,7 @@ AGENT_REGISTRY_PATH = CONTROL_PLANE_DIR / "agent-registry.json"
 POLICIES_PATH = CONTROL_PLANE_DIR / "operating-policies.json"
 WORKFLOW_REGISTRY_PATH = CONTROL_PLANE_DIR / "workflow-registry.json"
 METRICS_REGISTRY_PATH = CONTROL_PLANE_DIR / "metrics-registry.json"
+EXECUTION_CONFIG_PATH = CONTROL_PLANE_DIR / "execution-config.json"
 TASK_TEMPLATES_JSON_PATH = CONTROL_PLANE_DIR / "task-templates.json"
 TASK_TEMPLATES_MD_PATH = CONTROL_PLANE_DIR / "task-templates.md"
 TASK_BOARD_PATH = REPO_ROOT / "02 Planning" / "Task Board.md"
@@ -32,6 +33,7 @@ MEMORY_INDEX_PATH = REPO_ROOT / ".hq" / "state" / "memory-index.json"
 ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
 QUICK_CONTEXT_PATH = REPO_ROOT / ".hq" / "state" / "QUICK_CONTEXT.md"
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
+WORKFLOW_ARTIFACT_PATH = PRIVATE_ROOT / "state" / "WORKFLOW.generated.md"
 TELEMETRY_ROOT = PRIVATE_ROOT / "telemetry"
 TELEMETRY_REVIEW_PATH = TELEMETRY_ROOT / "reviews" / "LATEST.json"
 MISSION_RUNTIME_ROOT = PRIVATE_ROOT / "state" / "mission-runtime"
@@ -41,6 +43,7 @@ SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 FOUNDER_WEEKLY_REVIEW_BRIDGE_SCHEMA_PATH = (
     SCHEMA_DIR / "founder-weekly-review-bridge.schema.json"
 )
+EXECUTION_CONFIG_SCHEMA_PATH = SCHEMA_DIR / "execution-config.schema.json"
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
     "agent_registry": SCHEMA_DIR / "agent-registry.schema.json",
@@ -68,6 +71,69 @@ NON_ACTIONABLE_PREFIXES = {
     "summary",
     "tbd",
     "todo",
+}
+EXECUTION_PRESETS: dict[str, dict[str, Any]] = {
+    "light": {
+        "description": "Low-friction local execution with lighter review defaults.",
+        "workflow_mode": "light",
+        "approvals": {
+            "default_internal_change_approval": "owner_or_accepting_role",
+            "require_governor_for_medium_risk": False,
+            "require_governor_for_control_plane_changes": True,
+            "require_human_for_external_actions": True,
+            "require_human_for_high_risk": True,
+        },
+        "execution_profile": {
+            "preflight_required": False,
+            "auto_scaffold_packets": True,
+            "auto_generate_workflow_artifact": True,
+            "verification_depth": "minimal",
+            "runner_model_selection": "explicit_required",
+        },
+    },
+    "normal": {
+        "description": "Balanced default for governed internal execution.",
+        "workflow_mode": "normal",
+        "approvals": {
+            "default_internal_change_approval": "governor_or_accepting_role",
+            "require_governor_for_medium_risk": True,
+            "require_governor_for_control_plane_changes": True,
+            "require_human_for_external_actions": True,
+            "require_human_for_high_risk": True,
+        },
+        "execution_profile": {
+            "preflight_required": True,
+            "auto_scaffold_packets": True,
+            "auto_generate_workflow_artifact": True,
+            "verification_depth": "standard",
+            "runner_model_selection": "explicit_required",
+        },
+    },
+    "strict": {
+        "description": "Tighter review posture with strict preflight and verification.",
+        "workflow_mode": "strict",
+        "approvals": {
+            "default_internal_change_approval": "governor_or_accepting_role",
+            "require_governor_for_medium_risk": True,
+            "require_governor_for_control_plane_changes": True,
+            "require_human_for_external_actions": True,
+            "require_human_for_high_risk": True,
+        },
+        "execution_profile": {
+            "preflight_required": True,
+            "auto_scaffold_packets": True,
+            "auto_generate_workflow_artifact": True,
+            "verification_depth": "strict",
+            "runner_model_selection": "explicit_required",
+        },
+    },
+}
+DEFAULT_EXECUTION_PRESET = "normal"
+DEFAULT_UNSAFE_ACTIONS = {
+    "allow_external_writes": False,
+    "allow_destructive_tracked_delete": False,
+    "allow_unreviewed_publish": False,
+    "allow_implicit_runner_model": False,
 }
 
 
@@ -197,6 +263,63 @@ def get_metric_ids(metrics: dict[str, Any]) -> set[str]:
                 if metric_id:
                     metric_ids.add(metric_id)
     return metric_ids
+
+
+def bool_text(value: Any) -> str:
+    return "true" if bool(value) else "false"
+
+
+def build_execution_config_from_preset(
+    preset_id: str,
+    active_work: dict[str, Any],
+    policies: dict[str, Any],
+    *,
+    source: str,
+) -> dict[str, Any]:
+    normalized_preset = normalize_text(preset_id) or DEFAULT_EXECUTION_PRESET
+    if normalized_preset not in EXECUTION_PRESETS:
+        allowed = ", ".join(sorted(EXECUTION_PRESETS))
+        raise ValidationError(f"unsupported execution preset '{normalized_preset}' (expected one of: {allowed})")
+
+    preset = EXECUTION_PRESETS[normalized_preset]
+    return {
+        "version": 1,
+        "updated_at": utc_today(),
+        "profile": normalized_preset,
+        "profile_source": source,
+        "profile_description": preset["description"],
+        "operating_mode": normalize_text(active_work.get("operating_mode")) or normalize_text(policies.get("stage")),
+        "policy_stage": normalize_text(policies.get("stage")),
+        "workflow_mode": preset["workflow_mode"],
+        "approvals": dict(preset["approvals"]),
+        "execution_profile": dict(preset["execution_profile"]),
+        "unsafe_actions": dict(DEFAULT_UNSAFE_ACTIONS),
+    }
+
+
+def load_or_infer_execution_config(
+    active_work: dict[str, Any],
+    policies: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    if not EXECUTION_CONFIG_PATH.exists():
+        return (
+            build_execution_config_from_preset(
+                DEFAULT_EXECUTION_PRESET,
+                active_work,
+                policies,
+                source="inferred",
+            ),
+            "inferred",
+        )
+
+    payload = load_json(EXECUTION_CONFIG_PATH)
+    if not isinstance(payload, dict):
+        raise ValidationError(f"invalid JSON in {EXECUTION_CONFIG_PATH}: expected object")
+
+    context = ValidationContext()
+    validate_schema(payload, EXECUTION_CONFIG_SCHEMA_PATH, "execution-config.json", context)
+    context.raise_if_any()
+    return payload, "materialized"
 
 
 def format_issue_path(root: str, parts: list[Any]) -> str:
@@ -740,6 +863,12 @@ def validate_control_plane() -> dict[str, Any]:
         context,
     )
     context.raise_if_any()
+    execution_config, execution_config_state = load_or_infer_execution_config(
+        bundle["active_work"],
+        bundle["policies"],
+    )
+    bundle["execution_config"] = execution_config
+    bundle["execution_config_state"] = execution_config_state
     bundle["validation_warnings"] = [str(item) for item in context.warnings]
     return bundle
 
@@ -810,6 +939,173 @@ def render_board(active_work: dict[str, Any], workflow_registry: dict[str, Any])
 def write_task_board(active_work: dict[str, Any], workflow_registry: dict[str, Any]) -> None:
     TASK_BOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
     TASK_BOARD_PATH.write_text(render_board(active_work, workflow_registry), encoding="utf-8")
+
+
+def render_workflow_artifact(
+    active_work: dict[str, Any],
+    workflow_registry: dict[str, Any],
+    policies: dict[str, Any],
+    execution_config: dict[str, Any],
+    execution_config_state: str,
+) -> str:
+    objective = active_work.get("objective", {})
+    status_payload = build_status_payload(active_work, workflow_registry)
+    column_order, column_titles = get_board_columns(workflow_registry)
+    workflow_lookup = get_workflows(workflow_registry)
+    tasks = [
+        task
+        for task in active_work.get("tasks", []) or []
+        if isinstance(task, dict)
+    ]
+    used_workflow_ids: list[str] = []
+    seen_workflow_ids: set[str] = set()
+    for task in tasks:
+        workflow_id = normalize_text(task.get("workflow"))
+        if workflow_id and workflow_id not in seen_workflow_ids:
+            seen_workflow_ids.add(workflow_id)
+            used_workflow_ids.append(workflow_id)
+
+    lines = [
+        "# Workflow Artifact",
+        "",
+        "> Generated from the HQ control plane. Do not edit by hand; regenerate via `python3 scripts/hq_control_plane.py sync` or `status`.",
+        "",
+        f"- Generated At: {utc_now()}",
+        f"- Objective: {normalize_text(objective.get('title')) or '-'}",
+        f"- Operating Mode: {normalize_text(active_work.get('operating_mode')) or '-'}",
+        f"- Policy Stage: {normalize_text(policies.get('stage')) or '-'}",
+        f"- Execution Config: {relative_display(EXECUTION_CONFIG_PATH)} ({execution_config_state})",
+        f"- Workflow Artifact: {relative_display(WORKFLOW_ARTIFACT_PATH)}",
+        "",
+        "## Sources",
+        f"- active_work: {relative_display(ACTIVE_WORK_PATH)}",
+        f"- workflow_registry: {relative_display(WORKFLOW_REGISTRY_PATH)}",
+        f"- operating_policies: {relative_display(POLICIES_PATH)}",
+    ]
+    if execution_config_state == "materialized":
+        lines.append(f"- execution_config: {relative_display(EXECUTION_CONFIG_PATH)}")
+    else:
+        lines.append(
+            f"- execution_config: inferred `{DEFAULT_EXECUTION_PRESET}` baseline until `{relative_display(EXECUTION_CONFIG_PATH)}` is materialized"
+        )
+
+    startup_focus = status_payload.get("startup_focus") or {}
+    lines.extend(
+        [
+            "",
+            "## Execution Defaults",
+            f"- Profile: {normalize_text(execution_config.get('profile')) or '-'}",
+            f"- Profile Source: {normalize_text(execution_config.get('profile_source')) or execution_config_state}",
+            f"- Workflow Mode: {normalize_text(execution_config.get('workflow_mode')) or '-'}",
+            f"- Default Internal Change Approval: {normalize_text((execution_config.get('approvals') or {}).get('default_internal_change_approval')) or '-'}",
+            f"- Governor Review For Medium Risk: {bool_text((execution_config.get('approvals') or {}).get('require_governor_for_medium_risk'))}",
+            f"- Governor Review For Control Plane Changes: {bool_text((execution_config.get('approvals') or {}).get('require_governor_for_control_plane_changes'))}",
+            f"- Human Review For External Actions: {bool_text((execution_config.get('approvals') or {}).get('require_human_for_external_actions'))}",
+            f"- Preflight Required: {bool_text((execution_config.get('execution_profile') or {}).get('preflight_required'))}",
+            f"- Verification Depth: {normalize_text((execution_config.get('execution_profile') or {}).get('verification_depth')) or '-'}",
+            f"- Runner Model Selection: {normalize_text((execution_config.get('execution_profile') or {}).get('runner_model_selection')) or '-'}",
+            f"- Allow External Writes: {bool_text((execution_config.get('unsafe_actions') or {}).get('allow_external_writes'))}",
+            f"- Allow Destructive Tracked Delete: {bool_text((execution_config.get('unsafe_actions') or {}).get('allow_destructive_tracked_delete'))}",
+            f"- Allow Unreviewed Publish: {bool_text((execution_config.get('unsafe_actions') or {}).get('allow_unreviewed_publish'))}",
+            f"- Allow Implicit Runner Model: {bool_text((execution_config.get('unsafe_actions') or {}).get('allow_implicit_runner_model'))}",
+            "",
+            "## Queue Snapshot",
+            f"- Updated At: {normalize_text(active_work.get('updated_at')) or '-'}",
+            f"- Live Tasks: {len(status_payload.get('active_tasks', []) or [])}",
+            f"- Blocked Tasks: {len(status_payload.get('blocked', []) or [])}",
+            f"- Startup Focus: {startup_focus.get('id') or '-'} | {startup_focus.get('title') or '-'}",
+            f"- Recommended Next Command: {status_payload.get('recommended_next_command') or '-'}",
+        ]
+    )
+
+    for column in column_order:
+        column_tasks = [task for task in tasks if normalize_text(task.get("column")) == column]
+        if not column_tasks:
+            continue
+        lines.extend(["", f"## Column: {column_titles.get(column, column.title())}"])
+        for task in column_tasks:
+            lines.append(
+                "- {id} | owner={owner} | accepts={accepts} | workflow={workflow} | next_step={next_step}".format(
+                    id=normalize_text(task.get("id")) or "-",
+                    owner=normalize_text(task.get("owner")) or "-",
+                    accepts=normalize_text(task.get("accepts_result")) or "-",
+                    workflow=normalize_text(task.get("workflow")) or "-",
+                    next_step=normalize_text(task.get("next_step")) or "-",
+                )
+            )
+
+    lines.extend(["", "## Workflow Contracts"])
+    if used_workflow_ids:
+        for workflow_id in used_workflow_ids:
+            workflow = workflow_lookup.get(workflow_id)
+            if not workflow:
+                lines.append(f"- {workflow_id}: missing from workflow-registry.json")
+                continue
+            lines.extend(
+                [
+                    f"- Workflow: {workflow_id}",
+                    f"  purpose: {normalize_text(workflow.get('purpose')) or '-'}",
+                    "  states: " + ", ".join(normalize_text(item) for item in workflow.get("states", []) or []),
+                    "  required_task_fields: "
+                    + ", ".join(
+                        normalize_text(item) for item in workflow.get("required_task_fields", []) or []
+                    ),
+                    "  required_telemetry_events: "
+                    + ", ".join(
+                        normalize_text(item)
+                        for item in workflow.get("required_telemetry_events", []) or []
+                    ),
+                ]
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(
+        [
+            "",
+            "## Policy Surface",
+            "- human_only_actions:",
+        ]
+    )
+    for item in (policies.get("approvals", {}) or {}).get("human_only_actions", []) or []:
+        lines.append(f"  - {normalize_text(item)}")
+    lines.append("- governor_review_required_for:")
+    for item in (policies.get("approvals", {}) or {}).get("governor_review_required_for", []) or []:
+        lines.append(f"  - {normalize_text(item)}")
+    lines.append(
+        "- telemetry_event_types: "
+        + ", ".join(
+            normalize_text(item)
+            for item in ((workflow_registry.get("telemetry", {}) or {}).get("event_types", []) or [])
+        )
+    )
+    lines.append(
+        "- telemetry_statuses: "
+        + ", ".join(
+            normalize_text(item)
+            for item in ((workflow_registry.get("telemetry", {}) or {}).get("statuses", []) or [])
+        )
+    )
+    return "\n".join(lines) + "\n"
+
+
+def write_workflow_artifact(
+    active_work: dict[str, Any],
+    workflow_registry: dict[str, Any],
+    policies: dict[str, Any],
+    execution_config: dict[str, Any],
+    execution_config_state: str,
+) -> None:
+    write_text(
+        WORKFLOW_ARTIFACT_PATH,
+        render_workflow_artifact(
+            active_work,
+            workflow_registry,
+            policies,
+            execution_config,
+            execution_config_state,
+        ),
+    )
 
 
 def utc_now() -> str:
@@ -1922,6 +2218,7 @@ def render_status_text(payload: dict[str, Any]) -> str:
         f"Objective: {payload.get('objective') or '-'}",
         f"Updated At: {payload.get('updated_at') or '-'}",
         f"Bootstrap File: {relative_display(SESSION_BOOTSTRAP_PATH)}",
+        f"Workflow Artifact: {relative_display(WORKFLOW_ARTIFACT_PATH)}",
     ]
     startup_focus = payload.get("startup_focus") or {}
     if startup_focus:
@@ -2064,6 +2361,13 @@ def status_command(args: argparse.Namespace) -> int:
         bundle["active_work"],
         bundle["workflow_registry"],
         created_packets=created_packets,
+    )
+    write_workflow_artifact(
+        bundle["active_work"],
+        bundle["workflow_registry"],
+        bundle["policies"],
+        bundle["execution_config"],
+        bundle["execution_config_state"],
     )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -2228,12 +2532,57 @@ def create_task_command(args: argparse.Namespace) -> int:
 
     ensure_task_packets([new_task])
     write_task_board(active_work, bundle["workflow_registry"])
+    write_workflow_artifact(
+        active_work,
+        bundle["workflow_registry"],
+        bundle["policies"],
+        bundle["execution_config"],
+        bundle["execution_config_state"],
+    )
 
     print("create_task=ok")
     print(f"task_id={task_id}")
     print(f"column=intake")
     print(f"board_written={relative_display(TASK_BOARD_PATH)}")
+    print(f"workflow_artifact_written={relative_display(WORKFLOW_ARTIFACT_PATH)}")
     print(render_recommended_next_command(f"python3 scripts/hq_control_plane.py resume --task-id {task_id}"))
+    return 0
+
+
+def init_profile_command(args: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    profile = normalize_text(args.preset) or DEFAULT_EXECUTION_PRESET
+
+    if EXECUTION_CONFIG_PATH.exists() and not args.force:
+        print("init_profile=failed")
+        print(f"profile={profile}")
+        print(f"reason={relative_display(EXECUTION_CONFIG_PATH)} already exists; rerun with --force to overwrite")
+        return 1
+
+    payload = build_execution_config_from_preset(
+        profile,
+        bundle["active_work"],
+        bundle["policies"],
+        source="materialized",
+    )
+    write_json(EXECUTION_CONFIG_PATH, payload)
+    write_workflow_artifact(
+        bundle["active_work"],
+        bundle["workflow_registry"],
+        bundle["policies"],
+        payload,
+        "materialized",
+    )
+
+    print("init_profile=ok")
+    print(f"profile={profile}")
+    print(f"config_written={relative_display(EXECUTION_CONFIG_PATH)}")
+    print(f"workflow_artifact_written={relative_display(WORKFLOW_ARTIFACT_PATH)}")
+    if args.force:
+        print("mode=overwrite")
+    else:
+        print("mode=create")
+    print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
     return 0
 
 
@@ -2245,6 +2594,12 @@ def validate_command(_: argparse.Namespace) -> int:
         print(f"warning: {warning}")
     print(f"tasks={len(bundle['active_work'].get('tasks', []))}")
     print(f"board={relative_display(TASK_BOARD_PATH)}")
+    print(
+        "execution_config={path} state={state}".format(
+            path=relative_display(EXECUTION_CONFIG_PATH),
+            state=bundle["execution_config_state"],
+        )
+    )
     return 0
 
 
@@ -2257,8 +2612,16 @@ def sync_command(_: argparse.Namespace) -> int:
     ]
     ensure_task_packets(live_tasks)
     write_task_board(bundle["active_work"], bundle["workflow_registry"])
+    write_workflow_artifact(
+        bundle["active_work"],
+        bundle["workflow_registry"],
+        bundle["policies"],
+        bundle["execution_config"],
+        bundle["execution_config_state"],
+    )
     print(f"validation=ok")
     print(f"board_written={TASK_BOARD_PATH}")
+    print(f"workflow_artifact_written={relative_display(WORKFLOW_ARTIFACT_PATH)}")
     print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
     return 0
 
@@ -2281,6 +2644,13 @@ def archive_command(args: argparse.Namespace) -> int:
             active_work["updated_at"] = utc_today()
             write_json(ACTIVE_WORK_PATH, active_work)
             write_task_board(active_work, bundle["workflow_registry"])
+            write_workflow_artifact(
+                active_work,
+                bundle["workflow_registry"],
+                bundle["policies"],
+                bundle["execution_config"],
+                bundle["execution_config_state"],
+            )
 
     print("validation=ok")
     print(f"archive={relative_display(ARCHIVED_TASKS_PATH)}")
@@ -2348,6 +2718,13 @@ def closeout_command(args: argparse.Namespace) -> int:
     active_work["updated_at"] = utc_today()
     write_json(ACTIVE_WORK_PATH, active_work)
     write_task_board(active_work, bundle["workflow_registry"])
+    write_workflow_artifact(
+        active_work,
+        bundle["workflow_registry"],
+        bundle["policies"],
+        bundle["execution_config"],
+        bundle["execution_config_state"],
+    )
 
     telemetry_count = write_closeout_telemetry(task, utc_now())
 
@@ -2356,6 +2733,7 @@ def closeout_command(args: argparse.Namespace) -> int:
     print(f"completed_at={utc_today()}")
     print(f"telemetry={telemetry_count}")
     print(f"board_written={relative_display(TASK_BOARD_PATH)}")
+    print(f"workflow_artifact_written={relative_display(WORKFLOW_ARTIFACT_PATH)}")
     print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
     return 0
 
@@ -2369,6 +2747,13 @@ def health_command(args: argparse.Namespace) -> int:
     ]
     ensure_task_packets(live_tasks)
     status_payload = build_status_payload(bundle["active_work"], bundle["workflow_registry"])
+    write_workflow_artifact(
+        bundle["active_work"],
+        bundle["workflow_registry"],
+        bundle["policies"],
+        bundle["execution_config"],
+        bundle["execution_config_state"],
+    )
 
     if getattr(args, "json", False):
         payload = {
@@ -2376,6 +2761,7 @@ def health_command(args: argparse.Namespace) -> int:
                 "status": "ok",
                 "warnings": [str(w) for w in bundle["validation_warnings"]],
                 "warning_count": len(bundle["validation_warnings"]),
+                "execution_config_state": bundle["execution_config_state"],
             },
             "status": status_payload,
             "git_status": git_status_lines(),
@@ -2669,6 +3055,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="List locally available task templates for shaping new work.",
     )
     templates_parser.set_defaults(func=templates_command)
+
+    init_profile_parser = subparsers.add_parser(
+        "init-profile",
+        help="Materialize a local execution-config preset without adding a new task runtime.",
+    )
+    init_profile_parser.add_argument(
+        "--preset",
+        default=DEFAULT_EXECUTION_PRESET,
+        choices=sorted(EXECUTION_PRESETS),
+        help="Execution strictness preset.",
+    )
+    init_profile_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing execution-config.json baseline.",
+    )
+    init_profile_parser.set_defaults(func=init_profile_command)
 
     create_task_parser = subparsers.add_parser(
         "create-task",

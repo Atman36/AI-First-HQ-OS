@@ -385,6 +385,8 @@ class HqControlPlaneTests(unittest.TestCase):
     def test_validate_control_plane(self):
         bundle = self.module.validate_control_plane()
         self.assertEqual(bundle["active_work"]["tasks"][0]["id"], "task-1")
+        self.assertEqual(bundle["execution_config_state"], "inferred")
+        self.assertEqual(bundle["execution_config"]["profile"], "normal")
 
     def test_sync_writes_task_board(self):
         parser = self.module.build_parser()
@@ -399,6 +401,75 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("HQ Bootstrap", content)
         self.assertIn("Manager: ai_operations_lead", content)
         self.assertIn("Owner: ai_operations_lead", content)
+        workflow_artifact = self.temp_root / ".hq" / "state" / "WORKFLOW.generated.md"
+        self.assertTrue(workflow_artifact.exists())
+        artifact_content = workflow_artifact.read_text(encoding="utf-8")
+        self.assertIn("Execution Config: 05 AI Control Plane/execution-config.json (inferred)", artifact_content)
+        self.assertIn("Workflow Mode: normal", artifact_content)
+
+    def test_init_profile_writes_materialized_execution_config(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["init-profile", "--preset", "strict"])
+        exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        config_path = self.temp_root / "05 AI Control Plane" / "execution-config.json"
+        self.assertTrue(config_path.exists())
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["profile"], "strict")
+        self.assertEqual(payload["profile_source"], "materialized")
+        self.assertEqual(payload["workflow_mode"], "strict")
+        self.assertTrue(payload["execution_profile"]["preflight_required"])
+        workflow_artifact = self.temp_root / ".hq" / "state" / "WORKFLOW.generated.md"
+        self.assertTrue(workflow_artifact.exists())
+        artifact_content = workflow_artifact.read_text(encoding="utf-8")
+        self.assertIn("Execution Config: 05 AI Control Plane/execution-config.json (materialized)", artifact_content)
+        self.assertIn("Profile: strict", artifact_content)
+
+    def test_validate_fails_for_invalid_materialized_execution_config(self):
+        config_path = self.temp_root / "05 AI Control Plane" / "execution-config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updated_at": "2026-04-20",
+                    "profile": "normal",
+                    "profile_source": "materialized",
+                    "profile_description": "Broken on purpose",
+                    "operating_mode": "stage-2-foundation",
+                    "policy_stage": "stage-2-foundation",
+                    "workflow_mode": "normal",
+                    "approvals": {
+                        "default_internal_change_approval": "owner_or_accepting_role",
+                        "require_governor_for_medium_risk": True,
+                        "require_governor_for_control_plane_changes": True,
+                        "require_human_for_external_actions": True,
+                        "require_human_for_high_risk": True
+                    },
+                    "execution_profile": {
+                        "preflight_required": True,
+                        "auto_scaffold_packets": True,
+                        "auto_generate_workflow_artifact": True,
+                        "verification_depth": "standard"
+                    },
+                    "unsafe_actions": {
+                        "allow_external_writes": False,
+                        "allow_destructive_tracked_delete": False,
+                        "allow_unreviewed_publish": False,
+                        "allow_implicit_runner_model": False
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(self.module.ValidationError) as error:
+            self.module.validate_control_plane()
+
+        self.assertIn("execution-config.json.execution_profile", str(error.exception))
 
     def test_sync_renders_done_tasks_from_active_work(self):
         (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "updated_at",
+    "profile",
+    "profile_source",
+    "profile_description",
+    "operating_mode",
+    "policy_stage",
+    "workflow_mode",
+    "approvals",
+    "execution_profile",
+    "unsafe_actions"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "profile": {
+      "type": "string",
+      "enum": [
+        "light",
+        "normal",
+        "strict"
+      ]
+    },
+    "profile_source": {
+      "type": "string",
+      "enum": [
+        "materialized",
+        "inferred"
+      ]
+    },
+    "profile_description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operating_mode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow_mode": {
+      "type": "string",
+      "enum": [
+        "light",
+        "normal",
+        "strict"
+      ]
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default_internal_change_approval",
+        "require_governor_for_medium_risk",
+        "require_governor_for_control_plane_changes",
+        "require_human_for_external_actions",
+        "require_human_for_high_risk"
+      ],
+      "properties": {
+        "default_internal_change_approval": {
+          "type": "string",
+          "enum": [
+            "owner_or_accepting_role",
+            "governor_or_accepting_role"
+          ]
+        },
+        "require_governor_for_medium_risk": {
+          "type": "boolean"
+        },
+        "require_governor_for_control_plane_changes": {
+          "type": "boolean"
+        },
+        "require_human_for_external_actions": {
+          "type": "boolean"
+        },
+        "require_human_for_high_risk": {
+          "type": "boolean"
+        }
+      }
+    },
+    "execution_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preflight_required",
+        "auto_scaffold_packets",
+        "auto_generate_workflow_artifact",
+        "verification_depth",
+        "runner_model_selection"
+      ],
+      "properties": {
+        "preflight_required": {
+          "type": "boolean"
+        },
+        "auto_scaffold_packets": {
+          "type": "boolean"
+        },
+        "auto_generate_workflow_artifact": {
+          "type": "boolean"
+        },
+        "verification_depth": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "strict"
+          ]
+        },
+        "runner_model_selection": {
+          "type": "string",
+          "enum": [
+            "explicit_required"
+          ]
+        }
+      }
+    },
+    "unsafe_actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allow_external_writes",
+        "allow_destructive_tracked_delete",
+        "allow_unreviewed_publish",
+        "allow_implicit_runner_model"
+      ],
+      "properties": {
+        "allow_external_writes": {
+          "type": "boolean"
+        },
+        "allow_destructive_tracked_delete": {
+          "type": "boolean"
+        },
+        "allow_unreviewed_publish": {
+          "type": "boolean"
+        },
+        "allow_implicit_runner_model": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
