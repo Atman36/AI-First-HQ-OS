@@ -2233,6 +2233,247 @@ def build_checkpoint_resume_plan(
     }
 
 
+def load_latest_checkpoint_state(run: dict[str, Any]) -> dict[str, Any]:
+    latest_checkpoint_id = str(run.get("latest_checkpoint_id") or "").strip()
+    latest_checkpoint_path = str(run.get("latest_checkpoint_path") or "").strip()
+    checkpoint_record: dict[str, Any] | None = None
+    checkpoint_error = ""
+    checkpoint_file: Path | None = None
+    if latest_checkpoint_path:
+        checkpoint_file = resolve_runtime_reference(latest_checkpoint_path)
+    elif latest_checkpoint_id:
+        checkpoint_file = checkpoint_path(latest_checkpoint_id)
+        latest_checkpoint_path = path_reference(checkpoint_file)
+    if checkpoint_file is not None:
+        checkpoint_record, checkpoint_error = load_entity_safe(checkpoint_file, "checkpoint")
+    return {
+        "id": latest_checkpoint_id,
+        "path": latest_checkpoint_path,
+        "file": checkpoint_file,
+        "record": checkpoint_record,
+        "error": checkpoint_error,
+    }
+
+
+def analyze_checkpoint_staleness(checkpoint_record: dict[str, Any] | None) -> tuple[list[str], bool]:
+    stale_inputs: list[str] = []
+    if checkpoint_record is None:
+        return stale_inputs, False
+    for field in ("latest_spec_path", "latest_handoff_path", "resume_packet_path"):
+        path_value = str(checkpoint_record.get(field) or "").strip()
+        if not path_value:
+            continue
+        current_digest = file_digest_for_reference(path_value)
+        recorded_digest = str(
+            checkpoint_record.get("referenced_file_digests", {}).get(field) or ""
+        ).strip()
+        if not current_digest:
+            stale_inputs.append(f"{field}:missing:{path_value}")
+        elif recorded_digest and current_digest != recorded_digest:
+            stale_inputs.append(f"{field}:digest_mismatch:{path_value}")
+    needs_handoff_refresh = any(
+        item.startswith("latest_handoff_path:") or item.startswith("resume_packet_path:")
+        for item in stale_inputs
+    )
+    return stale_inputs, needs_handoff_refresh
+
+
+def build_resume_status_payload(
+    run: dict[str, Any],
+    *,
+    existing_status: dict[str, Any] | None = None,
+    checkpoint_state: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+    resume_epoch: int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    checkpoint = checkpoint_state or load_latest_checkpoint_state(run)
+    latest_checkpoint_id = str(checkpoint.get("id") or "").strip()
+    latest_checkpoint_path = str(checkpoint.get("path") or "").strip()
+    checkpoint_record = checkpoint.get("record")
+    checkpoint_error = str(checkpoint.get("error") or "").strip()
+    stale_inputs, needs_handoff_refresh = analyze_checkpoint_staleness(checkpoint_record)
+
+    resumable = False
+    safe_to_resume = False
+    if checkpoint_error:
+        resume_reason = f"checkpoint invalid: {checkpoint_error}"
+    elif checkpoint_record is None and (latest_checkpoint_id or latest_checkpoint_path):
+        resume_reason = "checkpoint missing"
+    elif run["status"] == "interrupted":
+        resumable = True
+        safe_to_resume = True
+        if checkpoint_record is not None:
+            resume_reason = "checkpoint valid for resume"
+        else:
+            resume_reason = "legacy interrupted run without persisted checkpoint"
+        if needs_handoff_refresh:
+            resume_reason = "checkpoint valid; refresh linked handoff artifacts opportunistically"
+    elif run["status"] in TERMINAL_RUN_STATUSES:
+        resume_reason = f"run reached terminal status '{run['status']}'"
+    else:
+        resume_reason = f"run is already {run['status']}"
+
+    epoch_value = (
+        int(resume_epoch)
+        if resume_epoch is not None
+        else int(existing_status.get("resume_epoch", 0) if existing_status else 0)
+    )
+    return {
+        "schema_version": 1,
+        "entity_type": "resume-status",
+        "id": run["id"],
+        "run_id": run["id"],
+        "thread_id": run["thread_id"],
+        "mission_id": run["mission_id"],
+        "latest_checkpoint_id": latest_checkpoint_id,
+        "latest_checkpoint_path": latest_checkpoint_path,
+        "resumable": resumable,
+        "safe_to_resume": safe_to_resume,
+        "resume_reason": resume_reason,
+        "needs_handoff_refresh": needs_handoff_refresh,
+        "stale_inputs": stale_inputs,
+        "resume_plan": build_checkpoint_resume_plan(run, checkpoint_record),
+        "idempotency_key": (
+            str(idempotency_key).strip()
+            if idempotency_key is not None
+            else str(existing_status.get("idempotency_key", "") if existing_status else "").strip()
+        ),
+        "resume_epoch": max(epoch_value, 0),
+        "updated_at": utc_now(),
+        "metadata": metadata or {},
+    }
+
+
+def recovery_component_payload(
+    *,
+    path: Path | None,
+    payload: dict[str, Any] | None,
+    error: str,
+    summary_fields: list[str],
+) -> dict[str, Any]:
+    if payload is not None:
+        state = "present"
+    elif path is not None and path.exists():
+        state = "invalid"
+    else:
+        state = "missing"
+    summary = {
+        field: payload.get(field)
+        for field in summary_fields
+        if payload is not None and field in payload
+    }
+    return {
+        "state": state,
+        "path": path_reference(path) if path is not None else "",
+        "error": error,
+        "payload": summary,
+    }
+
+
+def recommended_recovery_bundle_command(run: dict[str, Any], resume_status_payload: dict[str, Any]) -> str:
+    run_id = run["id"]
+    if resume_status_payload.get("safe_to_resume"):
+        return f"python3 scripts/hq_mission_runtime.py resume-run --run-id {run_id} --resumed-by <role>"
+    if str(run.get("status") or "").strip() == "interrupted":
+        return f"python3 scripts/hq_mission_runtime.py show-resume-status --run-id {run_id}"
+    return f"python3 scripts/hq_mission_runtime.py show-run --run-id {run_id}"
+
+
+def export_recovery_bundle(run_id: str) -> dict[str, Any]:
+    run = require_file(run_path(run_id), "run", "run")
+    checkpoint_state = load_latest_checkpoint_state(run)
+    stored_status_file = resolve_runtime_reference(str(run.get("resume_status_path") or "").strip())
+    if stored_status_file is None:
+        stored_status_file = resume_status_path(run["id"])
+    stored_status, stored_status_error = load_entity_safe(stored_status_file, "resume-status")
+    effective_resume_status = build_resume_status_payload(
+        run,
+        existing_status=stored_status,
+        checkpoint_state=checkpoint_state,
+        metadata={"source": "export-recovery-bundle", "read_only": True},
+    )
+    checkpoint_record = checkpoint_state.get("record")
+    checkpoint_file = checkpoint_state.get("file")
+    checkpoint_payload = recovery_component_payload(
+        path=checkpoint_file,
+        payload=checkpoint_record,
+        error=str(checkpoint_state.get("error") or "").strip(),
+        summary_fields=[
+            "id",
+            "checkpoint_kind",
+            "created_at",
+            "source_event",
+            "current_step_id",
+            "resume_from_step_id",
+            "last_successful_step_id",
+            "latest_spec_path",
+            "latest_handoff_path",
+            "resume_packet_path",
+        ],
+    )
+    stored_status_payload = recovery_component_payload(
+        path=stored_status_file,
+        payload=stored_status,
+        error=stored_status_error,
+        summary_fields=[
+            "updated_at",
+            "resumable",
+            "safe_to_resume",
+            "resume_reason",
+            "needs_handoff_refresh",
+            "resume_epoch",
+            "idempotency_key",
+        ],
+    )
+    issues: list[str] = []
+    should_expect_checkpoint = bool(
+        checkpoint_payload["path"] or str(run.get("latest_checkpoint_id") or "").strip()
+    ) or str(run.get("status") or "").strip() == "interrupted"
+    should_expect_resume_status = bool(
+        str(run.get("resume_status_path") or "").strip()
+    ) or str(run.get("status") or "").strip() == "interrupted"
+    if should_expect_checkpoint and checkpoint_payload["state"] != "present":
+        issues.append(
+            f"checkpoint {checkpoint_payload['state']}: {checkpoint_payload['error'] or checkpoint_payload['path'] or 'unavailable'}"
+        )
+    if should_expect_resume_status and stored_status_payload["state"] != "present":
+        issues.append(
+            f"resume-status {stored_status_payload['state']}: {stored_status_payload['error'] or stored_status_payload['path'] or 'unavailable'}"
+        )
+    for item in effective_resume_status.get("stale_inputs", []) or []:
+        issues.append(f"stale input: {item}")
+    return {
+        "schema_version": 1,
+        "entity_type": "recovery-bundle",
+        "run": {
+            "id": run["id"],
+            "status": run["status"],
+            "actor": str(run.get("actor") or "").strip(),
+            "updated_at": str(run.get("updated_at") or "").strip(),
+            "thread_id": run["thread_id"],
+            "mission_id": run["mission_id"],
+            "current_step_id": str(run.get("current_step_id") or "").strip(),
+            "resume_from_step_id": str(run.get("resume_from_step_id") or "").strip(),
+            "latest_checkpoint_id": str(run.get("latest_checkpoint_id") or "").strip(),
+            "latest_checkpoint_path": str(run.get("latest_checkpoint_path") or "").strip(),
+            "resume_status_path": str(run.get("resume_status_path") or "").strip(),
+            "interruption_state": run.get("interruption_state", {}),
+        },
+        "checkpoint": checkpoint_payload,
+        "resume_status": {
+            "effective_source": "derived",
+            "effective": effective_resume_status,
+            "stored": stored_status_payload,
+        },
+        "resume_context": resolve_resume_context(run_id=run["id"]),
+        "issues": issues,
+        "recommended_next_command": recommended_recovery_bundle_command(run, effective_resume_status),
+        "generated_at": utc_now(),
+        "read_only": True,
+    }
+
+
 def create_checkpoint_record(
     *,
     run: dict[str, Any],
@@ -2337,88 +2578,14 @@ def refresh_resume_status(
     thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
     status_file = resume_status_path(run["id"])
     existing_status, _ = load_entity_safe(status_file, "resume-status")
-    latest_checkpoint_id = str(run.get("latest_checkpoint_id") or "").strip()
-    latest_checkpoint_path = str(run.get("latest_checkpoint_path") or "").strip()
-    checkpoint_record: dict[str, Any] | None = None
-    checkpoint_error = ""
-    checkpoint_file: Path | None = None
-    if latest_checkpoint_path:
-        checkpoint_file = resolve_runtime_reference(latest_checkpoint_path)
-    elif latest_checkpoint_id:
-        checkpoint_file = checkpoint_path(latest_checkpoint_id)
-        latest_checkpoint_path = path_reference(checkpoint_file)
-    if checkpoint_file is not None:
-        checkpoint_record, checkpoint_error = load_entity_safe(checkpoint_file, "checkpoint")
-
-    stale_inputs: list[str] = []
-    needs_handoff_refresh = False
-    if checkpoint_record is not None:
-        for field in ("latest_spec_path", "latest_handoff_path", "resume_packet_path"):
-            path_value = str(checkpoint_record.get(field) or "").strip()
-            if not path_value:
-                continue
-            current_digest = file_digest_for_reference(path_value)
-            recorded_digest = str(
-                checkpoint_record.get("referenced_file_digests", {}).get(field) or ""
-            ).strip()
-            if not current_digest:
-                stale_inputs.append(f"{field}:missing:{path_value}")
-            elif recorded_digest and current_digest != recorded_digest:
-                stale_inputs.append(f"{field}:digest_mismatch:{path_value}")
-        needs_handoff_refresh = any(
-            item.startswith("latest_handoff_path:") or item.startswith("resume_packet_path:")
-            for item in stale_inputs
-        )
-
-    resumable = False
-    safe_to_resume = False
-    if checkpoint_error:
-        resume_reason = f"checkpoint invalid: {checkpoint_error}"
-    elif checkpoint_record is None and (latest_checkpoint_id or latest_checkpoint_path):
-        resume_reason = "checkpoint missing"
-    elif run["status"] == "interrupted":
-        resumable = True
-        safe_to_resume = True
-        if checkpoint_record is not None:
-            resume_reason = "checkpoint valid for resume"
-        else:
-            resume_reason = "legacy interrupted run without persisted checkpoint"
-        if needs_handoff_refresh:
-            resume_reason = "checkpoint valid; refresh linked handoff artifacts opportunistically"
-    elif run["status"] in TERMINAL_RUN_STATUSES:
-        resume_reason = f"run reached terminal status '{run['status']}'"
-    else:
-        resume_reason = f"run is already {run['status']}"
-
-    epoch_value = (
-        int(resume_epoch)
-        if resume_epoch is not None
-        else int(existing_status.get("resume_epoch", 0) if existing_status else 0)
+    payload = build_resume_status_payload(
+        run,
+        existing_status=existing_status,
+        checkpoint_state=load_latest_checkpoint_state(run),
+        idempotency_key=idempotency_key,
+        resume_epoch=resume_epoch,
+        metadata=metadata,
     )
-    payload = {
-        "schema_version": 1,
-        "entity_type": "resume-status",
-        "id": run["id"],
-        "run_id": run["id"],
-        "thread_id": run["thread_id"],
-        "mission_id": run["mission_id"],
-        "latest_checkpoint_id": latest_checkpoint_id,
-        "latest_checkpoint_path": latest_checkpoint_path,
-        "resumable": resumable,
-        "safe_to_resume": safe_to_resume,
-        "resume_reason": resume_reason,
-        "needs_handoff_refresh": needs_handoff_refresh,
-        "stale_inputs": stale_inputs,
-        "resume_plan": build_checkpoint_resume_plan(run, checkpoint_record),
-        "idempotency_key": (
-            str(idempotency_key).strip()
-            if idempotency_key is not None
-            else str(existing_status.get("idempotency_key", "") if existing_status else "").strip()
-        ),
-        "resume_epoch": max(epoch_value, 0),
-        "updated_at": utc_now(),
-        "metadata": metadata or {},
-    }
     write_entity(status_file, payload)
     run["resume_status_path"] = path_reference(status_file)
     write_entity(run_path(run["id"]), run)
@@ -3478,6 +3645,17 @@ def show_resume_status_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def export_recovery_bundle_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = export_recovery_bundle(args.run_id)
+    except (ValueError, RuntimeError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
 def resolve_resume_context(*, thread_id: str = "", run_id: str = "") -> dict[str, Any]:
     if not thread_id and not run_id:
         raise ValueError("resume context requires either thread_id or run_id")
@@ -3923,6 +4101,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     show_resume_status_parser.add_argument("--run-id", required=True, help="Run identifier.")
     show_resume_status_parser.set_defaults(func=show_resume_status_command)
+
+    export_recovery_bundle_parser = subparsers.add_parser(
+        "export-recovery-bundle",
+        help="Render a read-only recovery bundle for one run.",
+    )
+    export_recovery_bundle_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    export_recovery_bundle_parser.set_defaults(func=export_recovery_bundle_command)
 
     finish_run_parser = subparsers.add_parser(
         "finish-run",

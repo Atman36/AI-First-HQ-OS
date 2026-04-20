@@ -60,6 +60,93 @@ class HqMissionRuntimeTests(unittest.TestCase):
             return candidate
         return self.temp_root / candidate
 
+    def create_interrupted_run(self, title: str) -> tuple[dict, dict, dict, dict]:
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", title])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--summary",
+                    "Planner checkpoint completed.",
+                ]
+            )
+        )
+        interrupted = self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                    "--reason",
+                    "Pause for recovery export test.",
+                ]
+            )
+        )
+        return mission, run, step, interrupted
+
+    def create_completed_run(self, title: str) -> tuple[dict, dict, dict]:
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", title])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--summary",
+                    "Planner checkpoint completed.",
+                ]
+            )
+        )
+        self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Ready for finish.",
+                ]
+            )
+        )
+        finished = self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "completed"]
+            )
+        )["finished_run"]
+        return mission, step, finished
+
     def test_create_mission_and_start_run_persist_first_class_records(self):
         parser = self.module.build_parser()
 
@@ -1157,6 +1244,104 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertFalse(payload["resumable"])
         self.assertFalse(payload["safe_to_resume"])
         self.assertIn("checkpoint", payload["resume_reason"])
+
+    def test_export_recovery_bundle_renders_effective_resume_state(self):
+        mission, run, step, interrupted = self.create_interrupted_run("Recovery Bundle Mission")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["export-recovery-bundle", "--run-id", run["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["run"]["id"], run["id"])
+        self.assertEqual(payload["run"]["thread_id"], mission["thread_id"])
+        self.assertEqual(payload["checkpoint"]["state"], "present")
+        self.assertEqual(payload["checkpoint"]["payload"]["id"], interrupted["latest_checkpoint_id"])
+        self.assertEqual(
+            payload["resume_status"]["effective"]["resume_plan"]["resume_from_step_id"],
+            step["id"],
+        )
+        self.assertTrue(payload["resume_status"]["effective"]["resumable"])
+        self.assertTrue(payload["resume_status"]["effective"]["safe_to_resume"])
+        self.assertEqual(payload["resume_context"]["run_id"], run["id"])
+        self.assertEqual(payload["recommended_next_command"], "python3 scripts/hq_mission_runtime.py resume-run --run-id " + run["id"] + " --resumed-by <role>")
+
+    def test_export_recovery_bundle_keeps_missing_resume_status_read_only(self):
+        _mission, run, _step, interrupted = self.create_interrupted_run("Missing Resume Status Bundle")
+        status_path = self.runtime_path(interrupted["resume_status_path"])
+        status_path.unlink()
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["export-recovery-bundle", "--run-id", run["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["resume_status"]["stored"]["state"], "missing")
+        self.assertTrue(payload["resume_status"]["effective"]["resumable"])
+        self.assertTrue(payload["resume_status"]["effective"]["safe_to_resume"])
+        self.assertFalse(status_path.exists())
+
+    def test_export_recovery_bundle_handles_missing_checkpoint(self):
+        _mission, run, _step, interrupted = self.create_interrupted_run("Missing Checkpoint Bundle")
+        checkpoint_path = self.runtime_path(interrupted["latest_checkpoint_path"])
+        checkpoint_path.unlink()
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["export-recovery-bundle", "--run-id", run["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["checkpoint"]["state"], "missing")
+        self.assertFalse(payload["resume_status"]["effective"]["resumable"])
+        self.assertFalse(payload["resume_status"]["effective"]["safe_to_resume"])
+        self.assertIn("checkpoint", payload["resume_status"]["effective"]["resume_reason"])
+        self.assertTrue(any("checkpoint" in issue for issue in payload["issues"]))
+
+    def test_export_recovery_bundle_handles_corrupted_checkpoint_without_crashing(self):
+        _mission, run, _step, interrupted = self.create_interrupted_run("Corrupt Bundle Mission")
+        checkpoint_path = self.runtime_path(interrupted["latest_checkpoint_path"])
+        checkpoint_path.write_text("{not json}\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["export-recovery-bundle", "--run-id", run["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["checkpoint"]["state"], "invalid")
+        self.assertFalse(payload["resume_status"]["effective"]["resumable"])
+        self.assertFalse(payload["resume_status"]["effective"]["safe_to_resume"])
+        self.assertIn("checkpoint", payload["resume_status"]["effective"]["resume_reason"])
+        self.assertTrue(any("checkpoint" in issue for issue in payload["issues"]))
+
+    def test_export_recovery_bundle_does_not_emit_recovery_noise_for_completed_run(self):
+        _mission, _step, finished = self.create_completed_run("Completed Bundle Mission")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["export-recovery-bundle", "--run-id", finished["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["run"]["status"], "completed")
+        self.assertEqual(payload["issues"], [])
+        self.assertEqual(
+            payload["recommended_next_command"],
+            f"python3 scripts/hq_mission_runtime.py show-run --run-id {finished['id']}",
+        )
 
     def test_resume_run_with_same_token_is_idempotent(self):
         mission = self.module.create_mission(
