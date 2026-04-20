@@ -1,11 +1,14 @@
 import importlib.util
+import io
 import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_runtime.py"
@@ -700,6 +703,77 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         ]
         self.assertTrue(any(event.get("run_id") == run["id"] for event in events))
         self.assertTrue(any(event.get("approval_id") == approval["id"] for event in events))
+
+    def test_founder_weekly_review_mastra_runner_bridges_to_optional_sidecar(self):
+        sidecar_root = self.temp_root / "vendor" / "at-masta"
+        sidecar_root.mkdir(parents=True, exist_ok=True)
+        (sidecar_root / "package.json").write_text('{"name":"at-masta"}\n', encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "founder-weekly-review",
+                "--runner",
+                "mastra",
+                "--mastra-sidecar-root",
+                str(sidecar_root),
+                "--session",
+                "bridge-test",
+                "--review-date",
+                "2026-04-20",
+                "--force-founder-review",
+                "--founder-decision",
+                "approved",
+                "--founder-rationale",
+                "bounded approval",
+            ]
+        )
+
+        completed = mock.Mock()
+        completed.returncode = 0
+        completed.stdout = json.dumps(
+            {
+                "status": "success",
+                "approvalStatus": "approved",
+                "summary": "Bridge completed",
+            }
+        )
+        completed.stderr = ""
+        buffer = io.StringIO()
+        with mock.patch.object(self.module.shutil, "which", return_value="/usr/bin/npm"), mock.patch.object(
+            self.module.subprocess, "run", return_value=completed
+        ) as mocked_run, redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        command = mocked_run.call_args.args[0]
+        self.assertEqual(command[:4], ["/usr/bin/npm", "run", "run:weekly-review", "--"])
+        self.assertIn("--hq-root", command)
+        self.assertIn(str(self.module.REPO_ROOT), command)
+        self.assertIn("--force-founder-review", command)
+        self.assertIn("--approve", command)
+        self.assertIn("approved", command)
+        self.assertIn("--rationale", command)
+        self.assertIn("bounded approval", command)
+        self.assertIn("runner=mastra", buffer.getvalue())
+        self.assertIn('"approvalStatus": "approved"', buffer.getvalue())
+
+    def test_founder_weekly_review_mastra_runner_requires_sidecar_configuration(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "founder-weekly-review",
+                "--runner",
+                "mastra",
+            ]
+        )
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("mastra sidecar is not configured", buffer.getvalue().lower())
 
     def test_spec_command_writes_private_spec_packet(self):
         thread = self.module.hq_mission_runtime.create_thread_record(

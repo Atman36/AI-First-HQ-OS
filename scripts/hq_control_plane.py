@@ -987,6 +987,36 @@ def collect_stale_items(tasks: list[dict[str, Any]], queue_updated_at: str) -> l
     return stale_items
 
 
+def scaffolded_packet_stale_items(
+    tasks: list[dict[str, Any]],
+    created_packets: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    if not created_packets:
+        return []
+    task_lookup = {
+        normalize_text(task.get("id")): task
+        for task in tasks
+        if normalize_text(task.get("id"))
+    }
+    stale_items: list[dict[str, str]] = []
+    for item in created_packets:
+        task_id = normalize_text(item.get("task_id"))
+        kind = normalize_text(item.get("kind"))
+        path = normalize_text(item.get("path"))
+        task = task_lookup.get(task_id, {})
+        stale_items.append(
+            {
+                "task_id": task_id,
+                "task_title": normalize_text(task.get("title")),
+                "kind": kind,
+                "status": "stale",
+                "path": path,
+                "reason": f"Placeholder {kind} packet was scaffolded during status and still needs real content.",
+            }
+        )
+    return stale_items
+
+
 def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
     if any(normalize_text(task.get("column")) in ACTIONABLE_COLUMNS for task in active_tasks):
         return "python3 scripts/hq_runtime.py route-next-slice"
@@ -1072,11 +1102,18 @@ def ensure_task_packet(task: dict[str, Any], kind: str) -> bool:
 
 
 def ensure_task_packets(tasks: list[dict[str, Any]]) -> list[str]:
-    created: list[str] = []
+    created: list[dict[str, str]] = []
     for task in tasks:
+        task_id = normalize_text(task.get("id"))
         for kind in STALE_PACKET_KINDS:
             if ensure_task_packet(task, kind):
-                created.append(relative_display(packet_path(task, kind)))
+                created.append(
+                    {
+                        "task_id": task_id,
+                        "kind": kind,
+                        "path": relative_display(packet_path(task, kind)),
+                    }
+                )
     return created
 
 
@@ -1318,6 +1355,8 @@ def archive_projection(active_work: dict[str, Any]) -> tuple[list[dict[str, Any]
 def build_status_payload(
     active_work: dict[str, Any],
     workflow_registry: dict[str, Any],
+    *,
+    created_packets: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     live_tasks = [
         task
@@ -1338,13 +1377,15 @@ def build_status_payload(
         for task in ordered_live_tasks
         if normalize_text(task.get("column")) == "blocked"
     ]
+    stale_items = collect_stale_items(ordered_live_tasks, normalize_text(active_work.get("updated_at")))
+    stale_items.extend(scaffolded_packet_stale_items(ordered_live_tasks, created_packets))
     payload = {
         "generated_at": utc_now(),
         "updated_at": normalize_text(active_work.get("updated_at")),
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "blocked": blocked_tasks,
-        "stale_items": collect_stale_items(ordered_live_tasks, normalize_text(active_work.get("updated_at"))),
+        "stale_items": stale_items,
         "recommended_next_command": recommended_next_command(ordered_live_tasks),
     }
     return payload
@@ -1404,8 +1445,12 @@ def status_command(args: argparse.Namespace) -> int:
         for task in bundle["active_work"].get("tasks", []) or []
         if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
     ]
-    ensure_task_packets(live_tasks)
-    payload = build_status_payload(bundle["active_work"], bundle["workflow_registry"])
+    created_packets = ensure_task_packets(live_tasks)
+    payload = build_status_payload(
+        bundle["active_work"],
+        bundle["workflow_registry"],
+        created_packets=created_packets,
+    )
     SESSION_BOOTSTRAP_PATH.parent.mkdir(parents=True, exist_ok=True)
     SESSION_BOOTSTRAP_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if args.json:

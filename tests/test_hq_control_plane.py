@@ -804,6 +804,25 @@ class HqControlPlaneTests(unittest.TestCase):
             any(item["task_id"] == "task-1" and item["status"] == "missing" for item in payload["stale_items"])
         )
 
+    def test_status_marks_scaffolded_runtime_packets_as_stale_placeholders(self):
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertTrue(
+            any(
+                item["task_id"] == "task-1"
+                and item["kind"] == "spec"
+                and item["status"] == "stale"
+                and "placeholder" in item["reason"].lower()
+                for item in payload["stale_items"]
+            )
+        )
+
     def test_resume_writes_quick_context_projection(self):
         parser = self.module.build_parser()
         args = parser.parse_args(["resume", "--task-id", "task-1"])

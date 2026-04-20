@@ -1215,9 +1215,96 @@ def write_founder_inbox_artifact(session: str, content: str) -> Path:
     return session_path
 
 
+def resolve_mastra_sidecar_root(value: str | None) -> Path | None:
+    candidate = (value or os.environ.get("HQ_MASTRA_SIDECAR_ROOT") or "").strip()
+    if not candidate:
+        return None
+    return Path(candidate).expanduser().resolve()
+
+
+def mastra_sidecar_ready(path: Path | None) -> bool:
+    if path is None:
+        return False
+    return path.is_dir() and (path / "package.json").exists()
+
+
+def mastra_founder_weekly_review_command(args: argparse.Namespace) -> list[str]:
+    npm_binary = shutil.which("npm")
+    if not npm_binary:
+        raise RuntimeError("npm is required to run the optional Mastra sidecar")
+
+    command = [
+        npm_binary,
+        "run",
+        "run:weekly-review",
+        "--",
+        "--hq-root",
+        str(REPO_ROOT),
+        "--review-date",
+        args.review_date,
+        "--session",
+        args.session,
+        "--max-routes",
+        str(args.max_routes),
+    ]
+    if args.force_founder_review:
+        command.append("--force-founder-review")
+    if args.dry_run:
+        command.append("--dry-run")
+    if args.founder_decision:
+        command.extend(["--approve", args.founder_decision])
+    if args.founder_rationale:
+        command.extend(["--rationale", args.founder_rationale])
+    return command
+
+
+def maybe_run_mastra_founder_weekly_review(args: argparse.Namespace) -> int | None:
+    sidecar_root = resolve_mastra_sidecar_root(args.mastra_sidecar_root)
+    wants_mastra = args.runner in {"mastra", "auto"}
+    if not wants_mastra:
+        return None
+    if not mastra_sidecar_ready(sidecar_root):
+        if args.runner == "auto":
+            return None
+        print(
+            "error=Mastra sidecar is not configured. "
+            "Pass --mastra-sidecar-root or set HQ_MASTRA_SIDECAR_ROOT to a local at-masta checkout."
+        )
+        return 2
+
+    try:
+        command = mastra_founder_weekly_review_command(args)
+    except RuntimeError as exc:
+        print(f"error={exc}")
+        return 2
+
+    env = os.environ.copy()
+    env.setdefault("HQ_ROOT", str(REPO_ROOT))
+    completed = subprocess.run(
+        command,
+        cwd=sidecar_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    print("runner=mastra")
+    if completed.stdout.strip():
+        print(completed.stdout.strip())
+    if completed.stderr.strip():
+        print(completed.stderr.strip())
+    if completed.returncode != 0:
+        return completed.returncode or 1
+    return 0
+
+
 def founder_weekly_review_command(args: argparse.Namespace) -> int:
     ensure_private_runtime()
     hq_mission_runtime.ensure_runtime()
+    mastra_exit = maybe_run_mastra_founder_weekly_review(args)
+    if mastra_exit is not None:
+        return mastra_exit
+    print("runner=builtin")
     routes = normalize_cli_list(args.route)
     approvals = normalize_cli_list(args.approval)
     blockers = normalize_cli_list(args.blocker)
@@ -1619,9 +1706,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Session identifier for the generated founder inbox artifact.",
     )
     founder_weekly_review.add_argument(
+        "--runner",
+        choices=["builtin", "mastra", "auto"],
+        default="builtin",
+        help="Execution runner. Defaults to builtin; use mastra for the optional sidecar bridge.",
+    )
+    founder_weekly_review.add_argument(
+        "--mastra-sidecar-root",
+        help="Local path to the optional Mastra sidecar checkout. Can also be set via HQ_MASTRA_SIDECAR_ROOT.",
+    )
+    founder_weekly_review.add_argument(
         "--review-date",
         default=date.today().isoformat(),
         help="Review date in ISO format. Defaults to today.",
+    )
+    founder_weekly_review.add_argument(
+        "--max-routes",
+        type=int,
+        default=5,
+        help="Maximum routes to emit when using the Mastra sidecar. Defaults to 5.",
+    )
+    founder_weekly_review.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="When using the Mastra sidecar, avoid writing review artifacts.",
     )
     founder_weekly_review.add_argument(
         "--mission-title",
