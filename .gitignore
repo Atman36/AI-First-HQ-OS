@@ -76,6 +76,7 @@ venv/
 /90 Templates/
 /reports/
 /agents/README.md
+/skills/mastra-ai-skills/
 
 # Public repo safety: raw user/customer data must never be tracked
 /private/
