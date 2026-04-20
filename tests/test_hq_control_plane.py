@@ -830,6 +830,7 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         output = buffer.getvalue()
         self.assertIn("Startup Focus", output)
+        self.assertIn("Recovery Queue", output)
         self.assertIn("Support Tracks", output)
         self.assertIn("task_command:", output)
         self.assertIn("Active Tasks", output)
@@ -934,6 +935,122 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(workflow_input["active_tasks"][0]["id"], "task-1")
         self.assertEqual(workflow_input["active_tasks"][0]["workflow"], "intake-to-execution")
         self.assertEqual(workflow_input["active_tasks"][0]["risk_tier"], "medium")
+
+    def test_status_includes_runtime_recovery_queue_and_prioritizes_resume_command(self):
+        runtime_root = self.temp_root / ".hq" / "state" / "mission-runtime"
+        runs_dir = runtime_root / "runs"
+        resume_dir = runtime_root / "resume-status"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        resume_dir.mkdir(parents=True, exist_ok=True)
+
+        checkpoint_path = ".hq/state/mission-runtime/checkpoints/checkpoint-1.json"
+        resume_status_path = ".hq/state/mission-runtime/resume-status/run-1.json"
+        (runs_dir / "run-1.json").write_text(
+            json.dumps(
+                {
+                    "id": "run-1",
+                    "mission_id": "mission-1",
+                    "thread_id": "thread-1",
+                    "status": "interrupted",
+                    "updated_at": "2026-04-20T12:00:00Z",
+                    "latest_checkpoint_id": "checkpoint-1",
+                    "latest_checkpoint_path": checkpoint_path,
+                    "resume_status_path": resume_status_path,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (resume_dir / "run-1.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "entity_type": "resume-status",
+                    "id": "run-1",
+                    "run_id": "run-1",
+                    "thread_id": "thread-1",
+                    "mission_id": "mission-1",
+                    "latest_checkpoint_id": "checkpoint-1",
+                    "latest_checkpoint_path": checkpoint_path,
+                    "resumable": True,
+                    "safe_to_resume": True,
+                    "resume_reason": "checkpoint valid for resume",
+                    "needs_handoff_refresh": False,
+                    "stale_inputs": [],
+                    "resume_plan": {"resume_from_step_id": "step-1"},
+                    "idempotency_key": "resume-token-1",
+                    "resume_epoch": 2,
+                    "updated_at": "2026-04-20T12:01:00Z",
+                    "metadata": {"run_status": "interrupted"},
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        recovery = payload["runtime_recovery"]
+        self.assertEqual(recovery["summary"]["total"], 1)
+        self.assertEqual(recovery["summary"]["resumable"], 1)
+        self.assertEqual(recovery["summary"]["safe_to_resume"], 1)
+        self.assertEqual(recovery["summary"]["interrupted"], 1)
+        self.assertEqual(recovery["items"][0]["run_id"], "run-1")
+        self.assertTrue(recovery["items"][0]["safe_to_resume"])
+        self.assertEqual(recovery["items"][0]["resume_epoch"], 2)
+        self.assertEqual(
+            recovery["items"][0]["recommended_next_command"],
+            "python3 scripts/hq_mission_runtime.py show-resume-status --run-id run-1",
+        )
+        self.assertEqual(
+            payload["recommended_next_command"],
+            "python3 scripts/hq_mission_runtime.py show-resume-status --run-id run-1",
+        )
+        memory_index = json.loads(
+            (self.temp_root / ".hq" / "state" / "memory-index.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(memory_index["runtime_recovery"]["summary"]["safe_to_resume"], 1)
+
+    def test_status_ignores_completed_runs_without_resume_status(self):
+        runs_dir = self.temp_root / ".hq" / "state" / "mission-runtime" / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        (runs_dir / "run-completed.json").write_text(
+            json.dumps(
+                {
+                    "id": "run-completed",
+                    "mission_id": "mission-1",
+                    "thread_id": "thread-1",
+                    "status": "completed",
+                    "updated_at": "2026-04-20T12:00:00Z",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertEqual(payload["runtime_recovery"]["summary"]["total"], 0)
+        self.assertEqual(payload["runtime_recovery"]["items"], [])
+        self.assertEqual(payload["recommended_next_command"], "python3 scripts/hq_runtime.py route-next-slice")
 
     def test_resume_writes_quick_context_projection(self):
         parser = self.module.build_parser()
@@ -1553,6 +1670,7 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("warnings", payload["validation"])
         self.assertIn("status", payload)
         self.assertIn("active_tasks", payload["status"])
+        self.assertIn("runtime_recovery", payload["status"])
         self.assertIn("stale_items", payload["status"])
         self.assertIn("recommended_next_command", payload["status"])
         self.assertIn("git_status", payload)

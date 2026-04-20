@@ -34,6 +34,9 @@ QUICK_CONTEXT_PATH = REPO_ROOT / ".hq" / "state" / "QUICK_CONTEXT.md"
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
 TELEMETRY_ROOT = PRIVATE_ROOT / "telemetry"
 TELEMETRY_REVIEW_PATH = TELEMETRY_ROOT / "reviews" / "LATEST.json"
+MISSION_RUNTIME_ROOT = PRIVATE_ROOT / "state" / "mission-runtime"
+MISSION_RUNTIME_RUNS_DIR = MISSION_RUNTIME_ROOT / "runs"
+MISSION_RUNTIME_RESUME_STATUS_DIR = MISSION_RUNTIME_ROOT / "resume-status"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 FOUNDER_WEEKLY_REVIEW_BRIDGE_SCHEMA_PATH = (
     SCHEMA_DIR / "founder-weekly-review-bridge.schema.json"
@@ -126,6 +129,25 @@ def relative_display(path: Path) -> str:
         return path.relative_to(REPO_ROOT).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def load_json_object_safe(path: Path) -> tuple[dict[str, Any] | None, str]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "missing"
+    except json.JSONDecodeError as exc:
+        return None, f"invalid JSON: {exc}"
+    if not isinstance(payload, dict):
+        return None, "expected JSON object"
+    return payload, ""
+
+
+def resolve_runtime_path(path_text: str) -> Path:
+    candidate = Path(path_text)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (REPO_ROOT / candidate).resolve()
 
 
 def ensure_file_exists(context: ValidationContext, relative_path: str, base_path: str) -> None:
@@ -814,6 +836,13 @@ def parse_datetime(value: str) -> datetime | None:
     return None
 
 
+def parse_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def packet_task_slug(task: dict[str, Any]) -> str:
     return normalize_text(task.get("id"))
 
@@ -1184,6 +1213,8 @@ def summarize_stale_items(stale_items: list[dict[str, str]]) -> dict[str, Any]:
 def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
     active_tasks = status_payload.get("active_tasks", []) or []
     blocked_tasks = status_payload.get("blocked", []) or []
+    runtime_recovery = status_payload.get("runtime_recovery") or {}
+    runtime_recovery_items = runtime_recovery.get("items", []) or []
     return {
         "generated_at": status_payload.get("generated_at") or "",
         "updated_at": status_payload.get("updated_at") or "",
@@ -1191,6 +1222,10 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
         "startup_focus": status_payload.get("startup_focus") or {},
         "support_tracks": status_payload.get("support_tracks", []) or [],
         "stale_summary": status_payload.get("stale_summary") or {},
+        "runtime_recovery": {
+            "summary": runtime_recovery.get("summary") or {},
+            "first_run": runtime_recovery_items[0] if runtime_recovery_items else {},
+        },
         "recommended_next_command": status_payload.get("recommended_next_command") or "",
         "counts": {
             "active_tasks": len(active_tasks),
@@ -1199,7 +1234,159 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def recommended_next_command(active_tasks: list[dict[str, Any]]) -> str:
+def runtime_recovery_command(runtime_recovery: dict[str, Any] | None) -> str:
+    items = (runtime_recovery or {}).get("items", []) or []
+    for item in items:
+        command = normalize_text(item.get("recommended_next_command"))
+        if command:
+            return command
+    return ""
+
+
+def runtime_recovery_sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
+    if item.get("safe_to_resume"):
+        priority = 0
+    elif item.get("resumable"):
+        priority = 1
+    elif normalize_text(item.get("run_status")) == "interrupted":
+        priority = 2
+    else:
+        priority = 3
+    updated_at = parse_datetime(normalize_text(item.get("updated_at")))
+    timestamp = updated_at.timestamp() if updated_at is not None else 0.0
+    return (priority, -timestamp, normalize_text(item.get("run_id")))
+
+
+def summarize_runtime_recovery(items: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "total": len(items),
+        "interrupted": sum(1 for item in items if normalize_text(item.get("run_status")) == "interrupted"),
+        "resumable": sum(1 for item in items if bool(item.get("resumable"))),
+        "safe_to_resume": sum(1 for item in items if bool(item.get("safe_to_resume"))),
+        "needs_handoff_refresh": sum(1 for item in items if bool(item.get("needs_handoff_refresh"))),
+        "missing_resume_status": sum(
+            1 for item in items if normalize_text(item.get("resume_status_state")) == "missing"
+        ),
+        "invalid_resume_status": sum(
+            1 for item in items if normalize_text(item.get("resume_status_state")) == "invalid"
+        ),
+    }
+
+
+def build_runtime_recovery_payload() -> dict[str, Any]:
+    if not MISSION_RUNTIME_RUNS_DIR.exists():
+        items: list[dict[str, Any]] = []
+        return {"summary": summarize_runtime_recovery(items), "items": items}
+
+    items: list[dict[str, Any]] = []
+    for run_file in sorted(MISSION_RUNTIME_RUNS_DIR.glob("*.json")):
+        run, run_error = load_json_object_safe(run_file)
+        if run is None:
+            items.append(
+                {
+                    "run_id": run_file.stem,
+                    "mission_id": "",
+                    "thread_id": "",
+                    "run_status": "unknown",
+                    "updated_at": "",
+                    "resumable": False,
+                    "safe_to_resume": False,
+                    "needs_handoff_refresh": False,
+                    "resume_reason": "",
+                    "resume_epoch": 0,
+                    "latest_checkpoint_id": "",
+                    "latest_checkpoint_path": "",
+                    "resume_status_path": "",
+                    "resume_status_state": "invalid",
+                    "stale_inputs": [],
+                    "error": run_error,
+                    "recommended_next_command": "",
+                }
+            )
+            continue
+
+        run_id = normalize_text(run.get("id")) or run_file.stem
+        run_status = normalize_text(run.get("status"))
+        resume_status_path_text = normalize_text(run.get("resume_status_path"))
+        if resume_status_path_text:
+            resume_status_file = resolve_runtime_path(resume_status_path_text)
+        else:
+            resume_status_file = MISSION_RUNTIME_RESUME_STATUS_DIR / f"{run_id}.json"
+            if resume_status_file.exists():
+                resume_status_path_text = relative_display(resume_status_file)
+        has_resume_status_reference = bool(resume_status_path_text) or resume_status_file.exists()
+
+        resume_status, resume_error = load_json_object_safe(resume_status_file)
+        if resume_status is None and resume_error == "missing":
+            resume_status_state = "missing"
+        elif resume_status is None:
+            resume_status_state = "invalid"
+        else:
+            resume_status_state = "ok"
+            if not resume_status_path_text:
+                resume_status_path_text = relative_display(resume_status_file)
+
+        resumable = bool(resume_status.get("resumable")) if resume_status else False
+        safe_to_resume = bool(resume_status.get("safe_to_resume")) if resume_status else False
+        needs_handoff_refresh = bool(resume_status.get("needs_handoff_refresh")) if resume_status else False
+        stale_inputs = resume_status.get("stale_inputs") if isinstance(resume_status, dict) else []
+        stale_inputs = stale_inputs if isinstance(stale_inputs, list) else []
+        resume_reason = ""
+        if resume_status is not None:
+            resume_reason = normalize_text(resume_status.get("resume_reason"))
+        elif run_status == "interrupted":
+            resume_reason = "resume-status missing for interrupted run"
+        latest_checkpoint_id = normalize_text(
+            (resume_status or {}).get("latest_checkpoint_id") or run.get("latest_checkpoint_id")
+        )
+        latest_checkpoint_path = normalize_text(
+            (resume_status or {}).get("latest_checkpoint_path") or run.get("latest_checkpoint_path")
+        )
+        item = {
+            "run_id": run_id,
+            "mission_id": normalize_text(run.get("mission_id")),
+            "thread_id": normalize_text(run.get("thread_id")),
+            "run_status": run_status,
+            "updated_at": normalize_text((resume_status or {}).get("updated_at") or run.get("updated_at")),
+            "resumable": resumable,
+            "safe_to_resume": safe_to_resume,
+            "needs_handoff_refresh": needs_handoff_refresh,
+            "resume_reason": resume_reason,
+            "resume_epoch": parse_int((resume_status or {}).get("resume_epoch", 0), 0),
+            "latest_checkpoint_id": latest_checkpoint_id,
+            "latest_checkpoint_path": latest_checkpoint_path,
+            "resume_status_path": resume_status_path_text,
+            "resume_status_state": resume_status_state,
+            "stale_inputs": [normalize_text(value) for value in stale_inputs if normalize_text(value)],
+            "error": resume_error if resume_status is None else "",
+            "recommended_next_command": (
+                f"python3 scripts/hq_mission_runtime.py show-resume-status --run-id {run_id}"
+                if run_id
+                else ""
+            ),
+        }
+        should_include = run_status == "interrupted"
+        if has_resume_status_reference and (
+            resume_status_state != "ok" or resumable or safe_to_resume or needs_handoff_refresh
+        ):
+            should_include = True
+        if should_include:
+            items.append(item)
+
+    items = sorted(items, key=runtime_recovery_sort_key)
+    return {
+        "summary": summarize_runtime_recovery(items),
+        "items": items,
+    }
+
+
+def recommended_next_command(
+    active_tasks: list[dict[str, Any]],
+    runtime_recovery: dict[str, Any] | None = None,
+) -> str:
+    recovery_command = runtime_recovery_command(runtime_recovery)
+    if recovery_command:
+        return recovery_command
     if any(normalize_text(task.get("column")) in ACTIONABLE_COLUMNS for task in active_tasks):
         return "python3 scripts/hq_runtime.py route-next-slice"
     return "python3 scripts/hq_control_plane.py validate"
@@ -1672,11 +1859,13 @@ def build_status_payload(
     ]
     stale_items = collect_stale_items(ordered_live_tasks, normalize_text(active_work.get("updated_at")))
     stale_items.extend(scaffolded_packet_stale_items(ordered_live_tasks, created_packets))
+    runtime_recovery = build_runtime_recovery_payload()
     payload = {
         "generated_at": utc_now(),
         "updated_at": normalize_text(active_work.get("updated_at")),
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "startup_focus": startup_focus_projection(startup_task),
+        "runtime_recovery": runtime_recovery,
         "support_tracks": support_track_projection(ordered_live_tasks, startup_task),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
@@ -1690,7 +1879,10 @@ def build_status_payload(
                 workflow_registry,
             )
         },
-        "recommended_next_command": recommended_next_command(ordered_live_tasks),
+        "recommended_next_command": recommended_next_command(
+            ordered_live_tasks,
+            runtime_recovery,
+        ),
     }
     return payload
 
@@ -1741,6 +1933,36 @@ def render_status_text(payload: dict[str, Any]) -> str:
                 f"- task_command: {startup_focus.get('recommended_next_command') or '-'}",
             ]
         )
+    lines.extend(["", "Recovery Queue"])
+    runtime_recovery = payload.get("runtime_recovery") or {}
+    recovery_items = runtime_recovery.get("items", []) or []
+    recovery_summary = runtime_recovery.get("summary") or {}
+    if recovery_items:
+        summary_parts = [f"total={recovery_summary.get('total', len(recovery_items))}"]
+        for key in (
+            "interrupted",
+            "resumable",
+            "safe_to_resume",
+            "needs_handoff_refresh",
+            "missing_resume_status",
+            "invalid_resume_status",
+        ):
+            value = recovery_summary.get(key, 0)
+            if value:
+                summary_parts.append(f"{key}={value}")
+        lines.append("- " + " | ".join(summary_parts))
+        for item in recovery_items[:5]:
+            reason = item.get("resume_reason") or item.get("error") or "-"
+            lines.append(
+                f"- {item['run_id']} [{item['run_status'] or '-'}] mission={item['mission_id'] or '-'} | "
+                f"safe_to_resume={str(bool(item.get('safe_to_resume'))).lower()} | "
+                f"resume_epoch={item.get('resume_epoch', 0)} | reason: {reason} | "
+                f"command: {item.get('recommended_next_command') or '-'}"
+            )
+        if len(recovery_items) > 5:
+            lines.append(f"- ... {len(recovery_items) - 5} more recovery items hidden")
+    else:
+        lines.append("- None")
     lines.extend(["", "Support Tracks"])
     support_tracks = payload.get("support_tracks", []) or []
     if support_tracks:
