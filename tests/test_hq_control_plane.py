@@ -823,6 +823,46 @@ class HqControlPlaneTests(unittest.TestCase):
             )
         )
 
+    def test_status_includes_founder_weekly_review_workflow_input(self):
+        telemetry_review_path = self.temp_root / ".hq" / "telemetry" / "reviews" / "LATEST.json"
+        telemetry_review_path.parent.mkdir(parents=True, exist_ok=True)
+        telemetry_review_path.write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-04-20T09:00:00Z",
+                    "breached_metrics": [
+                        "decision_latency_hours",
+                        {"metric_id": "documentation_lag_hours", "action": "review"},
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(buffer.getvalue())
+        workflow_input = payload["workflow_inputs"]["founder_weekly_review"]
+        self.assertEqual(workflow_input["contract_version"], 1)
+        self.assertEqual(workflow_input["source_files"]["active_work"], "05 AI Control Plane/active-work.json")
+        self.assertEqual(workflow_input["workflow_requirements"]["intake-to-execution"][0], "id")
+        self.assertEqual(workflow_input["breached_metrics"], ["decision_latency_hours", "documentation_lag_hours | review"])
+        self.assertEqual(workflow_input["metadata"]["total_tasks"], 1)
+        self.assertEqual(workflow_input["metadata"]["active_tasks"], 1)
+        self.assertEqual(workflow_input["metadata"]["actionable_tasks"], 1)
+        self.assertEqual(workflow_input["metadata"]["founder_review_tasks"], 0)
+        self.assertEqual(workflow_input["active_tasks"][0]["id"], "task-1")
+        self.assertEqual(workflow_input["active_tasks"][0]["workflow"], "intake-to-execution")
+        self.assertEqual(workflow_input["active_tasks"][0]["risk_tier"], "medium")
+
     def test_resume_writes_quick_context_projection(self):
         parser = self.module.build_parser()
         args = parser.parse_args(["resume", "--task-id", "task-1"])

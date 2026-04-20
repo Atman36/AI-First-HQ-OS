@@ -32,6 +32,7 @@ ARCHIVED_TASKS_PATH = REPO_ROOT / ".hq" / "state" / "archived-tasks.json"
 QUICK_CONTEXT_PATH = REPO_ROOT / ".hq" / "state" / "QUICK_CONTEXT.md"
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
 TELEMETRY_ROOT = PRIVATE_ROOT / "telemetry"
+TELEMETRY_REVIEW_PATH = TELEMETRY_ROOT / "reviews" / "LATEST.json"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 SCHEMA_PATHS = {
     "active_work": SCHEMA_DIR / "active-work.schema.json",
@@ -939,6 +940,29 @@ def project_live_task(task: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def project_workflow_input_task(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": normalize_text(task.get("id")),
+        "title": normalize_text(task.get("title")),
+        "project": normalize_text(task.get("project")),
+        "owner": normalize_text(task.get("owner")),
+        "manager": normalize_text(task.get("manager")),
+        "column": normalize_text(task.get("column")),
+        "next_step": normalize_text(task.get("next_step")),
+        "done_when": normalize_text(task.get("done_when")),
+        "primary_update_file": normalize_text(task.get("primary_update_file")),
+        "accepts_result": normalize_text(task.get("accepts_result")),
+        "risk_tier": normalize_text(task.get("risk_tier")),
+        "autonomy_tier": normalize_text(task.get("autonomy_tier")),
+        "workflow": normalize_text(task.get("workflow")),
+        "support": [
+            normalize_text(item)
+            for item in task.get("support", []) or []
+            if normalize_text(item)
+        ],
+    }
+
+
 def blocked_reason(task: dict[str, Any]) -> str:
     handoff = packet_path(task, "handoff")
     blockers = extract_section_items(handoff, "Blockers")
@@ -985,6 +1009,95 @@ def collect_stale_items(tasks: list[dict[str, Any]], queue_updated_at: str) -> l
                         }
                     )
     return stale_items
+
+
+def telemetry_metric_label(metric: Any) -> str:
+    if isinstance(metric, str):
+        return normalize_text(metric)
+    if isinstance(metric, dict):
+        metric_id = normalize_text(metric.get("metric_id")) or normalize_text(metric.get("id")) or "unknown_metric"
+        action = normalize_text(metric.get("action"))
+        return " | ".join(part for part in (metric_id, action) if part)
+    return "unknown_metric"
+
+
+def load_breached_metrics() -> list[str]:
+    if not TELEMETRY_REVIEW_PATH.exists():
+        return []
+    payload = load_json(TELEMETRY_REVIEW_PATH)
+    if not isinstance(payload, dict):
+        return []
+    breached_metrics = payload.get("breached_metrics", []) or []
+    if not isinstance(breached_metrics, list):
+        return []
+    return [
+        telemetry_metric_label(metric)
+        for metric in breached_metrics
+        if telemetry_metric_label(metric)
+    ]
+
+
+def workflow_requirements(workflow_registry: dict[str, Any]) -> dict[str, list[str]]:
+    requirements: dict[str, list[str]] = {}
+    for workflow in workflow_registry.get("workflows", []) or []:
+        if not isinstance(workflow, dict):
+            continue
+        workflow_id = normalize_text(workflow.get("id"))
+        if not workflow_id:
+            continue
+        requirements[workflow_id] = [
+            normalize_text(item)
+            for item in workflow.get("required_task_fields", []) or []
+            if normalize_text(item)
+        ]
+    return requirements
+
+
+def build_founder_weekly_review_input(
+    active_work: dict[str, Any],
+    workflow_registry: dict[str, Any],
+) -> dict[str, Any]:
+    tasks = [
+        task
+        for task in active_work.get("tasks", []) or []
+        if isinstance(task, dict)
+    ]
+    live_tasks = [
+        task for task in tasks if normalize_text(task.get("column")) != "done"
+    ]
+    ordered_live_tasks = sort_tasks(live_tasks, workflow_registry)
+    actionable_count = sum(
+        1 for task in ordered_live_tasks if normalize_text(task.get("column")) in ACTIONABLE_COLUMNS
+    )
+    founder_review_count = sum(
+        1
+        for task in ordered_live_tasks
+        if normalize_text(task.get("accepts_result")) == "ceo"
+        and (
+            normalize_text(task.get("risk_tier")) == "high"
+            or normalize_text(task.get("column")) == "review"
+        )
+    )
+    return {
+        "contract_version": 1,
+        "source_files": {
+            "active_work": relative_display(ACTIVE_WORK_PATH),
+            "workflow_registry": relative_display(WORKFLOW_REGISTRY_PATH),
+            "operating_policies": relative_display(POLICIES_PATH),
+            "telemetry_review": relative_display(TELEMETRY_REVIEW_PATH)
+            if TELEMETRY_REVIEW_PATH.exists()
+            else "",
+        },
+        "active_tasks": [project_workflow_input_task(task) for task in ordered_live_tasks],
+        "workflow_requirements": workflow_requirements(workflow_registry),
+        "breached_metrics": load_breached_metrics(),
+        "metadata": {
+            "total_tasks": len(tasks),
+            "active_tasks": len(ordered_live_tasks),
+            "actionable_tasks": actionable_count,
+            "founder_review_tasks": founder_review_count,
+        },
+    }
 
 
 def scaffolded_packet_stale_items(
@@ -1386,8 +1499,33 @@ def build_status_payload(
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "blocked": blocked_tasks,
         "stale_items": stale_items,
+        "workflow_inputs": {
+            "founder_weekly_review": build_founder_weekly_review_input(
+                active_work,
+                workflow_registry,
+            )
+        },
         "recommended_next_command": recommended_next_command(ordered_live_tasks),
     }
+    return payload
+
+
+def write_session_bootstrap(
+    active_work: dict[str, Any],
+    workflow_registry: dict[str, Any],
+    *,
+    created_packets: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    payload = build_status_payload(
+        active_work,
+        workflow_registry,
+        created_packets=created_packets,
+    )
+    SESSION_BOOTSTRAP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_BOOTSTRAP_PATH.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return payload
 
 
@@ -1446,13 +1584,11 @@ def status_command(args: argparse.Namespace) -> int:
         if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
     ]
     created_packets = ensure_task_packets(live_tasks)
-    payload = build_status_payload(
+    payload = write_session_bootstrap(
         bundle["active_work"],
         bundle["workflow_registry"],
         created_packets=created_packets,
     )
-    SESSION_BOOTSTRAP_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SESSION_BOOTSTRAP_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:

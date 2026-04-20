@@ -22,9 +22,11 @@ DEFAULT_REPO_ROOT = Path(
 ).resolve()
 os.environ.setdefault("HQ_MISSION_RUNTIME_REPO_ROOT", str(DEFAULT_REPO_ROOT))
 os.environ.setdefault("HQ_TELEMETRY_REPO_ROOT", str(DEFAULT_REPO_ROOT))
+os.environ.setdefault("HQ_CONTROL_PLANE_REPO_ROOT", str(DEFAULT_REPO_ROOT))
 
 from hq_io import append_jsonl as append_jsonl_record
 from hq_io import atomic_write_text, write_json
+import hq_control_plane
 import hq_mission_runtime
 from hq_runtime_review import ALLOWED_CHANGE_SCOPES
 from hq_runtime_review import derive_issue_key
@@ -1228,10 +1230,27 @@ def mastra_sidecar_ready(path: Path | None) -> bool:
     return path.is_dir() and (path / "package.json").exists()
 
 
+def refresh_session_bootstrap() -> Path:
+    bundle = hq_control_plane.validate_control_plane()
+    live_tasks = [
+        task
+        for task in bundle["active_work"].get("tasks", []) or []
+        if isinstance(task, dict) and hq_control_plane.normalize_text(task.get("column")) != "done"
+    ]
+    created_packets = hq_control_plane.ensure_task_packets(live_tasks)
+    hq_control_plane.write_session_bootstrap(
+        bundle["active_work"],
+        bundle["workflow_registry"],
+        created_packets=created_packets,
+    )
+    return hq_control_plane.SESSION_BOOTSTRAP_PATH
+
+
 def mastra_founder_weekly_review_command(args: argparse.Namespace) -> list[str]:
     npm_binary = shutil.which("npm")
     if not npm_binary:
         raise RuntimeError("npm is required to run the optional Mastra sidecar")
+    status_path = refresh_session_bootstrap()
 
     command = [
         npm_binary,
@@ -1240,6 +1259,8 @@ def mastra_founder_weekly_review_command(args: argparse.Namespace) -> list[str]:
         "--",
         "--hq-root",
         str(REPO_ROOT),
+        "--hq-status-file",
+        str(status_path),
         "--review-date",
         args.review_date,
         "--session",

@@ -38,6 +38,7 @@ logs/
 *.tmp
 *.temp
 .cache/
+.worktrees/
 __pycache__/
 *.pyc
 
@@ -94,6 +95,7 @@ venv/
 # Sensitive local artifacts
 *.sqlite
 *.sqlite3
+*.duckdb
 *.db
 *.csv
 *.tsv

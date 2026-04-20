@@ -20,8 +20,10 @@ def load_runtime_module(temp_root: Path):
     os.environ["HQ_MISSION_RUNTIME_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_TELEMETRY_REPO_ROOT"] = str(temp_root)
     os.environ["HQ_POLICY_HOOKS_REPO_ROOT"] = str(temp_root)
+    os.environ["HQ_CONTROL_PLANE_REPO_ROOT"] = str(temp_root)
     os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
     sys.modules.pop("hq_io", None)
+    sys.modules.pop("hq_control_plane", None)
     sys.modules.pop("hq_mission_runtime", None)
     sys.modules.pop("hq_policy_hooks", None)
     sys.modules.pop("hq_runtime_review", None)
@@ -51,6 +53,7 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         os.environ.pop("HQ_RUNTIME_REPO_ROOT", None)
         os.environ.pop("HQ_RUNTIME_PRIVATE_ROOT", None)
         os.environ.pop("HQ_POLICY_HOOKS_REPO_ROOT", None)
+        os.environ.pop("HQ_CONTROL_PLANE_REPO_ROOT", None)
         os.environ.pop("HQ_TELEMETRY_REPO_ROOT", None)
         os.environ.pop("HQ_REVIEW_ARCHIVE_KEEP", None)
         self.temp_dir.cleanup()
@@ -708,6 +711,12 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         sidecar_root = self.temp_root / "vendor" / "at-masta"
         sidecar_root.mkdir(parents=True, exist_ok=True)
         (sidecar_root / "package.json").write_text('{"name":"at-masta"}\n', encoding="utf-8")
+        for path, content in self.module.local_text_files().items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        for path, payload in self.module.local_json_files().items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         parser = self.module.build_parser()
         args = parser.parse_args(
@@ -755,6 +764,16 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn("approved", command)
         self.assertIn("--rationale", command)
         self.assertIn("bounded approval", command)
+        self.assertIn("--hq-status-file", command)
+        status_path = Path(command[command.index("--hq-status-file") + 1])
+        self.assertEqual(
+            status_path.resolve(),
+            (self.temp_root / ".hq" / "state" / "session-bootstrap.json").resolve(),
+        )
+        self.assertTrue(status_path.exists())
+        status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+        self.assertIn("workflow_inputs", status_payload)
+        self.assertIn("founder_weekly_review", status_payload["workflow_inputs"])
         self.assertIn("runner=mastra", buffer.getvalue())
         self.assertIn('"approvalStatus": "approved"', buffer.getvalue())
 
