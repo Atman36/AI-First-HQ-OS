@@ -661,6 +661,22 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn(run["id"], inbox_text)
         self.assertNotIn("pending-runtime-record", inbox_text)
 
+        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        self.assertEqual(len(telemetry_files), 1)
+        events = [
+            json.loads(line)
+            for line in telemetry_files[0].read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        review_events = [event for event in events if event.get("event_type") == "review"]
+        acceptance_events = [event for event in events if event.get("event_type") == "acceptance"]
+        self.assertEqual(len(review_events), 1)
+        self.assertEqual(review_events[0]["status"], "reviewed")
+        self.assertEqual(review_events[0]["run_id"], run["id"])
+        self.assertEqual(len(acceptance_events), 1)
+        self.assertEqual(acceptance_events[0]["status"], "accepted")
+        self.assertEqual(acceptance_events[0]["run_id"], run["id"])
+
     def test_founder_weekly_review_pauses_for_founder_approval_when_attention_items_exist(self):
         parser = self.module.build_parser()
         args = parser.parse_args(
@@ -708,6 +724,12 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         ]
         self.assertTrue(any(event.get("run_id") == run["id"] for event in events))
         self.assertTrue(any(event.get("approval_id") == approval["id"] for event in events))
+        review_events = [event for event in events if event.get("event_type") == "review"]
+        acceptance_events = [event for event in events if event.get("event_type") == "acceptance"]
+        self.assertEqual(len(review_events), 1)
+        self.assertEqual(review_events[0]["status"], "reviewed")
+        self.assertEqual(review_events[0]["run_id"], run["id"])
+        self.assertEqual(acceptance_events, [])
 
     def test_founder_weekly_review_mastra_runner_bridges_to_optional_sidecar(self):
         sidecar_root = self.temp_root / "vendor" / "at-masta"
@@ -825,6 +847,21 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertEqual(run["status"], "completed")
         self.assertEqual(run["verification_state"]["status"], "verified")
         self.assertEqual(run["verification_state"]["metadata"]["acceptance_check"], True)
+        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        self.assertEqual(len(telemetry_files), 1)
+        events = [
+            json.loads(line)
+            for line in telemetry_files[0].read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        review_events = [event for event in events if event.get("event_type") == "review"]
+        acceptance_events = [event for event in events if event.get("event_type") == "acceptance"]
+        self.assertEqual(len(review_events), 1)
+        self.assertEqual(review_events[0]["status"], "reviewed")
+        self.assertEqual(review_events[0]["run_id"], run["id"])
+        self.assertEqual(len(acceptance_events), 1)
+        self.assertEqual(acceptance_events[0]["status"], "accepted")
+        self.assertEqual(acceptance_events[0]["run_id"], run["id"])
 
     def test_founder_weekly_review_mastra_runner_requires_sidecar_configuration(self):
         parser = self.module.build_parser()

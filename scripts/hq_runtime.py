@@ -1334,6 +1334,32 @@ def load_mastra_review_artifact_payload(artifact_paths: list[str]) -> dict[str, 
     return {}
 
 
+def emit_founder_weekly_review_telemetry(
+    *,
+    event_type: str,
+    status: str,
+    summary: str,
+    actor: str,
+    mission: dict[str, Any],
+    run: dict[str, Any],
+    step_id: str,
+    metadata: dict[str, Any],
+) -> None:
+    hq_mission_runtime.emit_runtime_telemetry(
+        event_type=event_type,
+        status=status,
+        summary=summary,
+        actor=actor,
+        thread_id=run["thread_id"],
+        mission_id=mission["id"],
+        source_task_id=mission["source_task_id"],
+        workflow=mission["workflow"],
+        run_id=run["id"],
+        step_id=step_id,
+        metadata=metadata,
+    )
+
+
 def persist_founder_weekly_review_runtime(
     *,
     args: argparse.Namespace,
@@ -1393,6 +1419,29 @@ def persist_founder_weekly_review_runtime(
             evidence=evidence_paths,
             metadata={"review_date": args.review_date, "runner": runner, "sidecar_status": sidecar_status},
         )
+    )
+    review_event_metadata = {
+        "review_type": "founder_weekly_review",
+        "review_date": args.review_date,
+        "runner": runner,
+        "founder_attention_required": founder_attention_required,
+        "route_count": len(routes),
+        "approval_count": len(approvals),
+        "blocker_count": len(blockers),
+        "policy_exception_count": len(policy_exceptions),
+        "kpi_drift_count": len(kpi_drifts),
+        "artifact_paths": artifact_paths,
+        "sidecar_status": sidecar_status,
+    }
+    emit_founder_weekly_review_telemetry(
+        event_type="review",
+        status="reviewed",
+        summary=review_summary,
+        actor=args.actor,
+        mission=mission,
+        run=run,
+        step_id=review_step["id"],
+        metadata=review_event_metadata,
     )
     policy_summary = (
         "Founder inbox requires review for approvals, blockers, policy exceptions, or KPI drift."
@@ -1488,7 +1537,7 @@ def persist_founder_weekly_review_runtime(
                 )
             )
             if approval_status == "approved":
-                hq_mission_runtime.verify_run(
+                verified_run = hq_mission_runtime.verify_run(
                     argparse.Namespace(
                         run_id=run["id"],
                         actor=args.accepts_result,
@@ -1498,6 +1547,16 @@ def persist_founder_weekly_review_runtime(
                         metadata=verification_metadata,
                     )
                 )
+                emit_founder_weekly_review_telemetry(
+                    event_type="acceptance",
+                    status="accepted",
+                    summary="Founder-approved weekly review outputs passed verification.",
+                    actor=args.accepts_result,
+                    mission=mission,
+                    run=run,
+                    step_id=verified_run["verification_state"]["step_id"],
+                    metadata=verification_metadata,
+                )
             hq_mission_runtime.finish_run(
                 argparse.Namespace(
                     run_id=run["id"],
@@ -1505,7 +1564,7 @@ def persist_founder_weekly_review_runtime(
                 )
             )
     else:
-        hq_mission_runtime.verify_run(
+        verified_run = hq_mission_runtime.verify_run(
             argparse.Namespace(
                 run_id=run["id"],
                 actor=args.accepts_result,
@@ -1514,6 +1573,16 @@ def persist_founder_weekly_review_runtime(
                 evidence=verification_evidence,
                 metadata=verification_metadata,
             )
+        )
+        emit_founder_weekly_review_telemetry(
+            event_type="acceptance",
+            status="accepted",
+            summary="Weekly review outputs passed verification without founder escalation.",
+            actor=args.accepts_result,
+            mission=mission,
+            run=run,
+            step_id=verified_run["verification_state"]["step_id"],
+            metadata=verification_metadata,
         )
         hq_mission_runtime.finish_run(
             argparse.Namespace(
