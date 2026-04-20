@@ -973,21 +973,30 @@ def founder_attention_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]
     return items
 
 
-def choose_parallel_support_task(
+def choose_parallel_support_tasks(
     primary: dict[str, Any],
     tasks: list[dict[str, Any]],
-) -> dict[str, Any] | None:
+    *,
+    limit: int = 2,
+) -> list[dict[str, Any]]:
     primary_id = str(primary.get("id") or "").strip()
     primary_column = str(primary.get("column") or "").strip()
+    preferred: list[dict[str, Any]] = []
+    fallback: list[dict[str, Any]] = []
+
     for task in tasks:
-        if str(task.get("id") or "").strip() == primary_id:
+        task_id = str(task.get("id") or "").strip()
+        if task_id == primary_id:
             continue
-        if primary_column == "review" and str(task.get("column") or "").strip() == "executing":
-            return task
-    for task in tasks:
-        if str(task.get("id") or "").strip() != primary_id:
-            return task
-    return None
+        task_column = str(task.get("column") or "").strip()
+        if primary_column == "review" and task_column == "executing":
+            preferred.append(task)
+        elif primary_column == "executing" and task_column in {"executing", "review", "this_week"}:
+            preferred.append(task)
+        else:
+            fallback.append(task)
+
+    return (preferred + fallback)[:limit]
 
 
 def relative_read_first_for_task(task: dict[str, Any]) -> list[str]:
@@ -1031,15 +1040,15 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
         return 2
 
     primary = tasks[0]
-    support = choose_parallel_support_task(primary, tasks)
+    support_tasks = choose_parallel_support_tasks(primary, tasks, limit=2)
     founder_items = founder_attention_tasks(payload["tasks"])
     founder_lines = [task_route_line("Founder review", task) for task in founder_items]
     spec_task_name = args.task_name or "Route next slice"
     session = args.session or f"session-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     read_first = relative_read_first_for_task(primary)
-    if support:
+    for support in support_tasks:
         read_first.extend(relative_read_first_for_task(support))
-        read_first = normalize_cli_list(read_first)
+    read_first = normalize_cli_list(read_first)
 
     spec_args = argparse.Namespace(
         task=spec_task_name,
@@ -1064,11 +1073,12 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
         ],
         in_scope=[
             task_route_line("Primary move", primary),
-            (
-                task_route_line("Parallel support", support)
-                if support
-                else "No separate parallel support track is currently available."
+            *(
+                [task_route_line("Parallel support", support) for support in support_tasks]
+                if support_tasks
+                else ["No separate parallel support track is currently available."]
             ),
+            "If the primary move is unblocked, continue into up to two adjacent support tracks before handing control back.",
             "Refresh this private packet before handing control back.",
         ],
         out_of_scope=[
@@ -1082,7 +1092,7 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
             "Surface founder-only review items explicitly instead of burying them in narrative.",
         ],
         acceptance=[
-            "A future wake-up can identify the primary move, one support track, and founder-only review items from this packet alone.",
+            "A future wake-up can identify the primary move, up to two adjacent support tracks, and founder-only review items from this packet alone.",
             "The selected task aligns with the highest-priority actionable column ordering.",
         ],
         question=[
@@ -1113,11 +1123,12 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
         ],
         next=[
             task_route_line("Continue now", primary),
-            (
-                task_route_line("Move in parallel", support)
-                if support
-                else "No parallel support track is currently available."
+            *(
+                [task_route_line("Move in parallel", support) for support in support_tasks]
+                if support_tasks
+                else ["No parallel support track is currently available."]
             ),
+            "If the primary move is unblocked, keep going into up to two adjacent tasks before ending the session.",
             "Refresh `.hq/handoffs/route-next-slice/LATEST.md` before ending the session.",
         ],
         important_file=read_first,
@@ -1138,7 +1149,7 @@ def route_next_slice_command(args: argparse.Namespace) -> int:
         return handoff_exit
 
     print(f"primary_task_id={primary.get('id')}")
-    if support:
+    for support in support_tasks:
         print(f"parallel_task_id={support.get('id')}")
     print(f"founder_review_items={len(founder_items)}")
     return 0

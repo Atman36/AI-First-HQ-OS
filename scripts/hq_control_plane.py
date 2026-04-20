@@ -1291,6 +1291,21 @@ def task_packet_summary(task: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def minimal_read_first(task: dict[str, Any]) -> list[str]:
+    items = [normalize_text(task.get("primary_update_file"))]
+    items.extend(relative_display(path) for path in task_packet_paths(task).values())
+    normalized = [item for item in items if item]
+    return list(dict.fromkeys(normalized))
+
+
+def startup_focus_task(tasks: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for preferred_column in ("executing", "review", "this_week", "scheduled", "policy_check", "triage", "intake"):
+        for task in tasks:
+            if normalize_text(task.get("column")) == preferred_column:
+                return task
+    return tasks[0] if tasks else None
+
+
 def task_missing_for_safe_continue(task: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     paths = task_packet_paths(task)
@@ -1523,6 +1538,7 @@ def build_status_payload(
         if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
     ]
     ordered_live_tasks = sort_tasks(live_tasks, workflow_registry)
+    startup_task = startup_focus_task(ordered_live_tasks)
     blocked_tasks = [
         {
             "id": normalize_text(task.get("id")),
@@ -1544,6 +1560,7 @@ def build_status_payload(
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
+        "minimal_read_first": minimal_read_first(startup_task) if startup_task else [],
         "blocked": blocked_tasks,
         "stale_items": stale_items,
         "workflow_inputs": {
@@ -1601,6 +1618,13 @@ def render_status_text(payload: dict[str, Any]) -> str:
             lines.append(
                 f"- {item['id']} [{item['column']}] | spec: {item['spec']} | handoff: {item['handoff']}"
             )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "Minimal Read First"])
+    minimal_read = payload.get("minimal_read_first", []) or []
+    if minimal_read:
+        lines.extend(f"- {item}" for item in minimal_read)
     else:
         lines.append("- None")
 

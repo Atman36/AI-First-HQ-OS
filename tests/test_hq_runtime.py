@@ -561,9 +561,13 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn("Review trust wording", spec_text)
         self.assertIn("Work ready accounts", spec_text)
         self.assertIn("Founder review", spec_text)
+        self.assertIn("Future task", spec_text)
+        self.assertIn("up to two adjacent support tracks", spec_text)
         self.assertIn(".hq/specs/route-next-slice/LATEST.md", handoff_text)
         self.assertIn("Continue now: [Founder Revenue Sprint] Review trust wording", handoff_text)
         self.assertIn("Move in parallel: [Founder Revenue Sprint] Work ready accounts", handoff_text)
+        self.assertIn("Move in parallel: [AI-First HQ OS] Future task", handoff_text)
+        self.assertIn("up to two adjacent tasks", handoff_text)
 
     def test_route_next_slice_errors_when_no_actionable_tasks_exist(self):
         active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
