@@ -979,24 +979,7 @@ def choose_parallel_support_tasks(
     *,
     limit: int = 2,
 ) -> list[dict[str, Any]]:
-    primary_id = str(primary.get("id") or "").strip()
-    primary_column = str(primary.get("column") or "").strip()
-    preferred: list[dict[str, Any]] = []
-    fallback: list[dict[str, Any]] = []
-
-    for task in tasks:
-        task_id = str(task.get("id") or "").strip()
-        if task_id == primary_id:
-            continue
-        task_column = str(task.get("column") or "").strip()
-        if primary_column == "review" and task_column == "executing":
-            preferred.append(task)
-        elif primary_column == "executing" and task_column in {"executing", "review", "this_week"}:
-            preferred.append(task)
-        else:
-            fallback.append(task)
-
-    return (preferred + fallback)[:limit]
+    return hq_control_plane.choose_parallel_support_tasks(primary, tasks, limit=limit)
 
 
 def relative_read_first_for_task(task: dict[str, Any]) -> list[str]:

@@ -87,7 +87,7 @@ The supported local test runner is `python3 -m unittest discover tests`. `pytest
 Start a new session with `python3 scripts/hq_control_plane.py status`. That command writes `.hq/state/session-bootstrap.json` and prints a compact live-state projection with:
 
 - one `startup_focus` task with the current primary move
-- up to two adjacent `support_tracks` for the same session corridor
+- up to two adjacent `support_tracks`, preferring the same project corridor before cross-project fallback
 - active tasks without `done`
 - blocked tasks with a short reason
 - the current `next_step` per live task

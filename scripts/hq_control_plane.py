@@ -1350,11 +1350,10 @@ def startup_focus_projection(task: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def support_track_projection(tasks: list[dict[str, Any]], startup_task: dict[str, Any] | None) -> list[dict[str, Any]]:
-    startup_task_id = normalize_text(startup_task.get("id")) if startup_task else ""
+    if not startup_task:
+        return []
     support_tracks: list[dict[str, Any]] = []
-    for task in tasks:
-        if normalize_text(task.get("id")) == startup_task_id:
-            continue
+    for task in choose_parallel_support_tasks(startup_task, tasks, limit=2):
         support_tracks.append(
             {
                 "id": normalize_text(task.get("id")),
@@ -1378,6 +1377,51 @@ def startup_focus_task(tasks: list[dict[str, Any]]) -> dict[str, Any] | None:
             if normalize_text(task.get("column")) == preferred_column:
                 return task
     return tasks[0] if tasks else None
+
+
+def choose_parallel_support_tasks(
+    primary: dict[str, Any],
+    tasks: list[dict[str, Any]],
+    *,
+    limit: int = 2,
+) -> list[dict[str, Any]]:
+    primary_id = normalize_text(primary.get("id"))
+    primary_column = normalize_text(primary.get("column"))
+    primary_project = normalize_text(primary.get("project"))
+    same_project_preferred: list[dict[str, Any]] = []
+    cross_project_preferred: list[dict[str, Any]] = []
+    same_project_fallback: list[dict[str, Any]] = []
+    cross_project_fallback: list[dict[str, Any]] = []
+
+    for task in tasks:
+        task_id = normalize_text(task.get("id"))
+        if task_id == primary_id:
+            continue
+        task_column = normalize_text(task.get("column"))
+        if task_column in {"blocked", "waiting", "accepted", "synced", "done"}:
+            continue
+        task_project = normalize_text(task.get("project"))
+        same_project = bool(primary_project and task_project == primary_project)
+
+        is_preferred = False
+        if primary_column == "review" and task_column == "executing":
+            is_preferred = True
+        elif primary_column == "executing" and task_column in {"executing", "review", "this_week"}:
+            is_preferred = True
+        elif primary_column == "this_week" and task_column in {"executing", "review", "this_week"}:
+            is_preferred = True
+
+        if same_project and is_preferred:
+            same_project_preferred.append(task)
+        elif is_preferred:
+            cross_project_preferred.append(task)
+        elif same_project:
+            same_project_fallback.append(task)
+        else:
+            cross_project_fallback.append(task)
+
+    ordered = same_project_preferred + cross_project_preferred + same_project_fallback + cross_project_fallback
+    return ordered[:limit]
 
 
 def task_missing_for_safe_continue(task: dict[str, Any]) -> list[str]:

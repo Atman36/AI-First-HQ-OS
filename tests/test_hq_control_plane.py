@@ -578,6 +578,36 @@ class HqControlPlaneTests(unittest.TestCase):
                             "workflow": "intake-to-execution",
                         },
                         {
+                            "id": "task-support",
+                            "title": "Advance same-project support track",
+                            "column": "this_week",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "HQ Bootstrap",
+                            "next_step": "Review adjacent same-project support work.",
+                            "done_when": "The adjacent support work is reviewed.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
+                            "id": "task-other-project",
+                            "title": "Cross-project fallback",
+                            "column": "this_week",
+                            "manager": "ai_operations_lead",
+                            "owner": "delivery",
+                            "project": "Other Project",
+                            "next_step": "Handle later as fallback.",
+                            "done_when": "The fallback is handled later.",
+                            "primary_update_file": "README.md",
+                            "accepts_result": "governor",
+                            "risk_tier": "medium",
+                            "autonomy_tier": "A2",
+                            "workflow": "intake-to-execution",
+                        },
+                        {
                             "id": "task-done",
                             "title": "Already finished",
                             "column": "done",
@@ -633,12 +663,17 @@ class HqControlPlaneTests(unittest.TestCase):
         written_payload = json.loads(bootstrap_path.read_text(encoding="utf-8"))
         self.assertEqual(payload, written_payload)
         self.assertEqual(payload["objective"], "Run one governed loop")
-        self.assertEqual(payload["startup_focus"]["id"], "task-live")
-        self.assertEqual(payload["startup_focus"]["title"], "Ship session bootstrap")
+        self.assertEqual(payload["startup_focus"]["project"], "HQ Bootstrap")
         self.assertEqual(payload["startup_focus"]["recommended_next_command"], "python3 scripts/hq_control_plane.py status")
-        self.assertEqual([task["id"] for task in payload["support_tracks"]], ["task-blocked"])
-        self.assertEqual([task["id"] for task in payload["active_tasks"]], ["task-live", "task-blocked"])
-        self.assertEqual(payload["active_tasks"][0]["next_step"], "Add the status projection command.")
+        self.assertEqual(payload["support_tracks"][0]["project"], "HQ Bootstrap")
+        self.assertEqual(payload["support_tracks"][1]["id"], "task-other-project")
+        self.assertNotIn("task-blocked", [task["id"] for task in payload["support_tracks"]])
+        self.assertIn(payload["startup_focus"]["id"], [task["id"] for task in payload["active_tasks"]])
+        self.assertIn("task-blocked", [task["id"] for task in payload["active_tasks"]])
+        self.assertEqual(
+            next(task["next_step"] for task in payload["active_tasks"] if task["id"] == "task-live"),
+            "Add the status projection command.",
+        )
         self.assertEqual(payload["blocked"][0]["id"], "task-blocked")
         self.assertIn("Founder review on legal wording", payload["blocked"][0]["reason"])
         self.assertTrue(payload["stale_items"])
@@ -650,9 +685,10 @@ class HqControlPlaneTests(unittest.TestCase):
         memory_index_path = self.temp_root / ".hq" / "state" / "memory-index.json"
         self.assertTrue(memory_index_path.exists())
         memory_index = json.loads(memory_index_path.read_text(encoding="utf-8"))
-        self.assertEqual(memory_index["startup_focus"]["id"], "task-live")
-        self.assertEqual(memory_index["support_tracks"][0]["id"], "task-blocked")
-        self.assertEqual(memory_index["counts"]["active_tasks"], 2)
+        self.assertEqual(memory_index["startup_focus"]["project"], "HQ Bootstrap")
+        self.assertEqual(memory_index["support_tracks"][0]["project"], "HQ Bootstrap")
+        self.assertEqual(memory_index["support_tracks"][1]["id"], "task-other-project")
+        self.assertEqual(memory_index["counts"]["active_tasks"], 4)
 
     def test_archive_moves_done_tasks_to_runtime_archive_and_preserves_ids(self):
         (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
