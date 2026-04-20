@@ -1289,6 +1289,254 @@ def mastra_founder_weekly_review_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
+def parse_mastra_weekly_review_output(stdout: str) -> dict[str, Any]:
+    text = (stdout or "").strip()
+    if not text:
+        raise ValueError("Mastra sidecar returned empty output")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError("Mastra sidecar output did not contain parseable JSON")
+        payload = json.loads(text[start : end + 1])
+    if not isinstance(payload, dict):
+        raise ValueError("Mastra sidecar output must be a JSON object")
+    return payload
+
+
+def normalize_founder_weekly_review_artifact_paths(paths: dict[str, Any] | None) -> list[str]:
+    if not isinstance(paths, dict):
+        return []
+    normalized: list[str] = []
+    for key in ("json", "markdown", "latestJson", "latestMarkdown"):
+        value = str(paths.get(key) or "").strip()
+        if not value or value in normalized:
+            continue
+        normalized.append(value)
+    return normalized
+
+
+def load_mastra_review_artifact_payload(artifact_paths: list[str]) -> dict[str, Any]:
+    for relative_path in artifact_paths:
+        if not relative_path.endswith(".json"):
+            continue
+        candidate = (REPO_ROOT / relative_path).resolve()
+        if not candidate.exists():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def persist_founder_weekly_review_runtime(
+    *,
+    args: argparse.Namespace,
+    runner: str,
+    review_summary: str,
+    routes: list[str],
+    approvals: list[str],
+    blockers: list[str],
+    policy_exceptions: list[str],
+    kpi_drifts: list[str],
+    founder_attention_required: bool,
+    approval_status: str,
+    founder_rationale: str,
+    evidence_paths: list[str],
+    artifact_paths: list[str],
+    sidecar_status: str = "",
+) -> dict[str, Any]:
+    mission = hq_mission_runtime.create_mission(
+        argparse.Namespace(
+            title=args.mission_title or f"Founder Weekly Operating Review {args.review_date}",
+            goal=args.goal or "Review weekly operating state and route the next mission slice.",
+            workflow="founder-weekly-operating-review",
+            project=args.project or "Founder Weekly Operating Review",
+            owner=args.owner,
+            manager=args.manager,
+            accepts_result=args.accepts_result,
+            source_task_id=args.source_task_id,
+            thread_id="",
+            thread_title="",
+            metadata={
+                "runner": runner,
+                "routes": routes,
+                "approvals": approvals,
+                "blockers": blockers,
+                "policy_exceptions": policy_exceptions,
+                "kpi_drifts": kpi_drifts,
+                "sidecar_status": sidecar_status,
+                "artifact_paths": artifact_paths,
+            },
+        )
+    )
+    run = hq_mission_runtime.start_run(
+        argparse.Namespace(
+            mission_id=mission["id"],
+            actor=args.actor,
+            loop="weekly_operating_review->mission_routing->policy_gate",
+            metadata={"review_date": args.review_date, "runner": runner, "sidecar_status": sidecar_status},
+        )
+    )
+    review_step = hq_mission_runtime.checkpoint_step(
+        argparse.Namespace(
+            run_id=run["id"],
+            key="weekly_operating_review",
+            actor=args.actor,
+            status="completed",
+            summary=review_summary,
+            evidence=evidence_paths,
+            metadata={"review_date": args.review_date, "runner": runner, "sidecar_status": sidecar_status},
+        )
+    )
+    policy_summary = (
+        "Founder inbox requires review for approvals, blockers, policy exceptions, or KPI drift."
+        if founder_attention_required
+        else "No founder-only items detected during the weekly operating review."
+    )
+    routing_step = hq_mission_runtime.checkpoint_step(
+        argparse.Namespace(
+            run_id=run["id"],
+            key="mission_routing",
+            actor=args.actor,
+            status="completed",
+            summary=(
+                f"Prepared {len(routes)} mission route(s) for follow-up."
+                if routes
+                else "No new mission routes were queued in this review."
+            ),
+            evidence=evidence_paths,
+            metadata={"route_count": len(routes), "runner": runner},
+        )
+    )
+    policy_step = hq_mission_runtime.checkpoint_step(
+        argparse.Namespace(
+            run_id=run["id"],
+            key="policy_gate",
+            actor=args.governor,
+            status="waiting_approval" if founder_attention_required and approval_status == "" else "completed",
+            summary=policy_summary,
+            evidence=evidence_paths,
+            metadata={
+                "approval_count": len(approvals),
+                "blocker_count": len(blockers),
+                "policy_exception_count": len(policy_exceptions),
+                "kpi_drift_count": len(kpi_drifts),
+                "runner": runner,
+                "sidecar_status": sidecar_status,
+            },
+        )
+    )
+
+    attached_artifacts: list[dict[str, Any]] = []
+    for path in artifact_paths:
+        suffix = Path(path).suffix.lower()
+        kind = "review_artifact"
+        if runner == "builtin" and suffix == ".md":
+            kind = "founder_inbox"
+        elif suffix == ".json":
+            kind = "founder_weekly_review_json"
+        elif suffix == ".md":
+            kind = "founder_weekly_review_markdown"
+        attached_artifacts.append(
+            hq_mission_runtime.attach_artifact(
+                argparse.Namespace(
+                    run_id=run["id"],
+                    step_id=review_step["id"],
+                    kind=kind,
+                    path=path,
+                    summary=f"Founder weekly review artifact from {runner} runner.",
+                    metadata={"review_date": args.review_date, "runner": runner},
+                )
+            )
+        )
+
+    approval = None
+    verification_evidence = list(dict.fromkeys([*evidence_paths, *artifact_paths]))
+    verification_metadata = {
+        "artifact_ids": [item["id"] for item in attached_artifacts],
+        "review_date": args.review_date,
+        "runner": runner,
+        "review_type": "founder_weekly_review",
+        "acceptance_check": True,
+        "sidecar_status": sidecar_status,
+    }
+    if founder_attention_required:
+        approval = hq_mission_runtime.request_approval(
+            argparse.Namespace(
+                run_id=run["id"],
+                step_id=policy_step["id"],
+                requested_by=args.governor,
+                requested_for="founder",
+                policy_action="pause_for_founder_approval",
+                summary=policy_summary,
+                metadata={"artifact_ids": verification_metadata["artifact_ids"], "runner": runner},
+            )
+        )
+        if approval_status:
+            hq_mission_runtime.decide_approval(
+                argparse.Namespace(
+                    approval_id=approval["id"],
+                    decision=approval_status,
+                    decided_by=args.accepts_result,
+                    rationale=founder_rationale or "Founder weekly operating review decision recorded.",
+                )
+            )
+            if approval_status == "approved":
+                hq_mission_runtime.verify_run(
+                    argparse.Namespace(
+                        run_id=run["id"],
+                        actor=args.accepts_result,
+                        status="verified",
+                        summary="Founder-approved weekly review outputs passed verification.",
+                        evidence=verification_evidence,
+                        metadata=verification_metadata,
+                    )
+                )
+            hq_mission_runtime.finish_run(
+                argparse.Namespace(
+                    run_id=run["id"],
+                    status="completed" if approval_status == "approved" else "blocked",
+                )
+            )
+    else:
+        hq_mission_runtime.verify_run(
+            argparse.Namespace(
+                run_id=run["id"],
+                actor=args.accepts_result,
+                status="verified",
+                summary="Weekly review outputs passed verification without founder escalation.",
+                evidence=verification_evidence,
+                metadata=verification_metadata,
+            )
+        )
+        hq_mission_runtime.finish_run(
+            argparse.Namespace(
+                run_id=run["id"],
+                status="completed",
+            )
+        )
+
+    current_run = hq_mission_runtime.require_file(
+        hq_mission_runtime.run_path(run["id"]),
+        "run",
+        "run",
+    )
+    return {
+        "mission": mission,
+        "run": current_run,
+        "routing_step": routing_step,
+        "policy_step": policy_step,
+        "approval": approval,
+        "artifacts": attached_artifacts,
+    }
+
+
 def maybe_run_mastra_founder_weekly_review(args: argparse.Namespace) -> int | None:
     sidecar_root = resolve_mastra_sidecar_root(args.mastra_sidecar_root)
     wants_mastra = args.runner in {"mastra", "auto"}
@@ -1326,6 +1574,56 @@ def maybe_run_mastra_founder_weekly_review(args: argparse.Namespace) -> int | No
         print(completed.stderr.strip())
     if completed.returncode != 0:
         return completed.returncode or 1
+    try:
+        sidecar_output = parse_mastra_weekly_review_output(completed.stdout)
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+
+    artifact_paths = normalize_founder_weekly_review_artifact_paths(sidecar_output.get("artifactPaths"))
+    artifact_payload = load_mastra_review_artifact_payload(artifact_paths)
+    evidence_paths = list(dict.fromkeys([hq_control_plane.relative_display(hq_control_plane.SESSION_BOOTSTRAP_PATH), *artifact_paths]))
+    persisted = persist_founder_weekly_review_runtime(
+        args=args,
+        runner="mastra",
+        review_summary=str(
+            artifact_payload.get("summary")
+            or sidecar_output.get("summary")
+            or "Weekly operating review completed."
+        ),
+        routes=normalize_cli_list(artifact_payload.get("routes"))
+        if isinstance(artifact_payload.get("routes"), list)
+        else [],
+        approvals=normalize_cli_list(artifact_payload.get("approvals"))
+        if isinstance(artifact_payload.get("approvals"), list)
+        else [],
+        blockers=normalize_cli_list(artifact_payload.get("blockers"))
+        if isinstance(artifact_payload.get("blockers"), list)
+        else [],
+        policy_exceptions=normalize_cli_list(artifact_payload.get("policyExceptions"))
+        if isinstance(artifact_payload.get("policyExceptions"), list)
+        else [],
+        kpi_drifts=normalize_cli_list(artifact_payload.get("kpiDrifts"))
+        if isinstance(artifact_payload.get("kpiDrifts"), list)
+        else [],
+        founder_attention_required=bool(
+            artifact_payload.get("founderAttentionRequired", sidecar_output.get("founderAttentionRequired"))
+        ),
+        approval_status=str(sidecar_output.get("approvalStatus") or "").strip().replace("not_required", ""),
+        founder_rationale=str(
+            artifact_payload.get("founderRationale") or sidecar_output.get("founderRationale") or args.founder_rationale or ""
+        ).strip(),
+        evidence_paths=evidence_paths,
+        artifact_paths=artifact_paths,
+        sidecar_status=str(sidecar_output.get("status") or "").strip(),
+    )
+    print(f"mission_id={persisted['mission']['id']}")
+    print(f"run_id={persisted['run']['id']}")
+    print(f"routing_step_id={persisted['routing_step']['id']}")
+    print(f"policy_step_id={persisted['policy_step']['id']}")
+    if persisted["approval"]:
+        print(f"approval_id={persisted['approval']['id']}")
+    print(f"status={persisted['run']['status']}")
     return 0
 
 
@@ -1348,82 +1646,6 @@ def founder_weekly_review_command(args: argparse.Namespace) -> int:
         print("error=founder-decision requires founder review items or --force-founder-review")
         return 2
 
-    mission = hq_mission_runtime.create_mission(
-        argparse.Namespace(
-            title=args.mission_title or f"Founder Weekly Operating Review {args.review_date}",
-            goal=args.goal or "Review weekly operating state and route the next mission slice.",
-            workflow="founder-weekly-operating-review",
-            project=args.project or "Founder Weekly Operating Review",
-            owner=args.owner,
-            manager=args.manager,
-            accepts_result=args.accepts_result,
-            source_task_id=args.source_task_id,
-            thread_id="",
-            thread_title="",
-            metadata={
-                "routes": routes,
-                "approvals": approvals,
-                "blockers": blockers,
-                "policy_exceptions": policy_exceptions,
-                "kpi_drifts": kpi_drifts,
-            },
-        )
-    )
-    run = hq_mission_runtime.start_run(
-        argparse.Namespace(
-            mission_id=mission["id"],
-            actor=args.actor,
-            loop="weekly_operating_review->mission_routing->policy_gate",
-            metadata={"review_date": args.review_date},
-        )
-    )
-    hq_mission_runtime.checkpoint_step(
-        argparse.Namespace(
-            run_id=run["id"],
-            key="weekly_operating_review",
-            actor=args.actor,
-            status="completed",
-            summary=args.review_summary or "Weekly operating review completed.",
-            evidence=[],
-            metadata={"review_date": args.review_date},
-        )
-    )
-    policy_summary = (
-        "Founder inbox requires review for approvals, blockers, policy exceptions, or KPI drift."
-        if founder_attention_required
-        else "No founder-only items detected during the weekly operating review."
-    )
-    routing_step = hq_mission_runtime.checkpoint_step(
-        argparse.Namespace(
-            run_id=run["id"],
-            key="mission_routing",
-            actor=args.actor,
-            status="completed",
-            summary=(
-                f"Prepared {len(routes)} mission route(s) for follow-up."
-                if routes
-                else "No new mission routes were queued in this review."
-            ),
-            evidence=[],
-            metadata={"route_count": len(routes)},
-        )
-    )
-    policy_step = hq_mission_runtime.checkpoint_step(
-        argparse.Namespace(
-            run_id=run["id"],
-            key="policy_gate",
-            actor=args.governor,
-            status="waiting_approval" if founder_attention_required else "completed",
-            summary=policy_summary,
-            evidence=[],
-            metadata={
-                "approval_count": len(approvals),
-                "blocker_count": len(blockers),
-                "policy_exception_count": len(policy_exceptions),
-                "kpi_drift_count": len(kpi_drifts),
-            },
-        )
-    )
     inbox_path = write_founder_inbox_artifact(
         args.session,
         founder_inbox_markdown(
@@ -1434,90 +1656,45 @@ def founder_weekly_review_command(args: argparse.Namespace) -> int:
             blockers=blockers,
             policy_exceptions=policy_exceptions,
             kpi_drifts=kpi_drifts,
-            run_id=run["id"],
+            run_id="pending-runtime-record",
         ),
     )
-    artifact = hq_mission_runtime.attach_artifact(
-        argparse.Namespace(
-            run_id=run["id"],
-            step_id=policy_step["id"],
-            kind="founder_inbox",
-            path=inbox_path.relative_to(REPO_ROOT).as_posix(),
-            summary="Founder weekly operating review inbox.",
-            metadata={"route_count": len(routes), "review_date": args.review_date},
-        )
+    persisted = persist_founder_weekly_review_runtime(
+        args=args,
+        runner="builtin",
+        review_summary=args.review_summary or "Weekly operating review completed.",
+        routes=routes,
+        approvals=approvals,
+        blockers=blockers,
+        policy_exceptions=policy_exceptions,
+        kpi_drifts=kpi_drifts,
+        founder_attention_required=founder_attention_required,
+        approval_status=args.founder_decision or "",
+        founder_rationale=args.founder_rationale or "",
+        evidence_paths=[inbox_path.relative_to(REPO_ROOT).as_posix()],
+        artifact_paths=[inbox_path.relative_to(REPO_ROOT).as_posix()],
     )
-
-    approval = None
-    if founder_attention_required:
-        approval = hq_mission_runtime.request_approval(
-            argparse.Namespace(
-                run_id=run["id"],
-                step_id=policy_step["id"],
-                requested_by=args.governor,
-                requested_for="founder",
-                policy_action="pause_for_founder_approval",
-                summary=policy_summary,
-                metadata={"artifact_id": artifact["id"]},
-            )
-        )
-        if args.founder_decision:
-            hq_mission_runtime.decide_approval(
-                argparse.Namespace(
-                    approval_id=approval["id"],
-                    decision=args.founder_decision,
-                    decided_by=args.accepts_result,
-                    rationale=args.founder_rationale or "Founder weekly operating review decision recorded.",
-                )
-            )
-            if args.founder_decision == "approved":
-                hq_mission_runtime.verify_run(
-                    argparse.Namespace(
-                        run_id=run["id"],
-                        actor=args.accepts_result,
-                        status="verified",
-                        summary="Founder-approved weekly review outputs passed verification.",
-                        evidence=[inbox_path.relative_to(REPO_ROOT).as_posix()],
-                        metadata={"artifact_id": artifact["id"], "review_date": args.review_date},
-                    )
-                )
-            hq_mission_runtime.finish_run(
-                argparse.Namespace(
-                    run_id=run["id"],
-                    status="completed" if args.founder_decision == "approved" else "blocked",
-                )
-            )
-    else:
-        hq_mission_runtime.verify_run(
-            argparse.Namespace(
-                run_id=run["id"],
-                actor=args.accepts_result,
-                status="verified",
-                summary="Weekly review outputs passed verification without founder escalation.",
-                evidence=[inbox_path.relative_to(REPO_ROOT).as_posix()],
-                metadata={"artifact_id": artifact["id"], "review_date": args.review_date},
-            )
-        )
-        hq_mission_runtime.finish_run(
-            argparse.Namespace(
-                run_id=run["id"],
-                status="completed",
-            )
-        )
-
-    current_run = hq_mission_runtime.require_file(
-        hq_mission_runtime.run_path(run["id"]),
-        "run",
-        "run",
+    atomic_write_text(
+        inbox_path,
+        founder_inbox_markdown(
+            review_date=args.review_date,
+            review_summary=args.review_summary or "Weekly operating review completed.",
+            routes=routes,
+            approvals=approvals,
+            blockers=blockers,
+            policy_exceptions=policy_exceptions,
+            kpi_drifts=kpi_drifts,
+            run_id=persisted["run"]["id"],
+        ),
     )
-    print(f"mission_id={mission['id']}")
-    print(f"run_id={run['id']}")
-    print(f"routing_step_id={routing_step['id']}")
-    print(f"policy_step_id={policy_step['id']}")
+    print(f"mission_id={persisted['mission']['id']}")
+    print(f"run_id={persisted['run']['id']}")
+    print(f"routing_step_id={persisted['routing_step']['id']}")
+    print(f"policy_step_id={persisted['policy_step']['id']}")
     print(f"founder_inbox={inbox_path}")
-    if approval:
-        print(f"approval_id={approval['id']}")
-    print(f"status={current_run['status']}")
+    if persisted["approval"]:
+        print(f"approval_id={persisted['approval']['id']}")
+    print(f"status={persisted['run']['status']}")
     return 0
 
 
@@ -1776,8 +1953,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     founder_weekly_review.add_argument(
         "--source-task-id",
-        default="founder-weekly-operating-review",
-        help="Task identifier used for telemetry lineage. Defaults to founder-weekly-operating-review.",
+        default="prove-founder-weekly-review-as-primary-workflow",
+        help="Task identifier used for telemetry lineage. Defaults to prove-founder-weekly-review-as-primary-workflow.",
     )
     founder_weekly_review.add_argument(
         "--owner",

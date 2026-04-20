@@ -658,6 +658,8 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         inbox_text = inbox_path.read_text(encoding="utf-8")
         self.assertIn("Mission Routes", inbox_text)
         self.assertIn("No founder review items.", inbox_text)
+        self.assertIn(run["id"], inbox_text)
+        self.assertNotIn("pending-runtime-record", inbox_text)
 
     def test_founder_weekly_review_pauses_for_founder_approval_when_attention_items_exist(self):
         parser = self.module.build_parser()
@@ -747,11 +749,35 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         completed.stdout = json.dumps(
             {
                 "status": "success",
+                "founderAttentionRequired": True,
                 "approvalStatus": "approved",
                 "summary": "Bridge completed",
+                "artifactPaths": {
+                    "json": ".hq/mastra-sidecar/founder-weekly-review/bridge-test.json",
+                    "markdown": ".hq/mastra-sidecar/founder-weekly-review/bridge-test.md",
+                },
             }
         )
         completed.stderr = ""
+        artifact_dir = self.temp_root / ".hq" / "mastra-sidecar" / "founder-weekly-review"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "bridge-test.json").write_text(
+            json.dumps(
+                {
+                    "summary": "Bridge completed",
+                    "routes": ["Route runtime hardening mission to delivery."],
+                    "approvals": ["Approve founder-facing route."],
+                    "blockers": [],
+                    "policyExceptions": [],
+                    "kpiDrifts": [],
+                    "founderAttentionRequired": True,
+                    "founderRationale": "bounded approval",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (artifact_dir / "bridge-test.md").write_text("# Bridge Test\n", encoding="utf-8")
         buffer = io.StringIO()
         with mock.patch.object(self.module.shutil, "which", return_value="/usr/bin/npm"), mock.patch.object(
             self.module.subprocess, "run", return_value=completed
@@ -780,6 +806,25 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn("founder_weekly_review", status_payload["workflow_inputs"])
         self.assertIn("runner=mastra", buffer.getvalue())
         self.assertIn('"approvalStatus": "approved"', buffer.getvalue())
+        mission_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "missions").glob("*.json")
+        )
+        run_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "runs").glob("*.json")
+        )
+        artifact_files = sorted(
+            (self.temp_root / ".hq" / "state" / "mission-runtime" / "artifacts").glob("*.json")
+        )
+        self.assertEqual(len(mission_files), 1)
+        self.assertEqual(len(run_files), 1)
+        self.assertEqual(len(artifact_files), 2)
+        mission = json.loads(mission_files[0].read_text(encoding="utf-8"))
+        run = json.loads(run_files[0].read_text(encoding="utf-8"))
+        self.assertEqual(mission["source_task_id"], "prove-founder-weekly-review-as-primary-workflow")
+        self.assertEqual(mission["metadata"]["runner"], "mastra")
+        self.assertEqual(run["status"], "completed")
+        self.assertEqual(run["verification_state"]["status"], "verified")
+        self.assertEqual(run["verification_state"]["metadata"]["acceptance_check"], True)
 
     def test_founder_weekly_review_mastra_runner_requires_sidecar_configuration(self):
         parser = self.module.build_parser()
