@@ -1227,7 +1227,17 @@ def resolve_mastra_sidecar_root(value: str | None) -> Path | None:
 def mastra_sidecar_ready(path: Path | None) -> bool:
     if path is None:
         return False
-    return path.is_dir() and (path / "package.json").exists()
+    if not path.is_dir():
+        return False
+    package_path = path / "package.json"
+    if not package_path.exists():
+        return False
+    try:
+        package_payload = json.loads(package_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    scripts = package_payload.get("scripts", {})
+    return isinstance(scripts, dict) and isinstance(scripts.get("run:weekly-review"), str)
 
 
 def refresh_session_bootstrap() -> Path:

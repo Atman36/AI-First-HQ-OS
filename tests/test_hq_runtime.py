@@ -710,7 +710,11 @@ class HqRuntimeReflectionTests(unittest.TestCase):
     def test_founder_weekly_review_mastra_runner_bridges_to_optional_sidecar(self):
         sidecar_root = self.temp_root / "vendor" / "at-masta"
         sidecar_root.mkdir(parents=True, exist_ok=True)
-        (sidecar_root / "package.json").write_text('{"name":"at-masta"}\n', encoding="utf-8")
+        (sidecar_root / "package.json").write_text(
+            json.dumps({"name": "at-masta", "scripts": {"run:weekly-review": "node weekly.js"}})
+            + "\n",
+            encoding="utf-8",
+        )
         for path, content in self.module.local_text_files().items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
@@ -784,6 +788,32 @@ class HqRuntimeReflectionTests(unittest.TestCase):
                 "founder-weekly-review",
                 "--runner",
                 "mastra",
+            ]
+        )
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("mastra sidecar is not configured", buffer.getvalue().lower())
+
+    def test_founder_weekly_review_mastra_runner_rejects_checkout_without_weekly_script(self):
+        sidecar_root = self.temp_root / "vendor" / "wrong-sidecar"
+        sidecar_root.mkdir(parents=True, exist_ok=True)
+        (sidecar_root / "package.json").write_text(
+            json.dumps({"name": "wrong-sidecar", "scripts": {"test": "node --test"}}) + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(
+            [
+                "founder-weekly-review",
+                "--runner",
+                "mastra",
+                "--mastra-sidecar-root",
+                str(sidecar_root),
             ]
         )
 
