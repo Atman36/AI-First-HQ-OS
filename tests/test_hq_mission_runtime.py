@@ -51,6 +51,15 @@ class HqMissionRuntimeTests(unittest.TestCase):
         os.environ.pop("HQ_RUNTIME_POLICY_FILE", None)
         self.temp_dir.cleanup()
 
+    def read_json(self, path: Path) -> dict:
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def runtime_path(self, path_value: str) -> Path:
+        candidate = Path(path_value)
+        if candidate.is_absolute():
+            return candidate
+        return self.temp_root / candidate
+
     def test_create_mission_and_start_run_persist_first_class_records(self):
         parser = self.module.build_parser()
 
@@ -189,6 +198,162 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(current_run["trace_state"]["resume_from_step_id"], planner_step["id"])
         self.assertEqual(planner_step["thread_id"], mission["thread_id"])
         self.assertEqual(gate_step["thread_id"], mission["thread_id"])
+
+    def test_completed_step_creates_checkpoint_packet(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Checkpoint Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--summary",
+                    "Planner checkpoint completed.",
+                ]
+            )
+        )
+
+        run_state = self.read_json(self.module.run_path(run["id"]))
+        checkpoint_path = self.runtime_path(run_state["latest_checkpoint_path"])
+        self.assertTrue(checkpoint_path.exists())
+        checkpoint = self.read_json(checkpoint_path)
+        self.assertEqual(checkpoint["entity_type"], "checkpoint")
+        self.assertEqual(checkpoint["checkpoint_kind"], "step_completed")
+        self.assertEqual(checkpoint["run_id"], run["id"])
+        self.assertEqual(checkpoint["thread_id"], mission["thread_id"])
+        self.assertEqual(checkpoint["source_step_id"], step["id"])
+        self.assertEqual(checkpoint["current_step_id"], step["id"])
+        self.assertEqual(checkpoint["resume_from_step_id"], step["id"])
+        self.assertEqual(checkpoint["last_successful_step_id"], step["id"])
+        self.assertEqual(checkpoint["execution_context"]["session_id"], run_state["execution_context"]["session_id"])
+        self.assertEqual(checkpoint["trace_state"]["checkpoint_id"], checkpoint["id"])
+        self.assertEqual(checkpoint["trace_state"]["checkpoint_path"], run_state["latest_checkpoint_path"])
+
+    def test_interrupt_run_writes_checkpoint_and_resume_status(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Interrupt Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                    "--summary",
+                    "Checkpoint before interruption.",
+                ]
+            )
+        )
+
+        interrupted = self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                    "--reason",
+                    "Need to pause.",
+                ]
+            )
+        )
+
+        checkpoint_path = self.runtime_path(interrupted["latest_checkpoint_path"])
+        self.assertTrue(checkpoint_path.exists())
+        checkpoint = self.read_json(checkpoint_path)
+        self.assertEqual(checkpoint["checkpoint_kind"], "interrupt")
+        self.assertEqual(checkpoint["resume_from_step_id"], step["id"])
+        self.assertEqual(checkpoint["source_event"], "interrupt-run")
+
+        status_path = self.runtime_path(interrupted["resume_status_path"])
+        self.assertTrue(status_path.exists())
+        resume_status = self.read_json(status_path)
+        self.assertEqual(resume_status["latest_checkpoint_id"], checkpoint["id"])
+        self.assertEqual(resume_status["latest_checkpoint_path"], interrupted["latest_checkpoint_path"])
+        self.assertTrue(resume_status["resumable"])
+        self.assertTrue(resume_status["safe_to_resume"])
+        self.assertFalse(resume_status["needs_handoff_refresh"])
+        self.assertEqual(resume_status["resume_plan"]["resume_from_step_id"], step["id"])
+
+    def test_finish_run_writes_final_checkpoint(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Finish Checkpoint Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                ]
+            )
+        )
+        self.module.verify_run(
+            self.module.build_parser().parse_args(
+                [
+                    "verify-run",
+                    "--run-id",
+                    run["id"],
+                    "--actor",
+                    "documentation",
+                    "--summary",
+                    "Ready for finish.",
+                ]
+            )
+        )
+
+        finished = self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "completed"]
+            )
+        )["finished_run"]
+
+        checkpoint_path = self.runtime_path(finished["latest_checkpoint_path"])
+        self.assertTrue(checkpoint_path.exists())
+        checkpoint = self.read_json(checkpoint_path)
+        self.assertEqual(checkpoint["checkpoint_kind"], "pre_finish")
+        self.assertEqual(checkpoint["source_event"], "finish-run")
+        resume_status = self.read_json(self.runtime_path(finished["resume_status_path"]))
+        self.assertFalse(resume_status["resumable"])
+        self.assertFalse(resume_status["safe_to_resume"])
+        self.assertIn("terminal", resume_status["resume_reason"])
 
     def test_request_and_decide_approval_updates_run_status(self):
         mission = self.module.create_mission(
@@ -876,6 +1041,350 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["runtime_home"], run["execution_context"]["runtime_home"])
         self.assertEqual(payload["handoff_id"], handoff["id"])
         self.assertEqual(payload["resume_packet_path"], ".hq/handoffs/resume-mission/LATEST.md")
+
+    def test_show_resume_status_keeps_resumable_when_handoff_is_missing(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Missing Handoff Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                ]
+            )
+        )
+        self.module.create_handoff_record(
+            thread_id=mission["thread_id"],
+            task="Missing Handoff Mission",
+            session="session-1",
+            handoff_file=".hq/handoffs/missing-handoff/LATEST.md",
+            owner="delivery",
+            status="ready_for_handoff",
+            next_steps=["Resume from checkpoint."],
+        )
+        self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                    "--reason",
+                    "Pause before handoff refresh.",
+                ]
+            )
+        )
+        missing_handoff_path = self.temp_root / ".hq" / "handoffs" / "missing-handoff" / "LATEST.md"
+        if missing_handoff_path.exists():
+            missing_handoff_path.unlink()
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["show-resume-status", "--run-id", run["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["resumable"])
+        self.assertTrue(payload["safe_to_resume"])
+        self.assertTrue(payload["needs_handoff_refresh"])
+        self.assertIn(step["id"], payload["resume_plan"]["resume_from_step_id"])
+        self.assertTrue(any("latest_handoff_path" in item for item in payload["stale_inputs"]))
+
+    def test_show_resume_status_handles_corrupted_checkpoint_without_crashing(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Corrupt Checkpoint Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                ]
+            )
+        )
+        interrupted = self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                    "--reason",
+                    "Pause before corruption test.",
+                ]
+            )
+        )
+        checkpoint_path = self.runtime_path(interrupted["latest_checkpoint_path"])
+        checkpoint_path.write_text("{not json}\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["show-resume-status", "--run-id", run["id"]])
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["resumable"])
+        self.assertFalse(payload["safe_to_resume"])
+        self.assertIn("checkpoint", payload["resume_reason"])
+
+    def test_resume_run_with_same_token_is_idempotent(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Idempotent Resume Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                ]
+            )
+        )
+        self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                    "--reason",
+                    "Pause before resume.",
+                ]
+            )
+        )
+
+        resumed = self.module.resume_run(
+            self.module.build_parser().parse_args(
+                [
+                    "resume-run",
+                    "--run-id",
+                    run["id"],
+                    "--resumed-by",
+                    "delivery",
+                    "--resume-token",
+                    "resume-token-1",
+                ]
+            )
+        )
+        resumed_state = self.read_json(self.module.run_path(run["id"]))
+        resumed_status = self.read_json(self.runtime_path(resumed_state["resume_status_path"]))
+
+        resumed_again = self.module.resume_run(
+            self.module.build_parser().parse_args(
+                [
+                    "resume-run",
+                    "--run-id",
+                    run["id"],
+                    "--resumed-by",
+                    "delivery",
+                    "--resume-token",
+                    "resume-token-1",
+                ]
+            )
+        )
+        resumed_state_again = self.read_json(self.module.run_path(run["id"]))
+        resumed_status_again = self.read_json(self.runtime_path(resumed_state_again["resume_status_path"]))
+
+        self.assertEqual(resumed["id"], resumed_again["id"])
+        self.assertEqual(resumed_again["status"], "running")
+        self.assertEqual(resumed_state["updated_at"], resumed_state_again["updated_at"])
+        self.assertEqual(resumed_state["current_step_id"], step["id"])
+        self.assertEqual(resumed_status["resume_epoch"], 1)
+        self.assertEqual(resumed_status_again["resume_epoch"], 1)
+        self.assertEqual(resumed_status_again["idempotency_key"], "resume-token-1")
+
+    def test_new_resume_token_increments_epoch_and_updates_status(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Resume Epoch Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                ]
+            )
+        )
+        self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                ]
+            )
+        )
+        self.module.resume_run(
+            self.module.build_parser().parse_args(
+                [
+                    "resume-run",
+                    "--run-id",
+                    run["id"],
+                    "--resumed-by",
+                    "delivery",
+                    "--resume-token",
+                    "resume-token-1",
+                ]
+            )
+        )
+        self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                    "--reason",
+                    "Pause again.",
+                ]
+            )
+        )
+
+        resumed = self.module.resume_run(
+            self.module.build_parser().parse_args(
+                [
+                    "resume-run",
+                    "--run-id",
+                    run["id"],
+                    "--resumed-by",
+                    "delivery",
+                    "--resume-token",
+                    "resume-token-2",
+                ]
+            )
+        )
+        resume_status = self.read_json(self.runtime_path(resumed["resume_status_path"]))
+        self.assertEqual(resume_status["resume_epoch"], 2)
+        self.assertEqual(resume_status["idempotency_key"], "resume-token-2")
+        self.assertFalse(resume_status["resumable"])
+        self.assertIn("already running", resume_status["resume_reason"])
+
+    def test_resume_run_still_works_for_legacy_interrupted_run_without_checkpoint(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Legacy Resume Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id",
+                    run["id"],
+                    "--key",
+                    "planner",
+                    "--actor",
+                    "delivery",
+                    "--status",
+                    "completed",
+                ]
+            )
+        )
+        interrupted = self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id",
+                    run["id"],
+                    "--requested-by",
+                    "delivery",
+                ]
+            )
+        )
+
+        legacy_run = self.read_json(self.module.run_path(run["id"]))
+        self.runtime_path(legacy_run["latest_checkpoint_path"]).unlink()
+        legacy_run["latest_checkpoint_id"] = ""
+        legacy_run["latest_checkpoint_path"] = ""
+        self.module.run_path(run["id"]).write_text(
+            json.dumps(legacy_run, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        legacy_thread = self.read_json(self.module.thread_path(mission["thread_id"]))
+        legacy_thread["latest_checkpoint_id"] = ""
+        legacy_thread["latest_checkpoint_path"] = ""
+        self.module.thread_path(mission["thread_id"]).write_text(
+            json.dumps(legacy_thread, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        resumed = self.module.resume_run(
+            self.module.build_parser().parse_args(
+                [
+                    "resume-run",
+                    "--run-id",
+                    interrupted["id"],
+                    "--resumed-by",
+                    "delivery",
+                    "--resume-token",
+                    "legacy-token",
+                ]
+            )
+        )
+
+        self.assertEqual(resumed["status"], "running")
+        self.assertTrue(resumed["latest_checkpoint_path"])
 
     def test_start_run_can_prepare_child_isolated_context_with_default_blocked_tool_classes(self):
         mission = self.module.create_mission(

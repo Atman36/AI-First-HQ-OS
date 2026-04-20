@@ -13,6 +13,9 @@
     "active_mission_id",
     "active_run_id",
     "latest_handoff_id",
+    "latest_checkpoint_id",
+    "latest_checkpoint_path",
+    "latest_resume_status_path",
     "latest_spec_path",
     "latest_handoff_path",
     "resume_packet_path",
@@ -67,6 +70,15 @@
       "type": "string"
     },
     "latest_handoff_id": {
+      "type": "string"
+    },
+    "latest_checkpoint_id": {
+      "type": "string"
+    },
+    "latest_checkpoint_path": {
+      "type": "string"
+    },
+    "latest_resume_status_path": {
       "type": "string"
     },
     "latest_spec_path": {

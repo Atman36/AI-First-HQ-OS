@@ -9,6 +9,8 @@
     "grouping_id",
     "current_step_id",
     "resume_from_step_id",
+    "checkpoint_id",
+    "checkpoint_path",
     "handoff_id",
     "handoff_path",
     "resume_packet_path",
@@ -36,6 +38,12 @@
       "type": "string"
     },
     "resume_from_step_id": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    },
+    "checkpoint_path": {
       "type": "string"
     },
     "handoff_id": {

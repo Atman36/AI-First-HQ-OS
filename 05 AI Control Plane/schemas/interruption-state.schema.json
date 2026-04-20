@@ -8,6 +8,8 @@
     "requested_by",
     "interrupted_at",
     "resume_from_step_id",
+    "checkpoint_id",
+    "checkpoint_path",
     "metadata"
   ],
   "properties": {
@@ -28,6 +30,12 @@
       "type": "string"
     },
     "resume_from_step_id": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    },
+    "checkpoint_path": {
       "type": "string"
     },
     "metadata": {

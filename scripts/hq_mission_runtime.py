@@ -41,6 +41,8 @@ RUNTIME_DIRS = {
     "missions": RUNTIME_ROOT / "missions",
     "runs": RUNTIME_ROOT / "runs",
     "steps": RUNTIME_ROOT / "steps",
+    "checkpoints": RUNTIME_ROOT / "checkpoints",
+    "resume_status": RUNTIME_ROOT / "resume-status",
     "approvals": RUNTIME_ROOT / "approvals",
     "handoffs": RUNTIME_ROOT / "handoffs",
     "artifacts": RUNTIME_ROOT / "artifacts",
@@ -52,6 +54,8 @@ ENTITY_SCHEMA_PATHS = {
     "mission": CONTROL_PLANE_DIR / "mission.schema.json",
     "run": CONTROL_PLANE_DIR / "run.schema.json",
     "step": CONTROL_PLANE_DIR / "step.schema.json",
+    "checkpoint": CONTROL_PLANE_DIR / "checkpoint.schema.json",
+    "resume-status": CONTROL_PLANE_DIR / "resume-status.schema.json",
     "approval": CONTROL_PLANE_DIR / "approval.schema.json",
     "handoff": CONTROL_PLANE_DIR / "handoff.schema.json",
     "artifact": CONTROL_PLANE_DIR / "artifact.schema.json",
@@ -351,6 +355,8 @@ def normalize_interruption_state(payload: dict[str, Any] | None) -> dict[str, An
         "requested_by": str(raw.get("requested_by") or "").strip(),
         "interrupted_at": str(raw.get("interrupted_at") or "").strip(),
         "resume_from_step_id": str(raw.get("resume_from_step_id") or "").strip(),
+        "checkpoint_id": str(raw.get("checkpoint_id") or "").strip(),
+        "checkpoint_path": str(raw.get("checkpoint_path") or "").strip(),
         "metadata": metadata if isinstance(metadata, dict) else {},
     }
     if normalized["status"] not in ALLOWED_INTERRUPTION_STATUSES:
@@ -458,6 +464,8 @@ def build_resume_fingerprint(payload: dict[str, Any]) -> str:
         "grouping_id": str(payload.get("grouping_id") or "").strip(),
         "current_step_id": str(payload.get("current_step_id") or "").strip(),
         "resume_from_step_id": str(payload.get("resume_from_step_id") or "").strip(),
+        "checkpoint_id": str(payload.get("checkpoint_id") or "").strip(),
+        "checkpoint_path": str(payload.get("checkpoint_path") or "").strip(),
         "handoff_id": str(payload.get("handoff_id") or "").strip(),
         "handoff_path": str(payload.get("handoff_path") or "").strip(),
         "resume_packet_path": str(payload.get("resume_packet_path") or "").strip(),
@@ -485,6 +493,8 @@ def normalize_trace_state(
         "grouping_id": str(raw.get("grouping_id") or grouping_id).strip(),
         "current_step_id": str(raw.get("current_step_id") or "").strip(),
         "resume_from_step_id": str(raw.get("resume_from_step_id") or "").strip(),
+        "checkpoint_id": str(raw.get("checkpoint_id") or "").strip(),
+        "checkpoint_path": str(raw.get("checkpoint_path") or "").strip(),
         "handoff_id": str(raw.get("handoff_id") or "").strip(),
         "handoff_path": str(raw.get("handoff_path") or "").strip(),
         "resume_packet_path": str(
@@ -657,6 +667,14 @@ def run_path(run_id: str) -> Path:
 
 def step_path(step_id: str) -> Path:
     return RUNTIME_DIRS["steps"] / f"{step_id}.json"
+
+
+def checkpoint_path(checkpoint_id: str) -> Path:
+    return RUNTIME_DIRS["checkpoints"] / f"{checkpoint_id}.json"
+
+
+def resume_status_path(run_id: str) -> Path:
+    return RUNTIME_DIRS["resume_status"] / f"{run_id}.json"
 
 
 def approval_path(approval_id: str) -> Path:
@@ -843,6 +861,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
     snapshot_at = str(upgraded.get("updated_at") or upgraded.get("created_at") or utc_now()).strip()
     if entity_type == "thread":
         upgraded.setdefault("latest_handoff_id", "")
+        upgraded.setdefault("latest_checkpoint_id", "")
+        upgraded.setdefault("latest_checkpoint_path", "")
+        upgraded.setdefault("latest_resume_status_path", "")
         upgraded["interruption_state"] = normalize_interruption_state(
             upgraded.get("interruption_state", {})
         )
@@ -857,6 +878,9 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
         )
     elif entity_type == "run":
         upgraded.setdefault("handoff_ids", [])
+        upgraded.setdefault("latest_checkpoint_id", "")
+        upgraded.setdefault("latest_checkpoint_path", "")
+        upgraded.setdefault("resume_status_path", "")
         upgraded["verification_stages"] = normalize_verification_stages(
             upgraded.get("verification_stages", [])
         )
@@ -912,6 +936,35 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
             if isinstance(upgraded.get("policy_context"), dict)
             else {}
         )
+    elif entity_type == "checkpoint":
+        upgraded["execution_context"] = normalize_execution_context(
+            upgraded.get("execution_context", {})
+        )
+        upgraded["trace_state"] = normalize_trace_state(
+            upgraded.get("trace_state", {}),
+            grouping_id=str(upgraded.get("thread_id") or "").strip(),
+            default_trace_id=str(upgraded.get("run_id") or "").strip(),
+            snapshot_at=str(upgraded.get("created_at") or snapshot_at).strip(),
+        )
+        upgraded["referenced_file_digests"] = (
+            upgraded.get("referenced_file_digests", {})
+            if isinstance(upgraded.get("referenced_file_digests"), dict)
+            else {}
+        )
+        upgraded["replay_basis"] = (
+            upgraded.get("replay_basis", {})
+            if isinstance(upgraded.get("replay_basis"), dict)
+            else {}
+        )
+    elif entity_type == "resume-status":
+        upgraded["resume_plan"] = (
+            upgraded.get("resume_plan", {})
+            if isinstance(upgraded.get("resume_plan"), dict)
+            else {}
+        )
+        upgraded["stale_inputs"] = normalize_string_list(
+            upgraded.get("stale_inputs") if isinstance(upgraded.get("stale_inputs"), list) else []
+        )
     return upgraded
 
 
@@ -925,6 +978,16 @@ def require_file(path: Path, label: str, expected_entity_type: str | None = None
     if expected_entity_type and payload.get("entity_type") != expected_entity_type:
         raise ValueError(f"{label} has unexpected entity_type: {payload.get('entity_type')}")
     return payload
+
+
+def load_entity_safe(path: Path, entity_type: str) -> tuple[dict[str, Any] | None, str]:
+    try:
+        payload = load_json(path)
+        payload = upgrade_entity_payload(payload, entity_type)
+        validate_entity_payload(payload, entity_type)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return None, str(exc)
+    return payload, ""
 
 
 def create_thread_record(
@@ -948,6 +1011,9 @@ def create_thread_record(
         "active_mission_id": "",
         "active_run_id": "",
         "latest_handoff_id": "",
+        "latest_checkpoint_id": "",
+        "latest_checkpoint_path": "",
+        "latest_resume_status_path": "",
         "latest_spec_path": "",
         "latest_handoff_path": "",
         "resume_packet_path": "",
@@ -983,9 +1049,12 @@ def update_thread_context(
     mission_id: str | None = None,
     run_id: str | None = None,
     handoff_id: str | None = None,
+    checkpoint_id: str | None = None,
     spec_path: str | None = None,
     handoff_path: str | None = None,
+    checkpoint_path: str | None = None,
     resume_packet_path: str | None = None,
+    resume_status_path: str | None = None,
     status: str | None = None,
     execution_context: dict[str, Any] | None = None,
     interruption_state: dict[str, Any] | None = None,
@@ -1005,15 +1074,24 @@ def update_thread_context(
     if handoff_id is not None:
         thread["latest_handoff_id"] = handoff_id
         change_summary.append(f"handoff_id={handoff_id or 'cleared'}")
+    if checkpoint_id is not None:
+        thread["latest_checkpoint_id"] = checkpoint_id
+        change_summary.append(f"checkpoint_id={checkpoint_id or 'cleared'}")
     if spec_path:
         thread["latest_spec_path"] = spec_path
         change_summary.append("spec")
     if handoff_path:
         thread["latest_handoff_path"] = handoff_path
         change_summary.append("handoff")
+    if checkpoint_path is not None:
+        thread["latest_checkpoint_path"] = checkpoint_path
+        change_summary.append("checkpoint")
     if resume_packet_path:
         thread["resume_packet_path"] = resume_packet_path
         change_summary.append("resume")
+    if resume_status_path is not None:
+        thread["latest_resume_status_path"] = resume_status_path
+        change_summary.append("resume_status")
     if status:
         if status not in ALLOWED_THREAD_STATUSES:
             raise ValueError("thread status must be one of: " + ", ".join(sorted(ALLOWED_THREAD_STATUSES)))
@@ -1048,6 +1126,10 @@ def update_thread_context(
             current_trace_state["handoff_id"] = thread["latest_handoff_id"]
         if handoff_path:
             current_trace_state["handoff_path"] = handoff_path
+        if checkpoint_id is not None:
+            current_trace_state["checkpoint_id"] = thread["latest_checkpoint_id"]
+        if checkpoint_path is not None:
+            current_trace_state["checkpoint_path"] = checkpoint_path
         if resume_packet_path:
             current_trace_state["resume_packet_path"] = resume_packet_path
         if execution_context is not None:
@@ -1078,8 +1160,10 @@ def update_thread_context(
                 "mission_id": mission_id or "",
                 "run_id": run_id or "",
                 "handoff_id": handoff_id or "",
+                "checkpoint_id": checkpoint_id or "",
                 "spec_path": spec_path or "",
                 "handoff_path": handoff_path or "",
+                "checkpoint_path": checkpoint_path or "",
             },
         )
         emit_runtime_telemetry(
@@ -1500,6 +1584,9 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "artifact_ids": [],
         "verification_stages": verification_stages,
         "checkpoint_count": 0,
+        "latest_checkpoint_id": "",
+        "latest_checkpoint_path": "",
+        "resume_status_path": "",
         "interruption_state": normalize_interruption_state({}),
         "execution_context": execution_context,
         "verification_state": normalize_verification_state(
@@ -1739,6 +1826,16 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         snapshot_at=created_at,
     )
     write_entity(run_path(run["id"]), run)
+    if payload["status"] == "completed":
+        _checkpoint, run, _thread = create_checkpoint_record(
+            run=run,
+            mission=mission,
+            thread=require_file(thread_path(run["thread_id"]), "thread", "thread"),
+            checkpoint_kind="step_completed",
+            source_step_id=payload["id"],
+            source_event="checkpoint-step",
+            created_at=created_at,
+        )
     if payload["policy_action"] == "pause_for_founder_approval":
         approval = request_approval(
             argparse.Namespace(
@@ -1775,6 +1872,7 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         status="paused" if run["status"] == "waiting_approval" else "active",
         trace_state=run["trace_state"],
     )
+    refresh_resume_status(run["id"])
     record_event(
         event_type="step_checkpointed",
         entity_id=step_id,
@@ -2054,6 +2152,282 @@ def reconcile_replay_metadata(
         replay.get("resume_from_step_id") or ""
     ).strip()
     return trace_metadata
+
+
+def resolve_runtime_reference(path_value: str) -> Path | None:
+    text = str(path_value or "").strip()
+    if not text:
+        return None
+    candidate = Path(text)
+    if not candidate.is_absolute():
+        candidate = (REPO_ROOT / candidate).resolve()
+    return candidate
+
+
+def file_digest_for_reference(path_value: str) -> str:
+    candidate = resolve_runtime_reference(path_value)
+    if candidate is None or not candidate.exists() or not candidate.is_file():
+        return ""
+    try:
+        return hashlib.sha256(candidate.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return ""
+
+
+def linked_recovery_paths(run: dict[str, Any], thread: dict[str, Any]) -> dict[str, str]:
+    run_trace_state = run.get("trace_state", {}) if isinstance(run.get("trace_state"), dict) else {}
+    latest_handoff_path = (
+        str(run_trace_state.get("handoff_path") or "")
+        or str(thread.get("latest_handoff_path") or "")
+    ).strip()
+    resume_packet_path = (
+        str(run_trace_state.get("resume_packet_path") or "")
+        or str(thread.get("resume_packet_path") or "")
+        or latest_handoff_path
+    ).strip()
+    return {
+        "latest_spec_path": str(thread.get("latest_spec_path") or "").strip(),
+        "latest_handoff_path": latest_handoff_path,
+        "resume_packet_path": resume_packet_path,
+    }
+
+
+def checkpoint_replay_basis(run: dict[str, Any]) -> dict[str, Any]:
+    trace_state = run.get("trace_state", {}) if isinstance(run.get("trace_state"), dict) else {}
+    metadata = trace_state.get("metadata", {}) if isinstance(trace_state.get("metadata"), dict) else {}
+    replay = metadata.get("replay", {}) if isinstance(metadata.get("replay"), dict) else {}
+    replay_basis: dict[str, Any] = {}
+    if replay:
+        replay_basis["replay"] = replay
+    replay_completed_at = str(metadata.get("replay_completed_at") or "").strip()
+    if replay_completed_at:
+        replay_basis["replay_completed_at"] = replay_completed_at
+    replay_completed_from_step_id = str(metadata.get("replay_completed_from_step_id") or "").strip()
+    if replay_completed_from_step_id:
+        replay_basis["replay_completed_from_step_id"] = replay_completed_from_step_id
+    return replay_basis
+
+
+def build_checkpoint_resume_plan(
+    run: dict[str, Any],
+    checkpoint_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resume_from_step_id = str(
+        (checkpoint_record or {}).get("resume_from_step_id") or run.get("resume_from_step_id") or ""
+    ).strip()
+    replay_plan = build_replay_plan(run, resume_from_step_id=resume_from_step_id)
+    return {
+        "current_step_id": str(
+            (checkpoint_record or {}).get("current_step_id") or run.get("current_step_id") or ""
+        ).strip(),
+        "resume_from_step_id": replay_plan["resume_from_step_id"],
+        "last_successful_step_id": str(
+            (checkpoint_record or {}).get("last_successful_step_id")
+            or run.get("last_successful_step_id")
+            or ""
+        ).strip(),
+        "replay_required": replay_plan["replay_required"],
+        "replay_step_count": replay_plan["replay_step_count"],
+        "checkpoint_count_after_target": replay_plan["checkpoint_count_after_target"],
+        "steps_to_replay": replay_plan["steps_to_replay"],
+    }
+
+
+def create_checkpoint_record(
+    *,
+    run: dict[str, Any],
+    mission: dict[str, Any],
+    thread: dict[str, Any],
+    checkpoint_kind: str,
+    source_step_id: str = "",
+    source_event: str = "",
+    created_at: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    checkpoint_id = make_id("checkpoint", f"{run['id']}-{checkpoint_kind}")
+    checkpoint_created_at = created_at or utc_now()
+    linked_paths = linked_recovery_paths(run, thread)
+    checkpoint_file = checkpoint_path(checkpoint_id)
+    checkpoint_file_reference = path_reference(checkpoint_file)
+    trace_state_payload = normalize_trace_state(
+        {
+            **dict(run.get("trace_state", {})),
+            "trace_id": run["id"],
+            "current_step_id": str(run.get("current_step_id") or "").strip(),
+            "resume_from_step_id": str(run.get("resume_from_step_id") or "").strip(),
+            "checkpoint_id": checkpoint_id,
+            "checkpoint_path": checkpoint_file_reference,
+            "handoff_path": linked_paths["latest_handoff_path"],
+            "resume_packet_path": linked_paths["resume_packet_path"],
+            "snapshot_at": checkpoint_created_at,
+        },
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=checkpoint_created_at,
+    )
+    payload = {
+        "schema_version": 1,
+        "entity_type": "checkpoint",
+        "id": checkpoint_id,
+        "thread_id": run["thread_id"],
+        "mission_id": run["mission_id"],
+        "run_id": run["id"],
+        "checkpoint_kind": checkpoint_kind,
+        "current_step_id": str(run.get("current_step_id") or "").strip(),
+        "resume_from_step_id": str(run.get("resume_from_step_id") or "").strip(),
+        "last_successful_step_id": str(run.get("last_successful_step_id") or "").strip(),
+        "replay_basis": checkpoint_replay_basis(run),
+        "execution_context": normalize_execution_context(run.get("execution_context", {})),
+        "trace_state": trace_state_payload,
+        "latest_spec_path": linked_paths["latest_spec_path"],
+        "latest_handoff_path": linked_paths["latest_handoff_path"],
+        "resume_packet_path": linked_paths["resume_packet_path"],
+        "referenced_file_digests": {
+            label: file_digest_for_reference(path_value)
+            for label, path_value in linked_paths.items()
+            if path_value
+        },
+        "created_at": checkpoint_created_at,
+        "source_step_id": str(source_step_id or "").strip(),
+        "source_event": str(source_event or "").strip(),
+        "metadata": {},
+    }
+    write_entity(checkpoint_file, payload)
+    run["latest_checkpoint_id"] = checkpoint_id
+    run["latest_checkpoint_path"] = checkpoint_file_reference
+    run_trace_state = dict(run.get("trace_state", {}))
+    run_trace_state["checkpoint_id"] = checkpoint_id
+    run_trace_state["checkpoint_path"] = checkpoint_file_reference
+    run_trace_state["snapshot_at"] = checkpoint_created_at
+    run["trace_state"] = normalize_trace_state(
+        run_trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=checkpoint_created_at,
+    )
+    interruption_state = dict(run.get("interruption_state", {}))
+    if str(interruption_state.get("status") or "").strip() == "interrupted":
+        interruption_state["checkpoint_id"] = checkpoint_id
+        interruption_state["checkpoint_path"] = checkpoint_file_reference
+        run["interruption_state"] = normalize_interruption_state(interruption_state)
+    run["updated_at"] = checkpoint_created_at
+    write_entity(run_path(run["id"]), run)
+    thread = update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        run_id=run["id"] if str(thread.get("active_run_id") or "").strip() else None,
+        checkpoint_id=checkpoint_id,
+        checkpoint_path=checkpoint_file_reference,
+        trace_state=run["trace_state"],
+        interruption_state=run["interruption_state"]
+        if str(run.get("interruption_state", {}).get("status") or "").strip() == "interrupted"
+        else None,
+    )
+    return payload, run, thread
+
+
+def refresh_resume_status(
+    run_id: str,
+    *,
+    idempotency_key: str | None = None,
+    resume_epoch: int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    run = require_file(run_path(run_id), "run", "run")
+    mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+    thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
+    status_file = resume_status_path(run["id"])
+    existing_status, _ = load_entity_safe(status_file, "resume-status")
+    latest_checkpoint_id = str(run.get("latest_checkpoint_id") or "").strip()
+    latest_checkpoint_path = str(run.get("latest_checkpoint_path") or "").strip()
+    checkpoint_record: dict[str, Any] | None = None
+    checkpoint_error = ""
+    checkpoint_file: Path | None = None
+    if latest_checkpoint_path:
+        checkpoint_file = resolve_runtime_reference(latest_checkpoint_path)
+    elif latest_checkpoint_id:
+        checkpoint_file = checkpoint_path(latest_checkpoint_id)
+        latest_checkpoint_path = path_reference(checkpoint_file)
+    if checkpoint_file is not None:
+        checkpoint_record, checkpoint_error = load_entity_safe(checkpoint_file, "checkpoint")
+
+    stale_inputs: list[str] = []
+    needs_handoff_refresh = False
+    if checkpoint_record is not None:
+        for field in ("latest_spec_path", "latest_handoff_path", "resume_packet_path"):
+            path_value = str(checkpoint_record.get(field) or "").strip()
+            if not path_value:
+                continue
+            current_digest = file_digest_for_reference(path_value)
+            recorded_digest = str(
+                checkpoint_record.get("referenced_file_digests", {}).get(field) or ""
+            ).strip()
+            if not current_digest:
+                stale_inputs.append(f"{field}:missing:{path_value}")
+            elif recorded_digest and current_digest != recorded_digest:
+                stale_inputs.append(f"{field}:digest_mismatch:{path_value}")
+        needs_handoff_refresh = any(
+            item.startswith("latest_handoff_path:") or item.startswith("resume_packet_path:")
+            for item in stale_inputs
+        )
+
+    resumable = False
+    safe_to_resume = False
+    if checkpoint_error:
+        resume_reason = f"checkpoint invalid: {checkpoint_error}"
+    elif checkpoint_record is None and (latest_checkpoint_id or latest_checkpoint_path):
+        resume_reason = "checkpoint missing"
+    elif run["status"] == "interrupted":
+        resumable = True
+        safe_to_resume = True
+        if checkpoint_record is not None:
+            resume_reason = "checkpoint valid for resume"
+        else:
+            resume_reason = "legacy interrupted run without persisted checkpoint"
+        if needs_handoff_refresh:
+            resume_reason = "checkpoint valid; refresh linked handoff artifacts opportunistically"
+    elif run["status"] in TERMINAL_RUN_STATUSES:
+        resume_reason = f"run reached terminal status '{run['status']}'"
+    else:
+        resume_reason = f"run is already {run['status']}"
+
+    epoch_value = (
+        int(resume_epoch)
+        if resume_epoch is not None
+        else int(existing_status.get("resume_epoch", 0) if existing_status else 0)
+    )
+    payload = {
+        "schema_version": 1,
+        "entity_type": "resume-status",
+        "id": run["id"],
+        "run_id": run["id"],
+        "thread_id": run["thread_id"],
+        "mission_id": run["mission_id"],
+        "latest_checkpoint_id": latest_checkpoint_id,
+        "latest_checkpoint_path": latest_checkpoint_path,
+        "resumable": resumable,
+        "safe_to_resume": safe_to_resume,
+        "resume_reason": resume_reason,
+        "needs_handoff_refresh": needs_handoff_refresh,
+        "stale_inputs": stale_inputs,
+        "resume_plan": build_checkpoint_resume_plan(run, checkpoint_record),
+        "idempotency_key": (
+            str(idempotency_key).strip()
+            if idempotency_key is not None
+            else str(existing_status.get("idempotency_key", "") if existing_status else "").strip()
+        ),
+        "resume_epoch": max(epoch_value, 0),
+        "updated_at": utc_now(),
+        "metadata": metadata or {},
+    }
+    write_entity(status_file, payload)
+    run["resume_status_path"] = path_reference(status_file)
+    write_entity(run_path(run["id"]), run)
+    update_thread_context(
+        thread["id"],
+        mission_id=mission["id"],
+        resume_status_path=path_reference(status_file),
+    )
+    return payload
 
 
 def list_checkpoints_command(args: argparse.Namespace) -> int:
@@ -2717,6 +3091,13 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
             or verification_state["completed_stage_ids"] != required_stage_ids
         ):
             raise ValueError("run cannot be completed before the verification stage workflow is closed")
+    _checkpoint, run, thread = create_checkpoint_record(
+        run=run,
+        mission=mission,
+        thread=thread,
+        checkpoint_kind="pre_finish",
+        source_event="finish-run",
+    )
     finished_at = utc_now()
     run["status"] = args.status
     run["interruption_state"] = normalize_interruption_state({})
@@ -2744,6 +3125,10 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         status="idle" if args.status == "completed" else "paused",
         interruption_state=normalize_interruption_state({}),
         trace_state=run["trace_state"],
+    )
+    refresh_resume_status(
+        run["id"],
+        metadata={"run_status": run["status"]},
     )
     record_event(
         event_type="run_finished",
@@ -2852,14 +3237,27 @@ def interrupt_run(args: argparse.Namespace) -> dict[str, Any]:
         snapshot_at=interrupted_at,
     )
     write_entity(run_path(run["id"]), run)
+    _checkpoint, run, thread = create_checkpoint_record(
+        run=run,
+        mission=mission,
+        thread=thread,
+        checkpoint_kind="interrupt",
+        source_event="interrupt-run",
+        created_at=interrupted_at,
+    )
     update_thread_context(
         thread["id"],
         mission_id=mission["id"],
         run_id=run["id"],
         status="interrupted",
-        interruption_state=interruption_state,
+        interruption_state=run["interruption_state"],
         trace_state=run["trace_state"],
     )
+    refresh_resume_status(
+        run["id"],
+        metadata={"run_status": run["status"], "interrupted_by": interruption_state["requested_by"]},
+    )
+    run = require_file(run_path(run["id"]), "run", "run")
     record_event(
         event_type="run_interrupted",
         entity_id=run["id"],
@@ -2915,10 +3313,45 @@ def interrupt_run_command(args: argparse.Namespace) -> int:
 
 def resume_run(args: argparse.Namespace) -> dict[str, Any]:
     run = require_file(run_path(args.run_id), "run", "run")
+    resume_token = str(getattr(args, "resume_token", None) or uuid.uuid4().hex[:12]).strip()
+    existing_status, _ = load_entity_safe(resume_status_path(run["id"]), "resume-status")
     if run["status"] != "interrupted":
+        if (
+            existing_status is not None
+            and resume_token
+            and str(existing_status.get("idempotency_key") or "").strip() == resume_token
+        ):
+            return run
+        refresh_resume_status(
+            run["id"],
+            metadata={"run_status": run["status"]},
+        )
         raise ValueError(f"run status must be 'interrupted', got '{run['status']}'")
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
     thread = require_file(thread_path(run["thread_id"]), "thread", "thread")
+    if not str(run.get("latest_checkpoint_id") or "").strip() and not str(
+        run.get("latest_checkpoint_path") or ""
+    ).strip():
+        _checkpoint, run, thread = create_checkpoint_record(
+            run=run,
+            mission=mission,
+            thread=thread,
+            checkpoint_kind="interrupt",
+            source_event="resume-run-legacy-bootstrap",
+        )
+    pre_status = refresh_resume_status(
+        run["id"],
+        metadata={"run_status": run["status"]},
+    )
+    if not pre_status["resumable"] or not pre_status["safe_to_resume"]:
+        raise ValueError(f"run is not safe to resume: {pre_status['resume_reason']}")
+    existing_epoch = int(existing_status.get("resume_epoch", 0) if existing_status else 0)
+    new_epoch = existing_epoch if (
+        existing_status is not None
+        and resume_token
+        and str(existing_status.get("idempotency_key") or "").strip() == resume_token
+    ) else existing_epoch + 1
+    run = require_file(run_path(args.run_id), "run", "run")
     resumed_at = utc_now()
     target_step_id = str(getattr(args, "resume_from_step_id", None) or "").strip()
     replay_plan = build_replay_plan(run, resume_from_step_id=target_step_id)
@@ -3007,6 +3440,17 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
             "replay_step_count": replay_plan["replay_step_count"],
         },
     )
+    refresh_resume_status(
+        run["id"],
+        idempotency_key=resume_token,
+        resume_epoch=new_epoch,
+        metadata={
+            "run_status": run["status"],
+            "resumed_by": str(args.resumed_by or "").strip(),
+            "replay_required": replay_plan["replay_required"],
+        },
+    )
+    run = require_file(run_path(run["id"]), "run", "run")
     return run
 
 
@@ -3020,6 +3464,17 @@ def resume_run_command(args: argparse.Namespace) -> int:
     print(f"run_id={payload['id']}")
     print(f"status={payload['status']}")
     print(f"resume_from_step_id={payload['resume_from_step_id']}")
+    return 0
+
+
+def show_resume_status_command(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    try:
+        payload = refresh_resume_status(args.run_id)
+    except (ValueError, RuntimeError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -3456,7 +3911,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--resume-from-step-id",
         help="Optional completed checkpoint step id to target instead of the current stored resume point.",
     )
+    resume_run_parser.add_argument(
+        "--resume-token",
+        help="Optional idempotency token for a repeat-safe resume request.",
+    )
     resume_run_parser.set_defaults(func=resume_run_command)
+
+    show_resume_status_parser = subparsers.add_parser(
+        "show-resume-status",
+        help="Render the validated resume status contract for one run.",
+    )
+    show_resume_status_parser.add_argument("--run-id", required=True, help="Run identifier.")
+    show_resume_status_parser.set_defaults(func=show_resume_status_command)
 
     finish_run_parser = subparsers.add_parser(
         "finish-run",

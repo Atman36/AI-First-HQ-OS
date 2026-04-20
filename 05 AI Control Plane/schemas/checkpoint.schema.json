@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "entity_type",
+    "id",
+    "thread_id",
+    "mission_id",
+    "run_id",
+    "checkpoint_kind",
+    "current_step_id",
+    "resume_from_step_id",
+    "last_successful_step_id",
+    "replay_basis",
+    "execution_context",
+    "trace_state",
+    "latest_spec_path",
+    "latest_handoff_path",
+    "resume_packet_path",
+    "referenced_file_digests",
+    "created_at",
+    "source_step_id",
+    "source_event",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entity_type": {
+      "type": "string",
+      "const": "checkpoint"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checkpoint_kind": {
+      "type": "string",
+      "enum": [
+        "step_completed",
+        "interrupt",
+        "pre_finish"
+      ]
+    },
+    "current_step_id": {
+      "type": "string"
+    },
+    "resume_from_step_id": {
+      "type": "string"
+    },
+    "last_successful_step_id": {
+      "type": "string"
+    },
+    "replay_basis": {
+      "type": "object"
+    },
+    "execution_context": {
+      "type": "object"
+    },
+    "trace_state": {
+      "type": "object"
+    },
+    "latest_spec_path": {
+      "type": "string"
+    },
+    "latest_handoff_path": {
+      "type": "string"
+    },
+    "resume_packet_path": {
+      "type": "string"
+    },
+    "referenced_file_digests": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_step_id": {
+      "type": "string"
+    },
+    "source_event": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

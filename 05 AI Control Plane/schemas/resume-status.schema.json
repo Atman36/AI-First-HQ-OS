@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "entity_type",
+    "id",
+    "run_id",
+    "thread_id",
+    "mission_id",
+    "latest_checkpoint_id",
+    "latest_checkpoint_path",
+    "resumable",
+    "safe_to_resume",
+    "resume_reason",
+    "needs_handoff_refresh",
+    "stale_inputs",
+    "resume_plan",
+    "idempotency_key",
+    "resume_epoch",
+    "updated_at",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entity_type": {
+      "type": "string",
+      "const": "resume-status"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "latest_checkpoint_id": {
+      "type": "string"
+    },
+    "latest_checkpoint_path": {
+      "type": "string"
+    },
+    "resumable": {
+      "type": "boolean"
+    },
+    "safe_to_resume": {
+      "type": "boolean"
+    },
+    "resume_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "needs_handoff_refresh": {
+      "type": "boolean"
+    },
+    "stale_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "resume_plan": {
+      "type": "object"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "resume_epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}
