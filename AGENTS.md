@@ -99,6 +99,8 @@ These files make the control plane legible for humans, but they are local-only a
 - Default to best-effort execution with the current accepted strategy and policy. Do not ask a clarifying question unless the work is blocked by missing access, irreversible risk, or a truly unresolved fork that the current HQ state does not answer.
 - If a question is required, ask one bundled blocker question at most; do not drip-feed clarification requests.
 - Work long by default: keep moving until the current slice is complete, blocked by policy or access, or reduced to a clear founder-only decision.
+- Optimize for maximum coherent progress per session, not an artificial one-task limit: when adjacent work shares the same corridor, control surface, and risk boundary, continue through the next useful slices instead of stopping after the first completed task.
+- The active operator decides how much to finish in one session. Keep one primary move, add only the minimum parallel support tracks needed, and use bounded subagents for cheap sidecar work when that increases useful throughput without delegating critical-path judgment.
 - When using subagents or long-running tools, choose one of two modes:
   - `wait`: wait for the result and continue the orchestration yourself;
   - `timeout_wait`: wait for a bounded interval, then write the partial result or blocker into `.hq/handoffs/<task>/LATEST.md` and continue everything else that is unblocked.
