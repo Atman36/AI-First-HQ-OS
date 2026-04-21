@@ -147,9 +147,9 @@ def resolve_reference(token: str, repo_root: Path) -> Path | None:
     return repo_root / stripped
 
 
-def validate_paths(path: Path, repo_root: Path = REPO_ROOT) -> list[str]:
+def validate_paths(path: Path, text: str, repo_root: Path = REPO_ROOT) -> list[str]:
     errors: list[str] = []
-    for token in CODE_SPAN_RE.findall(read_text(path)):
+    for token in CODE_SPAN_RE.findall(text):
         if should_skip_token(token) or not is_path_reference(token):
             continue
         target = resolve_reference(token, repo_root)
@@ -166,8 +166,7 @@ def validate_paths(path: Path, repo_root: Path = REPO_ROOT) -> list[str]:
     return errors
 
 
-def validate_sections(path: Path) -> list[str]:
-    text = read_text(path)
+def validate_sections(path: Path, text: str) -> list[str]:
     profile = profile_for(path)
     if profile is None:
         return []
@@ -179,18 +178,18 @@ def validate_sections(path: Path) -> list[str]:
     ]
 
 
-def validate_audit_feedback_loop(path: Path) -> list[str]:
+def validate_audit_feedback_loop(path: Path, text: str) -> list[str]:
     if profile_for(path) != "audit":
         return []
 
-    text = read_text(path).lower()
-    if ".hq/prompts" not in text:
+    text_lower = text.lower()
+    if ".hq/prompts" not in text_lower:
         return [f"{relative_to_repo(path)}: audit prompt must mention `.hq/prompts` availability"]
 
     missing_groups = [
         label
         for label, *variants in AUDIT_FEEDBACK_GROUPS
-        if not any(variant.lower() in text for variant in variants)
+        if not any(variant.lower() in text_lower for variant in variants)
     ]
     if missing_groups:
         return [
@@ -205,9 +204,10 @@ def lint_private_prompts(repo_root: Path = REPO_ROOT) -> list[str]:
 
     errors: list[str] = []
     for path in iter_prompt_files(repo_root):
-        errors.extend(validate_paths(path, repo_root))
-        errors.extend(validate_sections(path))
-        errors.extend(validate_audit_feedback_loop(path))
+        text = read_text(path)
+        errors.extend(validate_paths(path, text, repo_root))
+        errors.extend(validate_sections(path, text))
+        errors.extend(validate_audit_feedback_loop(path, text))
     return sorted(errors)
 
 
