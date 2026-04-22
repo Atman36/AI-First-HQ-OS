@@ -113,15 +113,27 @@ def normalize_relative_path(relative_path: Path | str) -> str:
 
 
 def load_tracked_files(repo_root: Path) -> list[Path]:
-    completed = subprocess.run(
-        ["git", "-C", str(repo_root), "ls-files", "-z"],
-        check=False,
-        capture_output=True,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError("git ls-files failed; run this inside the repository")
-    output = completed.stdout.decode("utf-8", errors="strict")
-    return [Path(item) for item in output.split("\0") if item]
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-files", "-z"],
+            check=True,
+            capture_output=True,
+        )
+        output = completed.stdout.decode("utf-8", errors="strict")
+        return [Path(item) for item in output.split("\0") if item]
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr
+        if isinstance(stderr, bytes):
+            message = stderr.decode("utf-8", errors="replace").strip()
+        else:
+            message = (stderr or "").strip()
+        if not message:
+            stdout = exc.stdout
+            if isinstance(stdout, bytes):
+                message = stdout.decode("utf-8", errors="replace").strip()
+            else:
+                message = (stdout or "").strip()
+        raise RuntimeError(f"git ls-files failed: {message or 'unknown error'}") from exc
 
 
 def path_violations(relative_path: Path | str) -> list[str]:

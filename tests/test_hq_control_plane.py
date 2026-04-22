@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import Mock, patch
+import subprocess
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_control_plane.py"
@@ -336,6 +338,7 @@ class HqControlPlaneTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
+
         (control_plane_dir / "active-work.json").write_text(
             json.dumps(
                 {
@@ -380,6 +383,40 @@ class HqControlPlaneTests(unittest.TestCase):
             )
             + "\n",
             encoding="utf-8",
+        )
+
+    def test_git_status_lines_uses_check_true_and_repo_root(self):
+        with patch.object(self.module.subprocess, "run") as mock_run:
+            mock_run.return_value = Mock(stdout="## main...origin/main\n", returncode=0)
+
+            lines = self.module.git_status_lines()
+
+        self.assertEqual(lines, ["## main...origin/main"])
+        mock_run.assert_called_once_with(
+            ["git", "status", "--short", "--branch"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=self.module.REPO_ROOT,
+        )
+
+    def test_git_status_lines_surfaces_failure_output(self):
+        with patch.object(self.module.subprocess, "run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                returncode=128,
+                cmd=["git", "status", "--short", "--branch"],
+                stderr="fatal: not a git repository",
+            )
+
+            lines = self.module.git_status_lines()
+
+        self.assertEqual(lines, ["fatal: not a git repository"])
+        mock_run.assert_called_once_with(
+            ["git", "status", "--short", "--branch"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=self.module.REPO_ROOT,
         )
 
     def test_validate_control_plane(self):

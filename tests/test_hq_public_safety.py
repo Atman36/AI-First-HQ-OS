@@ -2,6 +2,8 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
+import subprocess
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_public_safety.py"
@@ -109,3 +111,44 @@ class HqPublicSafetyTests(unittest.TestCase):
 
         self.assertEqual(len(violations), 1)
         self.assertIn("potential openai secret", violations[0])
+
+    def test_load_tracked_files_uses_check_true_and_parses_output(self):
+        with patch.object(self.module.subprocess, "run") as mock_run:
+            mock_run.return_value = Mock(stdout=b"README.md\0scripts/tool.py\0", returncode=0)
+
+            tracked_files = self.module.load_tracked_files(self.temp_root)
+
+        self.assertEqual(tracked_files, [Path("README.md"), Path("scripts/tool.py")])
+        mock_run.assert_called_once_with(
+            ["git", "-C", str(self.temp_root), "ls-files", "-z"],
+            check=True,
+            capture_output=True,
+        )
+
+    def test_load_tracked_files_wraps_git_failure(self):
+        with patch.object(self.module.subprocess, "run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                returncode=128,
+                cmd=["git", "-C", str(self.temp_root), "ls-files", "-z"],
+                stderr=b"fatal: not a git repository",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, r"git ls-files failed: fatal: not a git repository"):
+                self.module.load_tracked_files(self.temp_root)
+
+        mock_run.assert_called_once_with(
+            ["git", "-C", str(self.temp_root), "ls-files", "-z"],
+            check=True,
+            capture_output=True,
+        )
+
+    def test_load_tracked_files_handles_non_utf8_stderr(self):
+        with patch.object(self.module.subprocess, "run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                returncode=128,
+                cmd=["git", "-C", str(self.temp_root), "ls-files", "-z"],
+                stderr=b"fatal: bad byte \xff",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, r"git ls-files failed: fatal: bad byte"):
+                self.module.load_tracked_files(self.temp_root)

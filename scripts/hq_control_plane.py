@@ -2069,15 +2069,19 @@ def render_resume_text(task: dict[str, Any], missing: list[str]) -> str:
 
 
 def git_status_lines() -> list[str]:
-    completed = subprocess.run(
-        ["git", "status", "--short", "--branch"],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=REPO_ROOT,
-    )
-    output = (completed.stdout or completed.stderr or "").strip().splitlines()
-    return output or ["clean"]
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--short", "--branch"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=REPO_ROOT,
+        )
+        output = (completed.stdout or "").strip().splitlines()
+        return output or ["clean"]
+    except subprocess.CalledProcessError as exc:
+        output = (exc.stdout or exc.stderr or "").strip().splitlines()
+        return output or ["git failure"]
 
 
 def load_archived_tasks() -> dict[str, Any]:
