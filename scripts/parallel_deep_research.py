@@ -181,7 +181,10 @@ def request_json(
         with urllib.request.urlopen(request, timeout=120) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        finally:
+            exc.close()
         raise SystemExit(
             f"Parallel API request failed: {exc.code} {exc.reason}\n{body}"
         ) from exc

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import importlib.util
 import tempfile
 import unittest
@@ -49,7 +51,8 @@ class HqGateTests(unittest.TestCase):
         runner = Mock(side_effect=[Mock(returncode=0), Mock(returncode=2)])
 
         with patch.object(self.module.subprocess, "run", runner):
-            exit_code = self.module.main()
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = self.module.main()
 
         self.assertEqual(exit_code, 2)
         self.assertEqual(runner.call_count, 2)

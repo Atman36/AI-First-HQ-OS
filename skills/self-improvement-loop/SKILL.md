@@ -10,9 +10,20 @@ Use this skill to keep HQ learning from sessions without turning always-loaded f
 ## Read First
 
 - `AGENTS.md`
-- `scripts/hq_runtime.py --help` when you need the exact reflection commands
+- `scripts/hq_runtime.py` with `--help` when you need the exact reflection commands
 - `.hq/improvements/LATEST.md` when reviewing the latest private synthesis
 - relevant `.hq/specs/<task>/LATEST.md` and `.hq/handoffs/<task>/LATEST.md` only when the improvement is tied to a current task
+
+## Trigger Shape
+
+Use this skill for requests like:
+- "capture this lesson"
+- "run the self-improvement loop"
+- "review reflections"
+- "should this become a rule"
+- "turn repeated feedback into a skill or prompt update"
+
+Do not use it for one-off TODOs, live task status, broad memory dumps, or changes that bypass Governor / CEO approval boundaries.
 
 ## Operating Model
 
@@ -21,6 +32,15 @@ Run the loop as:
 `observe -> capture privately -> synthesize -> evaluate -> promote -> consume`
 
 Do not write raw session lessons directly into `AGENTS.md`, role prompts, or shared project truth. The active pool is `.hq/reflections/sessions/`; promoted improvement reviews are `.hq/improvements/`; consumed receipts are `.hq/reflections/receipts/`.
+
+## Default Workflow
+
+1. Identify the repeated behavior, failure, or improvement candidate.
+2. Capture raw evidence privately under `.hq/reflections/` when it is reusable.
+3. Synthesize candidates only after repeated evidence or explicit founder instruction.
+4. Choose the smallest durable surface: skill, role prompt, validator, schema, hook, or control-plane field.
+5. Apply the change only when it respects current approval boundaries.
+6. Consume the source reflection records only after the improvement is actually applied.
 
 ## Capture A Session Reflection
 
@@ -95,3 +115,11 @@ python3 scripts/hq_runtime.py reflection-migrate
 - Do not retain raw reflections after they have been used to improve the project.
 - Do not use reflection review as approval to change safety, access, production, public, legal, or spend behavior.
 - If a candidate touches restricted surfaces, keep it manual-only and escalate to Governor or CEO.
+
+## Expected Output Shape
+
+- Improvement call: apply now, keep private, escalate, or discard
+- Evidence: the repeated observation or explicit instruction behind the call
+- Changed surface: the exact skill, prompt, validator, schema, hook, or control-plane field affected
+- Verification: the command or review that proved the change
+- Remaining boundary: any approval or policy limit that still applies
