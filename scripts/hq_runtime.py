@@ -33,6 +33,8 @@ from hq_runtime_review import derive_issue_key
 from hq_runtime_review import load_reflections
 from hq_runtime_review import normalize_reflection_payload
 from hq_runtime_review import normalize_string_list
+from hq_runtime_review import consume_reflections_command
+from hq_runtime_review import migrate_reflections_command
 from hq_runtime_review import reflection_command
 from hq_runtime_review import reflection_payload_from_args
 from hq_runtime_review import reflections_file_for_timestamp
@@ -2184,6 +2186,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional inline JSON object with extra metadata.",
     )
     reflection.set_defaults(func=reflection_command)
+
+    migrate_reflections = subparsers.add_parser(
+        "reflection-migrate",
+        help="Move legacy flat reflection files into the active private session-reflection store.",
+    )
+    migrate_reflections.set_defaults(func=migrate_reflections_command)
+
+    consume_reflections = subparsers.add_parser(
+        "reflection-consume",
+        help="Delete active reflection records after their improvement has been applied.",
+    )
+    consume_reflections.add_argument(
+        "--issue-key",
+        action="append",
+        default=[],
+        help="Repeat for each issue key whose active reflection records should be consumed.",
+    )
+    consume_reflections.add_argument(
+        "--since",
+        type=parse_date,
+        help="Inclusive start date in ISO format. Use with --issue-key or --until.",
+    )
+    consume_reflections.add_argument(
+        "--until",
+        type=parse_date,
+        help="Inclusive end date in ISO format. Use with --issue-key or --since.",
+    )
+    consume_reflections.add_argument(
+        "--reason",
+        required=True,
+        help="Short reason, usually the accepted improvement or changed project surface.",
+    )
+    consume_reflections.set_defaults(func=consume_reflections_command)
 
     weekly_review = subparsers.add_parser(
         "weekly-review",

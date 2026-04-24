@@ -28,6 +28,8 @@ RUNTIME_DIRS = {
     "evals": PRIVATE_ROOT / "evals",
     "releases": PRIVATE_ROOT / "releases",
 }
+ACTIVE_REFLECTIONS_DIR = RUNTIME_DIRS["reflections"] / "sessions"
+REFLECTION_RECEIPTS_DIR = RUNTIME_DIRS["reflections"] / "receipts"
 RESTRICTED_CHANGE_SCOPES = {"tool_access", "safety_policy", "production_logic", "access"}
 ALLOWED_CHANGE_SCOPES = {
     "workflow",
@@ -115,6 +117,8 @@ def ensure_private_runtime() -> dict[str, Path]:
     PRIVATE_ROOT.mkdir(parents=True, exist_ok=True)
     for path in RUNTIME_DIRS.values():
         path.mkdir(parents=True, exist_ok=True)
+    ACTIVE_REFLECTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    REFLECTION_RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
     return RUNTIME_DIRS
 
 
@@ -237,7 +241,7 @@ def reflection_payload_from_args(args: argparse.Namespace) -> dict[str, Any]:
 def reflections_file_for_timestamp(timestamp: str) -> Path:
     day = timestamp[:10]
     month = day[:7]
-    return RUNTIME_DIRS["reflections"] / month / f"{day}.jsonl"
+    return ACTIVE_REFLECTIONS_DIR / month / f"{day}.jsonl"
 
 
 def reflection_command(args: argparse.Namespace) -> int:
@@ -299,6 +303,66 @@ def normalize_legacy_reflection_payload(payload: dict[str, Any], source_path: Pa
     return normalize_reflection_payload(normalized)
 
 
+def normalize_markdown_reflection_payload(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    date_match = re.search(r"-\s*Date:\s*`?(\d{4}-\d{2}-\d{2})`?", text)
+    created_day = date_match.group(1) if date_match else path.stem[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", created_day):
+        created_day = date.today().isoformat()
+
+    scope_match = re.search(r"-\s*Scope:\s*(.+)", text)
+    title_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    topic = (
+        scope_match.group(1).strip()
+        if scope_match
+        else title_match.group(1).strip()
+        if title_match
+        else path.stem
+    )
+    slowed_match = re.search(
+        r"## What Slowed The Session\s*(.*?)(?:\n## |\Z)",
+        text,
+        flags=re.DOTALL,
+    )
+    verdict_match = re.search(
+        r"## Convenience Verdict\s*(.*?)(?:\n## |\Z)",
+        text,
+        flags=re.DOTALL,
+    )
+    observation = (
+        (slowed_match.group(1).strip() if slowed_match else "")
+        or (verdict_match.group(1).strip() if verdict_match else "")
+        or text.strip()
+    )
+    next_change_match = re.search(
+        r"## Smallest Useful Next Change\s*(.*?)(?:\n## |\Z)",
+        text,
+        flags=re.DOTALL,
+    )
+    proposed_rule = next_change_match.group(1).strip() if next_change_match else ""
+
+    return normalize_reflection_payload(
+        {
+            "created_at": f"{created_day}T00:00:00+05:00",
+            "agent": "unknown",
+            "task": topic,
+            "session": slugify(topic),
+            "summary": topic,
+            "observation": observation,
+            "issue": observation.splitlines()[0].lstrip("- ").strip() if observation else topic,
+            "lesson": "",
+            "issue_key": slugify(topic),
+            "change_scope": "workflow",
+            "proposed_rule": proposed_rule,
+            "tags": ["legacy-markdown-reflection"],
+            "metadata": {
+                "source_format": "legacy_markdown_reflection",
+                "source_file": path.name,
+            },
+        }
+    )
+
+
 def parse_reflection_file(path: Path) -> list[dict[str, Any]]:
     if path.suffix == ".jsonl":
         reflections: list[dict[str, Any]] = []
@@ -319,14 +383,34 @@ def parse_reflection_file(path: Path) -> list[dict[str, Any]]:
             ]
         if isinstance(payload, dict):
             return [normalize_legacy_reflection_payload(payload, path)]
+    if path.suffix == ".md":
+        return [normalize_markdown_reflection_payload(path)]
     return []
+
+
+def is_active_reflection_path(path: Path) -> bool:
+    if path.suffix not in {".jsonl", ".json", ".md"} or not path.is_file():
+        return False
+    try:
+        relative_parts = path.relative_to(RUNTIME_DIRS["reflections"]).parts
+    except ValueError:
+        return False
+    return not any(part in {"archive", "consumed", "receipts"} for part in relative_parts)
+
+
+def iter_active_reflection_files() -> list[Path]:
+    if not RUNTIME_DIRS["reflections"].exists():
+        return []
+    return [
+        path
+        for path in sorted(RUNTIME_DIRS["reflections"].glob("**/*"))
+        if is_active_reflection_path(path)
+    ]
 
 
 def load_reflections(since: date, until: date) -> list[dict[str, Any]]:
     reflections: list[dict[str, Any]] = []
-    for path in sorted(RUNTIME_DIRS["reflections"].glob("**/*")):
-        if path.suffix not in {".jsonl", ".json"} or not path.is_file():
-            continue
+    for path in iter_active_reflection_files():
         for payload in parse_reflection_file(path):
             created_at = str(payload.get("created_at") or "")
             if not created_at:
@@ -336,6 +420,139 @@ def load_reflections(since: date, until: date) -> list[dict[str, Any]]:
                 reflections.append(payload)
     reflections.sort(key=lambda item: item.get("created_at", ""))
     return reflections
+
+
+def legacy_reflection_files() -> list[Path]:
+    if not RUNTIME_DIRS["reflections"].exists():
+        return []
+    return [
+        path
+        for path in sorted(RUNTIME_DIRS["reflections"].iterdir())
+        if path.is_file() and path.suffix in {".json", ".md"}
+    ]
+
+
+def migrate_reflections_command(args: argparse.Namespace) -> int:
+    ensure_private_runtime()
+    source_files = legacy_reflection_files()
+    migrated_count = 0
+    for path in source_files:
+        reflections = parse_reflection_file(path)
+        for reflection in reflections:
+            append_jsonl(reflections_file_for_timestamp(reflection["created_at"]), reflection)
+            migrated_count += 1
+        path.unlink()
+
+    print(f"migrated_files={len(source_files)}")
+    print(f"migrated_reflections={migrated_count}")
+    print(f"active_reflections_dir={ACTIVE_REFLECTIONS_DIR}")
+    return 0
+
+
+def reflection_matches_consume_filter(
+    reflection: dict[str, Any],
+    *,
+    issue_keys: set[str],
+    since: date | None,
+    until: date | None,
+) -> bool:
+    issue_key = str(reflection.get("issue_key") or derive_issue_key(reflection))
+    if issue_keys and issue_key not in issue_keys:
+        return False
+    created_at = str(reflection.get("created_at") or "")
+    if created_at and (since or until):
+        created_day = date.fromisoformat(created_at[:10])
+        if since and created_day < since:
+            return False
+        if until and created_day > until:
+            return False
+    return True
+
+
+def consume_reflection_records(
+    *,
+    issue_keys: set[str],
+    since: date | None,
+    until: date | None,
+) -> tuple[int, list[str]]:
+    consumed_count = 0
+    touched_files: list[str] = []
+    for path in iter_active_reflection_files():
+        if path.suffix != ".jsonl":
+            continue
+        kept: list[dict[str, Any]] = []
+        consumed_here = 0
+        for reflection in parse_reflection_file(path):
+            if reflection_matches_consume_filter(
+                reflection,
+                issue_keys=issue_keys,
+                since=since,
+                until=until,
+            ):
+                consumed_here += 1
+                continue
+            kept.append(reflection)
+        if not consumed_here:
+            continue
+        touched_files.append(path.as_posix())
+        consumed_count += consumed_here
+        if kept:
+            atomic_write_text(
+                path,
+                "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in kept),
+            )
+        else:
+            path.unlink()
+            lock_path = path.parent / f".{path.name}.lock"
+            if lock_path.exists():
+                lock_path.unlink()
+    return consumed_count, touched_files
+
+
+def prune_empty_reflection_dirs() -> None:
+    for path in sorted(ACTIVE_REFLECTIONS_DIR.glob("**/*"), reverse=True):
+        visible_items = [
+            item for item in path.iterdir() if not item.name.startswith(".")
+        ] if path.is_dir() else []
+        if path.is_dir() and not visible_items:
+            for item in list(path.iterdir()):
+                if item.name.startswith(".") and item.is_file():
+                    item.unlink()
+        if path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+
+
+def consume_reflections_command(args: argparse.Namespace) -> int:
+    ensure_private_runtime()
+    issue_keys = {slugify(item) for item in normalize_string_list(args.issue_key)}
+    if not issue_keys and not args.since and not args.until:
+        print("error=provide --issue-key or a date window")
+        return 2
+
+    consumed_count, touched_files = consume_reflection_records(
+        issue_keys=issue_keys,
+        since=args.since,
+        until=args.until,
+    )
+    prune_empty_reflection_dirs()
+    receipt = {
+        "consumed_at": utc_now(),
+        "reason": args.reason,
+        "issue_keys": sorted(issue_keys),
+        "window": {
+            "since": args.since.isoformat() if args.since else "",
+            "until": args.until.isoformat() if args.until else "",
+        },
+        "consumed_records": consumed_count,
+        "source_files": touched_files,
+        "raw_content_retained": False,
+    }
+    receipt_name = receipt["consumed_at"].replace(":", "").replace("+", "").replace("Z", "Z")
+    receipt_path = REFLECTION_RECEIPTS_DIR / f"{receipt_name}.json"
+    write_json(receipt_path, receipt)
+    print(f"consumed_records={consumed_count}")
+    print(f"receipt={receipt_path}")
+    return 0
 
 
 def summarize_observation(group: dict[str, Any]) -> str:
