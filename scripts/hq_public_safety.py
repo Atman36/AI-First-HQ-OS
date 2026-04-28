@@ -112,6 +112,19 @@ def normalize_relative_path(relative_path: Path | str) -> str:
     return PurePosixPath(relative_path).as_posix()
 
 
+
+def has_git_metadata(repo_root: Path) -> bool:
+    """Return whether the repository checkout has enough git metadata to inspect tracked files.
+
+    Analysis packs are often distributed as zip archives without `.git/`. In that mode,
+    publication safety cannot know which files are tracked, so the gate should report a
+    deterministic skip instead of failing the entire audit.
+    """
+
+    return (repo_root / ".git").exists()
+
+
+
 def load_tracked_files(repo_root: Path) -> list[Path]:
     try:
         completed = subprocess.run(
@@ -192,6 +205,10 @@ def find_violations(repo_root: Path, tracked_files: list[Path]) -> list[str]:
 
 
 def main() -> int:
+    if not has_git_metadata(REPO_ROOT):
+        print("public_safety=skipped_no_git_metadata", flush=True)
+        return 0
+
     try:
         tracked_files = load_tracked_files(REPO_ROOT)
     except RuntimeError as error:

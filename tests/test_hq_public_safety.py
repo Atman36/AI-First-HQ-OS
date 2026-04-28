@@ -112,6 +112,19 @@ class HqPublicSafetyTests(unittest.TestCase):
         self.assertEqual(len(violations), 1)
         self.assertIn("potential openai secret", violations[0])
 
+
+    def test_main_skips_without_git_metadata(self):
+        import contextlib
+        import io
+
+        self.module.REPO_ROOT = self.temp_root
+
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            exit_code = self.module.main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("public_safety=skipped_no_git_metadata", stdout.getvalue())
+
     def test_load_tracked_files_uses_check_true_and_parses_output(self):
         with patch.object(self.module.subprocess, "run") as mock_run:
             mock_run.return_value = Mock(stdout=b"README.md\0scripts/tool.py\0", returncode=0)
