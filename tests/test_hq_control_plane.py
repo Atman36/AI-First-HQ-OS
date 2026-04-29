@@ -1989,3 +1989,35 @@ class HqControlPlaneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class HqOwnerGateRenderingTests(HqControlPlaneTests):
+    def test_sync_and_status_render_owner_gate_fields(self):
+        active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"][0]["owner_gate"] = {
+            "current_hypothesis": "Current hypothesis text.",
+            "next_founder_decision_gate": "Founder approves first send wave.",
+            "allowed_ai_actions": ["Draft private packets.", "Prepare founder checklist."],
+            "required_founder_approval_before_external_sends": "Required before any external send.",
+            "success_signal": "One qualified discovery reply.",
+            "kill_criteria": "No relevant response after approved sends.",
+        }
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        sync_args = parser.parse_args(["sync"])
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(sync_args.func(sync_args), 0)
+
+        board = (self.temp_root / "02 Planning" / "Task Board.md").read_text(encoding="utf-8")
+        self.assertIn("Owner Gate", board)
+        self.assertIn("Current Hypothesis: Current hypothesis text.", board)
+        self.assertIn("Allowed AI Actions", board)
+
+        status_args = parser.parse_args(["status"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self.assertEqual(status_args.func(status_args), 0)
+        status = buffer.getvalue()
+        self.assertIn("Owner Gate", status)
+        self.assertIn("Founder approves first send wave.", status)

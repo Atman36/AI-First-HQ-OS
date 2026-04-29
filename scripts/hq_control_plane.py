@@ -13,7 +13,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker
+try:
+    from jsonschema import Draft202012Validator, FormatChecker
+except ModuleNotFoundError:  # pragma: no cover - local bootstrap fallback
+    Draft202012Validator = None
+    FormatChecker = None
 
 REPO_ROOT = Path(
     os.environ.get("HQ_CONTROL_PLANE_REPO_ROOT", Path(__file__).resolve().parents[1])
@@ -338,6 +342,9 @@ def validate_schema(
     root_label: str,
     context: ValidationContext,
 ) -> None:
+    if Draft202012Validator is None or FormatChecker is None:
+        context.warn(root_label, "jsonschema is not installed; skipping JSON Schema validation")
+        return
     schema = load_json(schema_path)
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.absolute_path)):
@@ -899,9 +906,49 @@ def task_lines(task: dict[str, Any]) -> list[str]:
     align_files = [normalize_text(item) for item in task.get("align_files", []) or [] if normalize_text(item)]
     if align_files:
         lines.append("  - Align: " + ", ".join(f"`{item}`" for item in align_files))
+    lines.extend(owner_gate_lines(task))
     completed_at = normalize_text(task.get("completed_at"))
     if completed_at:
         lines.append(f"  - Completed at: {completed_at}")
+    return lines
+
+
+
+
+def owner_gate_lines(task: dict[str, Any], indent: str = "  - ") -> list[str]:
+    owner_gate = task.get("owner_gate")
+    if not isinstance(owner_gate, dict) or not owner_gate:
+        return []
+    labels = [
+        ("current_hypothesis", "Current Hypothesis"),
+        ("next_founder_decision_gate", "Next Founder Decision Gate"),
+        ("allowed_ai_actions", "Allowed AI Actions"),
+        ("required_founder_approval_before_external_sends", "Required Founder Approval Before External Sends"),
+        ("success_signal", "Success Signal"),
+        ("kill_criteria", "Kill Criteria"),
+    ]
+    lines = [f"{indent}Owner Gate:"]
+    nested_indent = indent + "  "
+    for key, label in labels:
+        value = owner_gate.get(key)
+        if isinstance(value, list):
+            items = [normalize_text(item) for item in value if normalize_text(item)]
+            if not items:
+                continue
+            lines.append(f"{nested_indent}- {label}:")
+            lines.extend(f"{nested_indent}  - {item}" for item in items)
+        else:
+            text = normalize_text(value)
+            if text:
+                lines.append(f"{nested_indent}- {label}: {text}")
+    for key, label in (
+        ("timeout_wait", "Timeout Wait"),
+        ("timeout_minutes", "Timeout Minutes"),
+        ("partial_handoff_rule", "Partial Handoff Rule"),
+    ):
+        text = normalize_text(task.get(key))
+        if text:
+            lines.append(f"{nested_indent}- {label}: {text}")
     return lines
 
 
@@ -1033,6 +1080,7 @@ def render_workflow_artifact(
                     next_step=normalize_text(task.get("next_step")) or "-",
                 )
             )
+            lines.extend(owner_gate_lines(task, indent="  - "))
 
     lines.extend(["", "## Workflow Contracts"])
     if used_workflow_ids:
@@ -1260,7 +1308,7 @@ def sort_tasks(
     ]
 
 
-def project_live_task(task: dict[str, Any]) -> dict[str, str]:
+def project_live_task(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": normalize_text(task.get("id")),
         "title": normalize_text(task.get("title")),
@@ -1271,6 +1319,7 @@ def project_live_task(task: dict[str, Any]) -> dict[str, str]:
         "next_step": normalize_text(task.get("next_step")),
         "primary_update_file": normalize_text(task.get("primary_update_file")),
         "accepts_result": normalize_text(task.get("accepts_result")),
+        "owner_gate": task.get("owner_gate") if isinstance(task.get("owner_gate"), dict) else {},
     }
 
 
@@ -1988,7 +2037,7 @@ def write_closeout_telemetry(task: dict[str, Any], completed_at: str) -> int:
 
 
 def task_summary_lines(task: dict[str, Any]) -> list[str]:
-    return [
+    lines = [
         f"- Task ID: {normalize_text(task.get('id'))}",
         f"- Title: {normalize_text(task.get('title'))}",
         f"- Project: {normalize_text(task.get('project'))}",
@@ -1999,6 +2048,8 @@ def task_summary_lines(task: dict[str, Any]) -> list[str]:
         f"- Risk / Autonomy: {normalize_text(task.get('risk_tier'))} / {normalize_text(task.get('autonomy_tier'))}",
         f"- Done When: {normalize_text(task.get('done_when')) or '-'}",
     ]
+    lines.extend(owner_gate_lines(task, indent="- "))
+    return lines
 
 
 def render_recommended_next_command(command: str) -> str:
@@ -2239,6 +2290,9 @@ def render_status_text(payload: dict[str, Any]) -> str:
                 f"- task_command: {startup_focus.get('recommended_next_command') or '-'}",
             ]
         )
+        task = find_task({"tasks": payload.get("active_tasks", []) or []}, startup_focus.get("id") or "")
+        if task:
+            lines.extend(owner_gate_lines(task))
     lines.extend(["", "Recovery Queue"])
     runtime_recovery = payload.get("runtime_recovery") or {}
     recovery_items = runtime_recovery.get("items", []) or []
