@@ -149,6 +149,15 @@ HQ is AI-first, but not approval-free.
 - Do not return control only because a subagent or long-running tool is still working.
 - When founder-run Deep Research or GPT analysis packets arrive, distill them into a narrow spec or handoff before reopening broader exploration.
 
+### Execution Discipline
+
+- State material assumptions and unresolved forks before acting; do not silently choose between materially different interpretations.
+- Prefer the smallest change that satisfies the accepted goal; do not add speculative flexibility, abstractions, or optional features that the task did not require.
+- Keep edits traceable to the current slice: every changed line should support the user request, the active task contract, or cleanup directly caused by the change.
+- Match existing local patterns and style, even when another style would be personally preferred.
+- Mention unrelated dead code, stale docs, or improvement ideas instead of editing them unless they are required for the slice.
+- Convert broad requests into verifiable success criteria and keep looping until the required check for the touched surface has passed or a blocker is recorded.
+
 ### Policy Contract
 
 - AI may make low- and medium-risk operating decisions only when the task has an owner, accepting role, risk tier, autonomy tier, workflow, and primary update file.
