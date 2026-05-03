@@ -1,0 +1,4 @@
+interface:
+  display_name: "HQ Publication Safety"
+  short_description: "Check commits, pushes, and public artifacts for private HQ leaks"
+  default_prompt: "Use $hq-publication-safety before committing or publishing HQ changes to verify public-safe boundaries."

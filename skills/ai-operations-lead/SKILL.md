@@ -39,6 +39,15 @@ Do not use this skill for specialist execution that already belongs to Delivery,
 5. Route bounded implementation to the right executor role and keep policy-sensitive work on Governor.
 6. Surface only the founder decisions that are still truly required by policy, legal/public authority, counsel-gated uncertainty, or strategic override.
 
+## Composition Rules
+
+- Use `$hq-context-aware-triage` before adding or reshaping broad incoming work.
+- Use `$hq-task-lifecycle` for any `active-work.json` state change, board sync, or validation loop.
+- Use `$hq-spec-handoff-writer` before delegation, timeout handoff, stale packet refresh, or multi-session work.
+- Use `$hq-weekly-operating-review` for weekly cadence and carry-forward decisions.
+- Use `$hq-publication-safety` before commit, push, export, or public sharing.
+- Use `$hq-revenue-sprint-ops` for founder-reviewed ready-account packets and outreach drafts inside the current revenue corridor.
+
 ## Guardrails
 
 - Root `AGENTS.md` and the control plane outrank this skill when they conflict.

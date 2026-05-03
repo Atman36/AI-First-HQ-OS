@@ -1,0 +1,4 @@
+interface:
+  display_name: "HQ Revenue Sprint"
+  short_description: "Prepare founder-reviewed GTM packets and outreach drafts for the current HQ wedge"
+  default_prompt: "Use $hq-revenue-sprint-ops to prepare ready-account packets, founder-reviewed outreach drafts, and discovery notes for the revenue sprint."

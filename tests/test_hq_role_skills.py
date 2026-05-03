@@ -45,3 +45,64 @@ class HqRoleSkillTests(unittest.TestCase):
         self.assertTrue(metadata_path.exists(), metadata_path)
         self.assertIn("Use `$ai-operations-lead`", skill_path.read_text(encoding="utf-8"))
         self.assertIn('display_name: "AI Ops Lead"', metadata_path.read_text(encoding="utf-8"))
+
+    def test_core_hq_operating_skills_exist_with_interface_metadata(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        expectations = {
+            "hq-task-lifecycle": "HQ Task Lifecycle",
+            "hq-context-aware-triage": "HQ Triage",
+            "hq-spec-handoff-writer": "HQ Spec/Handoff",
+            "hq-weekly-operating-review": "HQ Weekly Review",
+            "hq-publication-safety": "HQ Publication Safety",
+            "hq-revenue-sprint-ops": "HQ Revenue Sprint",
+        }
+
+        for skill_id, display_name in expectations.items():
+            with self.subTest(skill_id=skill_id):
+                skill_path = repo_root / "skills" / skill_id / "SKILL.md"
+                metadata_path = repo_root / "skills" / skill_id / "agents" / "openai.yaml"
+
+                self.assertTrue(skill_path.exists(), skill_path)
+                self.assertTrue(metadata_path.exists(), metadata_path)
+                skill_content = skill_path.read_text(encoding="utf-8")
+                metadata_content = metadata_path.read_text(encoding="utf-8")
+                self.assertIn(f"name: {skill_id}", skill_content)
+                self.assertIn("description:", skill_content)
+                self.assertIn(f'display_name: "{display_name}"', metadata_content)
+                self.assertIn("default_prompt:", metadata_content)
+
+    def test_core_hq_operating_skills_reference_public_safe_control_plane_boundaries(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        skill_markers = {
+            "hq-task-lifecycle": [
+                "05 AI Control Plane/active-work.json",
+                "python3 scripts/hq_control_plane.py validate",
+            ],
+            "hq-context-aware-triage": [
+                "risk tier",
+                "autonomy tier",
+                "primary update file",
+            ],
+            "hq-spec-handoff-writer": [
+                ".hq/specs/<task>/LATEST.md",
+                ".hq/handoffs/<task>/LATEST.md",
+            ],
+            "hq-weekly-operating-review": [
+                "python3 scripts/hq_control_plane.py status",
+                "Do not hand-edit generated artifacts",
+            ],
+            "hq-publication-safety": [
+                "git status --short",
+                "Technical documentation for internal operation should stay local",
+            ],
+            "hq-revenue-sprint-ops": [
+                "Founder Revenue Sprint.md",
+                "Require founder approval before any outbound",
+            ],
+        }
+
+        for skill_id, markers in skill_markers.items():
+            with self.subTest(skill_id=skill_id):
+                content = (repo_root / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
+                for marker in markers:
+                    self.assertIn(marker, content)

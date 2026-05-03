@@ -38,6 +38,12 @@ Do not use this skill for routine implementation, queue routing, or shared-truth
 4. Escalate to CEO when the issue crosses strategy, legal/public authority, money movement, or policy override.
 5. Keep the decision explicit enough that other roles can execute without re-litigating the policy call.
 
+## Composition Rules
+
+- Use `$hq-publication-safety` for the deterministic file/path/secret scan before commit, push, export, or public sharing.
+- Use this Governor skill for the policy decision after the scan: approve, block, require founder review, or define rollback.
+- Use `$hq-task-lifecycle` only after a policy decision requires a queue-state update.
+
 ## Guardrails
 
 - Root `AGENTS.md` and the control plane outrank this skill when they conflict.

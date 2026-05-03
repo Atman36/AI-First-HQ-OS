@@ -39,6 +39,14 @@ Do not use this skill for specialist execution that already belongs to Delivery,
 5. Assign each slice to the right role with a clear expected output and accepting owner.
 6. Surface only the founder decisions that are still truly required by policy, legal/public authority, counsel-gated uncertainty, or strategic override.
 
+## Composition Rules
+
+- Use `$hq-context-aware-triage` when a founder idea needs conversion into an executable task contract.
+- Use `$hq-revenue-sprint-ops` when the active wedge needs account packets, outreach drafts, discovery prompts, or sales enablement artifacts.
+- Use `$hq-weekly-operating-review` when prioritization is part of the weekly operating ritual.
+- Use `$hq-task-lifecycle` through AI Operations Lead when a queue state change is required.
+- Use Governor for strategy boundary, policy, trust, legal/public wording, spend, destructive action, or override decisions.
+
 ## Guardrails
 
 - Root `AGENTS.md` and the control plane outrank this skill when they conflict.
