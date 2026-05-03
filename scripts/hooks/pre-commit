@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# HQ publication-safety pre-commit hook.
+# Blocks commits containing private runtime artifacts, secrets, or policy-sensitive paths.
+# Install: bash scripts/install_hq_hooks.sh
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+echo "[hq-hooks] Running publication safety check..."
+if python3 "$REPO_ROOT/scripts/hq_public_safety.py"; then
+    exit 0
+else
+    echo ""
+    echo "[hq-hooks] BLOCKED: commit contains private or policy-sensitive artifacts."
+    echo "           Review the violations above, unstage the affected files, and retry."
+    exit 1
+fi

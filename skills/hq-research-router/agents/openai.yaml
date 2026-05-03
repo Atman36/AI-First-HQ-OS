@@ -1,0 +1,4 @@
+interface:
+  display_name: "HQ Research Router"
+  short_description: "Route incoming research packets into the HQ index, task queue, and specs"
+  default_prompt: "Use $hq-research-router to rename, index, and route this research packet into the HQ operating system."

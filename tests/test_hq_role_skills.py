@@ -106,3 +106,70 @@ class HqRoleSkillTests(unittest.TestCase):
                 content = (repo_root / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
                 for marker in markers:
                     self.assertIn(marker, content)
+
+    def test_new_wave_skills_exist_with_interface_metadata(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        expectations = {
+            "hq-research-router": "HQ Research Router",
+            "hq-telemetry-event-logger": "HQ Telemetry Logger",
+        }
+
+        for skill_id, display_name in expectations.items():
+            with self.subTest(skill_id=skill_id):
+                skill_path = repo_root / "skills" / skill_id / "SKILL.md"
+                metadata_path = repo_root / "skills" / skill_id / "agents" / "openai.yaml"
+
+                self.assertTrue(skill_path.exists(), skill_path)
+                self.assertTrue(metadata_path.exists(), metadata_path)
+                skill_content = skill_path.read_text(encoding="utf-8")
+                metadata_content = metadata_path.read_text(encoding="utf-8")
+                self.assertIn(f"name: {skill_id}", skill_content)
+                self.assertIn("description:", skill_content)
+                self.assertIn(f'display_name: "{display_name}"', metadata_content)
+                self.assertIn("default_prompt:", metadata_content)
+
+    def test_new_wave_skills_reference_key_boundaries(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        skill_markers = {
+            "hq-research-router": [
+                "reports/DEEP_RESEARCH_INDEX.md",
+                "05 AI Control Plane/active-work.json",
+                "python3 scripts/hq_control_plane.py validate",
+                ".hq/specs/",
+            ],
+            "hq-telemetry-event-logger": [
+                ".hq/telemetry/",
+                "05 AI Control Plane/metrics-registry.json",
+                "never add it to git",
+            ],
+        }
+
+        for skill_id, markers in skill_markers.items():
+            with self.subTest(skill_id=skill_id):
+                content = (repo_root / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
+                for marker in markers:
+                    self.assertIn(marker, content)
+
+    def test_publication_safety_skill_references_hook_layer(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        content = (repo_root / "skills" / "hq-publication-safety" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("scripts/hooks/pre-commit", content)
+        self.assertIn("scripts/install_hq_hooks.sh", content)
+        self.assertIn("hook-first", content)
+
+    def test_hook_scripts_exist_and_are_executable(self):
+        import stat
+        repo_root = Path(__file__).resolve().parents[1]
+        hook_template = repo_root / "scripts" / "hooks" / "pre-commit"
+        installer = repo_root / "scripts" / "install_hq_hooks.sh"
+
+        self.assertTrue(hook_template.exists(), hook_template)
+        self.assertTrue(installer.exists(), installer)
+        self.assertTrue(hook_template.stat().st_mode & stat.S_IXUSR, "pre-commit hook not executable")
+        self.assertTrue(installer.stat().st_mode & stat.S_IXUSR, "install_hq_hooks.sh not executable")
+
+    def test_hook_template_calls_public_safety_script(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        content = (repo_root / "scripts" / "hooks" / "pre-commit").read_text(encoding="utf-8")
+        self.assertIn("hq_public_safety.py", content)
+        self.assertIn("exit 1", content)
