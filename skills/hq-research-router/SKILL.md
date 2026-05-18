@@ -35,6 +35,13 @@ For each incoming packet, apply this decision in order:
 5. **Retire superseded entries**: If the packet supersedes an existing index entry, mark the old entry with a `> Superseded by:` callout rather than deleting it.
 6. **Run validate**: After any `active-work.json` change, run `python3 scripts/hq_control_plane.py validate`.
 
+## Default Workflow
+
+1. Identify the packet type, source path, and whether it is approved for tracked publication.
+2. Choose exactly one primary route: index-only, task update, spec/handoff, or founder-only decision.
+3. Apply the routing decision tree above without copying raw private research into tracked truth.
+4. Run validation when the queue changes and report any remaining founder-only decision.
+
 ## Guardrails
 
 - Never commit the raw research packet to public git unless it is explicitly approved for publication (most deep-research content in `reports/deep-research/` is private-path-blocked by `hq_public_safety.py`).

@@ -8,6 +8,36 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "review_gate": {
+      "type": "object",
+      "required": [
+        "id",
+        "owner",
+        "when",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "telemetry_event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "$ref": "#/$defs/string_list"
+        }
+      }
     }
   },
   "type": "object",
@@ -118,6 +148,12 @@
             "additionalProperties": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          "review_gates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/review_gate"
             }
           }
         }

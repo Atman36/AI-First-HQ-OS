@@ -686,6 +686,89 @@ class HqControlPlaneTests(unittest.TestCase):
 
         self.assertIn("subagent_context_protocol.applies_to_roles", str(error.exception))
 
+    def test_validate_requires_known_capability_routing_roles(self):
+        agent_registry_path = self.temp_root / "05 AI Control Plane" / "agent-registry.json"
+        payload = json.loads(agent_registry_path.read_text(encoding="utf-8"))
+        payload["capability_routing"] = [
+            {
+                "id": "unknown-specialist-route",
+                "purpose": "Exercise role validation.",
+                "primary_role": "missing_specialist",
+                "manager": "ai_operations_lead",
+                "support_roles": ["delivery"],
+                "evidence": ["validation should reject unknown roles"],
+            }
+        ]
+        agent_registry_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(self.module.ValidationError) as error:
+            self.module.validate_control_plane()
+
+        self.assertIn("capability_routing[0].primary_role", str(error.exception))
+
+    def test_validate_requires_known_workflow_review_gate_owner_and_event(self):
+        workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"
+        payload = json.loads(workflow_path.read_text(encoding="utf-8"))
+        payload["workflows"][0]["review_gates"] = [
+            {
+                "id": "bad_gate",
+                "owner": "missing_specialist",
+                "telemetry_event": "missing_event",
+                "when": "Exercise review gate validation.",
+                "evidence": ["validation should reject unknown owner and event"],
+            }
+        ]
+        workflow_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(self.module.ValidationError) as error:
+            self.module.validate_control_plane()
+
+        message = str(error.exception)
+        self.assertIn("review_gates[0].owner", message)
+        self.assertIn("review_gates[0].telemetry_event", message)
+
+    def test_validate_requires_known_review_pipeline_roles(self):
+        policies_path = self.temp_root / "05 AI Control Plane" / "operating-policies.json"
+        payload = json.loads(policies_path.read_text(encoding="utf-8"))
+        payload["review_pipeline"] = {
+            "purpose": "Exercise policy role validation.",
+            "owner": "missing_owner",
+            "default_order": ["delivery", "missing_reviewer"],
+            "gate_selection": [
+                {
+                    "gate": "missing_gate",
+                    "applies_when": "A role is missing.",
+                    "minimum_evidence": ["validation should reject unknown gate roles"],
+                }
+            ],
+            "learning_loop": {
+                "owner": "missing_learning_owner",
+                "event_type": "learning_capture",
+                "runtime_path": ".hq/reflections/",
+                "tracked_truth_rule": "Only accepted learnings move into tracked truth.",
+                "capture_when": ["a repeated mistake is found"],
+            },
+        }
+        policies_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(self.module.ValidationError) as error:
+            self.module.validate_control_plane()
+
+        message = str(error.exception)
+        self.assertIn("review_pipeline.owner", message)
+        self.assertIn("review_pipeline.default_order[1]", message)
+        self.assertIn("review_pipeline.gate_selection[0].gate", message)
+        self.assertIn("review_pipeline.learning_loop.owner", message)
+
     def test_status_writes_session_bootstrap_json_and_excludes_done_tasks(self):
         (self.temp_root / "README.md").write_text("# README\n", encoding="utf-8")
         workflow_path = self.temp_root / "05 AI Control Plane" / "workflow-registry.json"

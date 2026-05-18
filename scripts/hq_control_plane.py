@@ -418,6 +418,36 @@ def validate_role_registry(agent_registry: dict[str, Any], context: ValidationCo
                 f"unknown escalation role: {escalate_target}",
             )
 
+    capability_routes = agent_registry.get("capability_routing", []) or []
+    if capability_routes and not isinstance(capability_routes, list):
+        context.add("agent-registry.json.capability_routing", "capability_routing must be a list")
+        return
+    seen_routes: set[str] = set()
+    for index, route in enumerate(capability_routes):
+        path = f"agent-registry.json.capability_routing[{index}]"
+        if not isinstance(route, dict):
+            context.add(path, "capability route must be an object")
+            continue
+        route_id = normalize_text(route.get("id"))
+        if not route_id:
+            context.add(path, "capability route id is required")
+        elif route_id in seen_routes:
+            context.add(path, f"duplicate capability route id: {route_id}")
+        else:
+            seen_routes.add(route_id)
+        for field in ("primary_role", "manager"):
+            role_id = normalize_text(route.get(field))
+            if role_id and role_id not in seen:
+                context.add(f"{path}.{field}", f"unknown role: {role_id}")
+        support_roles = route.get("support_roles", []) or []
+        if not isinstance(support_roles, list):
+            context.add(f"{path}.support_roles", "support_roles must be a list when provided")
+            continue
+        for support_index, support_role in enumerate(support_roles):
+            support_id = normalize_text(support_role)
+            if support_id and support_id not in seen:
+                context.add(f"{path}.support_roles[{support_index}]", f"unknown role: {support_id}")
+
 
 def validate_metrics(
     metrics: dict[str, Any],
@@ -559,6 +589,32 @@ def validate_workflows(
                             f"{path}.{key}[{event_index}]",
                             f"unknown telemetry event type: {normalized}",
                         )
+        review_gates = workflow.get("review_gates", []) or []
+        if review_gates and not isinstance(review_gates, list):
+            context.add(f"{path}.review_gates", "review_gates must be a list when provided")
+            continue
+        seen_review_gates: set[str] = set()
+        for gate_index, gate in enumerate(review_gates):
+            gate_path = f"{path}.review_gates[{gate_index}]"
+            if not isinstance(gate, dict):
+                context.add(gate_path, "review gate must be an object")
+                continue
+            gate_id = normalize_text(gate.get("id"))
+            if not gate_id:
+                context.add(gate_path, "review gate id is required")
+            elif gate_id in seen_review_gates:
+                context.add(gate_path, f"duplicate review gate id: {gate_id}")
+            else:
+                seen_review_gates.add(gate_id)
+            owner_id = normalize_text(gate.get("owner"))
+            if owner_id and owner_id not in role_ids:
+                context.add(f"{gate_path}.owner", f"unknown role: {owner_id}")
+            telemetry_event = normalize_text(gate.get("telemetry_event"))
+            if telemetry_event and telemetry_event not in allowed_event_types:
+                context.add(
+                    f"{gate_path}.telemetry_event",
+                    f"unknown telemetry event type: {telemetry_event}",
+                )
 
 
 def validate_policies(
@@ -631,6 +687,44 @@ def validate_policies(
                     "operating-policies.json.runtime_governance.hook_events",
                     "hook_events must be a non-empty list",
                 )
+
+    review_pipeline = policies.get("review_pipeline")
+    if review_pipeline is not None:
+        if not isinstance(review_pipeline, dict):
+            context.add("operating-policies.json.review_pipeline", "review_pipeline must be an object")
+        else:
+            owner = normalize_text(review_pipeline.get("owner"))
+            if owner and owner not in role_ids:
+                context.add("operating-policies.json.review_pipeline.owner", f"unknown role: {owner}")
+            for order_index, gate_role in enumerate(review_pipeline.get("default_order", []) or []):
+                gate_id = normalize_text(gate_role)
+                if gate_id and gate_id not in role_ids:
+                    context.add(
+                        f"operating-policies.json.review_pipeline.default_order[{order_index}]",
+                        f"unknown role: {gate_id}",
+                    )
+            gate_selection = review_pipeline.get("gate_selection", []) or []
+            if gate_selection and not isinstance(gate_selection, list):
+                context.add(
+                    "operating-policies.json.review_pipeline.gate_selection",
+                    "gate_selection must be a list when provided",
+                )
+            for gate_index, gate in enumerate(gate_selection if isinstance(gate_selection, list) else []):
+                gate_path = f"operating-policies.json.review_pipeline.gate_selection[{gate_index}]"
+                if not isinstance(gate, dict):
+                    context.add(gate_path, "gate selection must be an object")
+                    continue
+                gate_id = normalize_text(gate.get("gate"))
+                if gate_id and gate_id not in role_ids:
+                    context.add(f"{gate_path}.gate", f"unknown role: {gate_id}")
+            learning_loop = review_pipeline.get("learning_loop")
+            if isinstance(learning_loop, dict):
+                learning_owner = normalize_text(learning_loop.get("owner"))
+                if learning_owner and learning_owner not in role_ids:
+                    context.add(
+                        "operating-policies.json.review_pipeline.learning_loop.owner",
+                        f"unknown role: {learning_owner}",
+                    )
 
     subagent_context_protocol = policies.get("subagent_context_protocol")
     if subagent_context_protocol is not None:

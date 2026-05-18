@@ -10,7 +10,7 @@ Use this skill as the single write path for structured telemetry events. Telemet
 ## Read First
 
 - `AGENTS.md`
-- `.hq/telemetry/` — current month's log directory (e.g. `.hq/telemetry/2026-05/`)
+- `.hq/telemetry/` — current month's log directory, named as a year-month child directory
 - `05 AI Control Plane/metrics-registry.json` — which metrics are tracked and how
 
 ## Trigger Shape
