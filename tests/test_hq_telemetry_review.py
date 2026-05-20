@@ -3,11 +3,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import shutil
 import sys
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 # Add scripts to sys.path so modules in scripts/ can find each other

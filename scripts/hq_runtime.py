@@ -29,16 +29,11 @@ from hq_io import atomic_write_text, write_json
 import hq_control_plane
 import hq_mission_runtime
 from hq_runtime_review import ALLOWED_CHANGE_SCOPES
-from hq_runtime_review import derive_issue_key
-from hq_runtime_review import load_reflections
-from hq_runtime_review import normalize_reflection_payload
-from hq_runtime_review import normalize_string_list
+from hq_runtime_review import normalize_reflection_payload  # noqa: F401 - compatibility re-export
 from hq_runtime_review import consume_reflections_command
 from hq_runtime_review import migrate_reflections_command
 from hq_runtime_review import reflection_command
-from hq_runtime_review import reflection_payload_from_args
-from hq_runtime_review import reflections_file_for_timestamp
-from hq_runtime_review import render_review_markdown
+from hq_runtime_review import reflections_file_for_timestamp  # noqa: F401 - compatibility re-export
 from hq_runtime_review import weekly_review_command
 
 

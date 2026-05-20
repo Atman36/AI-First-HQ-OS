@@ -1,1 +1,2 @@
 jsonschema>=4.23,<5
+ruff>=0.8,<1

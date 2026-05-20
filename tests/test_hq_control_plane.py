@@ -444,6 +444,37 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("Execution Config: 05 AI Control Plane/execution-config.json (inferred)", artifact_content)
         self.assertIn("Workflow Mode: normal", artifact_content)
 
+    def test_sync_check_reports_stale_generated_task_board_without_writing(self):
+        board_path = self.temp_root / "02 Planning" / "Task Board.md"
+        board_path.write_text("# stale board\n", encoding="utf-8")
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["sync", "--check"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        self.assertEqual(exit_code, 1)
+        output = buffer.getvalue()
+        self.assertIn("generated_check=failed", output)
+        self.assertIn("stale generated artifact: 02 Planning/Task Board.md", output)
+        self.assertEqual(board_path.read_text(encoding="utf-8"), "# stale board\n")
+
+    def test_sync_check_passes_for_fresh_generated_artifacts(self):
+        parser = self.module.build_parser()
+        sync_args = parser.parse_args(["sync"])
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(sync_args.func(sync_args), 0)
+
+        check_args = parser.parse_args(["sync", "--check"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = check_args.func(check_args)
+
+        output = buffer.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("generated_check=ok", output)
+
     def test_init_profile_writes_materialized_execution_config(self):
         parser = self.module.build_parser()
         args = parser.parse_args(["init-profile", "--preset", "strict"])
@@ -616,6 +647,53 @@ class HqControlPlaneTests(unittest.TestCase):
         output = buffer.getvalue()
         self.assertIn("validation=ok", output)
         self.assertIn("executing task has stale handoff", output)
+
+    def test_validate_reports_stale_packet_warnings_without_failing_in_normal_profile(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        active_work_path = control_plane_dir / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["updated_at"] = "2026-04-20"
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        spec_dir = self.temp_root / ".hq" / "specs" / "task-1"
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "LATEST.md").write_text("# Spec\n\n2026-04-15\n", encoding="utf-8")
+
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args(["validate"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        output = buffer.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("stale spec packet", output)
+        self.assertIn("missing handoff packet", output)
+
+    def test_validate_fails_for_stale_packets_in_strict_profile(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        active_work_path = control_plane_dir / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["updated_at"] = "2026-04-20"
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        execution_config = self.module.build_execution_config_from_preset(
+            "strict",
+            payload,
+            json.loads((control_plane_dir / "operating-policies.json").read_text(encoding="utf-8")),
+            source="materialized",
+        )
+        (control_plane_dir / "execution-config.json").write_text(
+            json.dumps(execution_config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        self.module = load_module(self.temp_root)
+
+        with self.assertRaises(self.module.ValidationError) as error:
+            self.module.validate_control_plane()
+
+        self.assertIn("strict execution profile requires fresh runtime packets", str(error.exception))
 
     def test_status_uses_newer_markdown_date_when_manifest_is_stale(self):
         active_work_path = self.temp_root / "05 AI Control Plane" / "active-work.json"
@@ -1631,6 +1709,26 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("task_id=task-1", output)
         self.assertIn("role=ai_operations_lead", output)
 
+    def test_preflight_passes_for_task_manager_even_when_not_owner_or_support(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        active_work_path = control_plane_dir / "active-work.json"
+        payload = json.loads(active_work_path.read_text(encoding="utf-8"))
+        payload["tasks"][0]["owner"] = "delivery"
+        payload["tasks"][0]["manager"] = "ai_operations_lead"
+        payload["tasks"][0]["support"] = ["governor"]
+        active_work_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        self.module = load_module(self.temp_root)
+        parser = self.module.build_parser()
+        args = parser.parse_args(["preflight", "--task-id", "task-1", "--role", "ai_operations_lead"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        output = buffer.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("preflight=ok", output)
+
     def test_preflight_fails_for_nonexistent_task(self):
         parser = self.module.build_parser()
         args = parser.parse_args(["preflight", "--task-id", "nonexistent-task", "--role", "delivery"])
@@ -1672,7 +1770,7 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         output = buffer.getvalue()
         self.assertIn("preflight=failed", output)
-        self.assertIn("not the owner or in support list", output)
+        self.assertIn("not the manager, owner, or in support list", output)
 
     def test_preflight_warns_about_missing_packets(self):
         parser = self.module.build_parser()
@@ -1688,8 +1786,6 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("warn: missing handoff packet", output)
 
     def test_preflight_detects_same_owner_and_manager(self):
-        control_plane_dir = self.temp_root / "05 AI Control Plane"
-        active_work = json.loads((control_plane_dir / "active-work.json").read_text(encoding="utf-8"))
         # task-1 already has owner and manager both as ai_operations_lead
         self.module = load_module(self.temp_root)
 
@@ -1730,6 +1826,59 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("preflight=ok", output)
         # Note: stale check only applies to "executing" and "accepted" columns
         # task-1 is in "this_week" so no stale warning expected
+
+    def test_preflight_warns_about_stale_packets(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        active_work_path = control_plane_dir / "active-work.json"
+        active_work = json.loads(active_work_path.read_text(encoding="utf-8"))
+        active_work["updated_at"] = "2026-04-20"
+        active_work_path.write_text(json.dumps(active_work, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        spec_dir = self.temp_root / ".hq" / "specs" / "task-1"
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "LATEST.md").write_text("# Spec\n\n2026-04-15\n", encoding="utf-8")
+
+        self.module = load_module(self.temp_root)
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["preflight", "--task-id", "task-1", "--role", "ai_operations_lead"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        output = buffer.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("warn: stale spec packet", output)
+        self.assertIn("warn: missing handoff packet", output)
+
+    def test_preflight_fails_on_stale_packets_in_strict_profile(self):
+        control_plane_dir = self.temp_root / "05 AI Control Plane"
+        active_work_path = control_plane_dir / "active-work.json"
+        active_work = json.loads(active_work_path.read_text(encoding="utf-8"))
+        active_work["updated_at"] = "2026-04-20"
+        active_work_path.write_text(json.dumps(active_work, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        execution_config = self.module.build_execution_config_from_preset(
+            "strict",
+            active_work,
+            json.loads((control_plane_dir / "operating-policies.json").read_text(encoding="utf-8")),
+            source="materialized",
+        )
+        (control_plane_dir / "execution-config.json").write_text(
+            json.dumps(execution_config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        self.module = load_module(self.temp_root)
+
+        parser = self.module.build_parser()
+        args = parser.parse_args(["preflight", "--task-id", "task-1", "--role", "ai_operations_lead"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = args.func(args)
+
+        output = buffer.getvalue()
+        self.assertEqual(exit_code, 2)
+        self.assertIn("preflight=failed", output)
+        self.assertIn("strict execution profile requires fresh runtime packets", output)
 
     # -------------------------------------------------------------------
     # closeout telemetry contract tests

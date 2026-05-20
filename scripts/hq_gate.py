@@ -15,6 +15,8 @@ def build_commands() -> list[tuple[str, list[str]]]:
     commands = [
         ("public-safety", [sys.executable, "scripts/hq_public_safety.py"]),
         ("instruction-lint", [sys.executable, "scripts/hq_instruction_lint.py"]),
+        ("generated-check", [sys.executable, "scripts/hq_control_plane.py", "generated-check"]),
+        ("ruff", [sys.executable, "-m", "ruff", "check", "--select", "F,E9", "scripts", "tests"]),
     ]
     if (REPO_ROOT / ".hq" / "prompts").exists():
         commands.append(("private-prompt-lint", [sys.executable, "scripts/hq_private_prompt_lint.py"]))

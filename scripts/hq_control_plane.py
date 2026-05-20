@@ -886,6 +886,14 @@ def validate_active_work(
         for warning in check_stale_telemetry(task, queue_updated_at):
             context.warn(path, warning)
 
+    live_tasks = [
+        task
+        for task in tasks
+        if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
+    ]
+    for item in collect_stale_items(live_tasks, queue_updated_at):
+        context.warn("active-work.json.runtime_packets", format_stale_item_warning(item))
+
 
 def lint_next_step(next_step: str) -> list[str]:
     text = normalize_text(next_step)
@@ -968,6 +976,12 @@ def validate_control_plane() -> dict[str, Any]:
         bundle["active_work"],
         bundle["policies"],
     )
+    stale_warnings = stale_runtime_packet_warnings(bundle["active_work"])
+    if is_strict_execution(execution_config) and stale_warnings:
+        raise ValidationError(
+            "strict execution profile requires fresh runtime packets:\n"
+            + "\n".join(f"- {warning}" for warning in stale_warnings)
+        )
     bundle["execution_config"] = execution_config
     bundle["execution_config_state"] = execution_config_state
     bundle["validation_warnings"] = [str(item) for item in context.warnings]
@@ -1250,6 +1264,57 @@ def write_workflow_artifact(
     )
 
 
+def normalize_generated_artifact_content(path: Path, content: str) -> str:
+    if path == WORKFLOW_ARTIFACT_PATH:
+        lines = [
+            line
+            for line in content.splitlines()
+            if not line.startswith("- Generated At:")
+        ]
+        return "\n".join(lines).rstrip() + "\n"
+    return content
+
+
+def generated_artifact_check_issues(bundle: dict[str, Any]) -> list[str]:
+    expected_artifacts = [
+        (TASK_BOARD_PATH, render_board(bundle["active_work"], bundle["workflow_registry"])),
+        (
+            WORKFLOW_ARTIFACT_PATH,
+            render_workflow_artifact(
+                bundle["active_work"],
+                bundle["workflow_registry"],
+                bundle["policies"],
+                bundle["execution_config"],
+                bundle["execution_config_state"],
+            ),
+        ),
+    ]
+    issues: list[str] = []
+    for path, expected in expected_artifacts:
+        if not path.exists():
+            issues.append(f"missing generated artifact: {relative_display(path)}")
+            continue
+        actual = path.read_text(encoding="utf-8")
+        if normalize_generated_artifact_content(path, actual) != normalize_generated_artifact_content(path, expected):
+            issues.append(f"stale generated artifact: {relative_display(path)}")
+    return issues
+
+
+def generated_check_command(_: argparse.Namespace) -> int:
+    bundle = validate_control_plane()
+    issues = generated_artifact_check_issues(bundle)
+    if issues:
+        print("generated_check=failed")
+        print(f"issues={len(issues)}")
+        for issue in issues:
+            print(f"- {issue}")
+        print("recommended_next_command=python3 scripts/hq_control_plane.py sync")
+        return 1
+    print("generated_check=ok")
+    print("issues=0")
+    return 0
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -1486,6 +1551,42 @@ def collect_stale_items(tasks: list[dict[str, Any]], queue_updated_at: str) -> l
                         }
                     )
     return stale_items
+
+
+def format_stale_item_warning(item: dict[str, str]) -> str:
+    task_id = normalize_text(item.get("task_id")) or "<unknown>"
+    kind = normalize_text(item.get("kind")) or "packet"
+    status = normalize_text(item.get("status"))
+    path = normalize_text(item.get("path"))
+    reason = normalize_text(item.get("reason"))
+    if status == "missing":
+        return f"missing {kind} packet: {path} (task={task_id})"
+    if status == "stale":
+        updated_at = normalize_text(item.get("updated_at"))
+        detail = f", updated_at={updated_at}" if updated_at else ""
+        return f"stale {kind} packet: {path} (task={task_id}{detail}; {reason})"
+    return f"{status or 'stale'} {kind} packet: {path} (task={task_id}; {reason})"
+
+
+def stale_runtime_packet_warnings(active_work: dict[str, Any]) -> list[str]:
+    tasks = [
+        task
+        for task in active_work.get("tasks", []) or []
+        if isinstance(task, dict) and normalize_text(task.get("column")) != "done"
+    ]
+    return [
+        format_stale_item_warning(item)
+        for item in collect_stale_items(tasks, normalize_text(active_work.get("updated_at")))
+    ]
+
+
+def is_strict_execution(execution_config: dict[str, Any]) -> bool:
+    execution_profile = execution_config.get("execution_profile") or {}
+    return (
+        normalize_text(execution_config.get("profile")) == "strict"
+        or normalize_text(execution_config.get("workflow_mode")) == "strict"
+        or normalize_text(execution_profile.get("verification_depth")) == "strict"
+    )
 
 
 def telemetry_metric_label(metric: Any) -> str:
@@ -2694,7 +2795,7 @@ def create_task_command(args: argparse.Namespace) -> int:
 
     print("create_task=ok")
     print(f"task_id={task_id}")
-    print(f"column=intake")
+    print("column=intake")
     print(f"board_written={relative_display(TASK_BOARD_PATH)}")
     print(f"workflow_artifact_written={relative_display(WORKFLOW_ARTIFACT_PATH)}")
     print(render_recommended_next_command(f"python3 scripts/hq_control_plane.py resume --task-id {task_id}"))
@@ -2740,7 +2841,7 @@ def init_profile_command(args: argparse.Namespace) -> int:
 
 def validate_command(_: argparse.Namespace) -> int:
     bundle = validate_control_plane()
-    print(f"validation=ok")
+    print("validation=ok")
     print(f"warnings={len(bundle['validation_warnings'])}")
     for warning in bundle["validation_warnings"]:
         print(f"warning: {warning}")
@@ -2755,8 +2856,10 @@ def validate_command(_: argparse.Namespace) -> int:
     return 0
 
 
-def sync_command(_: argparse.Namespace) -> int:
+def sync_command(args: argparse.Namespace) -> int:
     bundle = validate_control_plane()
+    if args.check:
+        return generated_check_command(args)
     live_tasks = [
         task
         for task in bundle["active_work"].get("tasks", []) or []
@@ -2771,7 +2874,7 @@ def sync_command(_: argparse.Namespace) -> int:
         bundle["execution_config"],
         bundle["execution_config_state"],
     )
-    print(f"validation=ok")
+    print("validation=ok")
     print(f"board_written={TASK_BOARD_PATH}")
     print(f"workflow_artifact_written={relative_display(WORKFLOW_ARTIFACT_PATH)}")
     print(render_recommended_next_command("python3 scripts/hq_control_plane.py status"))
@@ -2951,12 +3054,13 @@ def check_role_conflict(task: dict[str, Any], role_id: str, role_ids: set[str]) 
     owner = normalize_text(task.get("owner"))
     manager = normalize_text(task.get("manager"))
     accepts_result = normalize_text(task.get("accepts_result"))
+    support = {normalize_text(item) for item in task.get("support", []) or [] if normalize_text(item)}
     
     if role_id not in role_ids:
         issues.append(f"role '{role_id}' is not registered in agent-registry.json")
     
-    if role_id != owner and role_id not in (task.get("support") or []):
-        issues.append(f"role '{role_id}' is not the owner or in support list")
+    if role_id not in {manager, owner} and role_id not in support:
+        issues.append(f"role '{role_id}' is not the manager, owner, or in support list")
     
     if owner == manager and owner:
         issues.append(f"owner and manager are the same role: {owner}")
@@ -3090,7 +3194,7 @@ def preflight_check(
     # Check role conflicts
     role_issues = check_role_conflict(task, role_id, role_ids)
     for issue in role_issues:
-        if "not registered" in issue or "not the owner" in issue:
+        if "not registered" in issue or "not the manager, owner, or in support list" in issue:
             failures.append(issue)
         else:
             warnings.append(issue)
@@ -3108,11 +3212,15 @@ def preflight_check(
     stale_warnings = check_stale_telemetry(task, queue_updated_at)
     warnings.extend(stale_warnings)
     
-    # Check for missing packets
-    for kind in STALE_PACKET_KINDS:
-        for packet in packet_candidates(task, kind):
-            if not packet.exists():
-                warnings.append(f"missing {kind} packet: {relative_display(packet)}")
+    packet_warnings = [
+        format_stale_item_warning(item)
+        for item in collect_stale_items([task], queue_updated_at)
+    ]
+    if is_strict_execution(bundle.get("execution_config") or {}) and packet_warnings:
+        failures.append("strict execution profile requires fresh runtime packets")
+        failures.extend(packet_warnings)
+    else:
+        warnings.extend(packet_warnings)
     
     return failures, warnings
 
@@ -3176,7 +3284,14 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.set_defaults(func=validate_command)
 
     sync_parser = subparsers.add_parser("sync", help="Validate and render Task Board.md from active-work.json.")
+    sync_parser.add_argument("--check", action="store_true", help="Check generated artifacts without writing files.")
     sync_parser.set_defaults(func=sync_command)
+
+    generated_check_parser = subparsers.add_parser(
+        "generated-check",
+        help="Check generated artifacts without writing files.",
+    )
+    generated_check_parser.set_defaults(func=generated_check_command)
 
     render_parser = subparsers.add_parser("render-board", help="Print the rendered task board to stdout.")
     render_parser.set_defaults(func=render_board_command)
@@ -3274,7 +3389,7 @@ def main() -> int:
     try:
         return args.func(args)
     except ValidationError as exc:
-        print(f"validation=failed")
+        print("validation=failed")
         print(str(exc))
         return 2
 
