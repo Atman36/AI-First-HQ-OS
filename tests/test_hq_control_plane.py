@@ -1241,6 +1241,74 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("total=", output)
         self.assertIn("Recommended Next Command", output)
 
+    def test_status_includes_recent_feedback_loop_iterations(self):
+        feedback_path = self.temp_root / ".hq" / "telemetry" / "feedback-loop" / "2026-04.jsonl"
+        feedback_path.parent.mkdir(parents=True, exist_ok=True)
+        feedback_path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "id": "iteration-1",
+                            "created_at": "2026-04-20T09:00:00Z",
+                            "task_id": "task-1",
+                            "actor": "delivery",
+                            "hypothesis": "A short packet is enough.",
+                            "action": "Draft packet.",
+                            "metric": "review_ready=true",
+                            "status": "checks_failed",
+                            "evidence": ["validator returned exit_code=1"],
+                            "touched_files": ["scripts/hq_control_plane.py"],
+                            "next_focus": "Fix the missing field.",
+                            "rollback_reason": "",
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "id": "iteration-other",
+                            "created_at": "2026-04-20T10:00:00Z",
+                            "task_id": "other-task",
+                            "actor": "delivery",
+                            "hypothesis": "Unrelated task.",
+                            "action": "Do unrelated work.",
+                            "metric": "n/a",
+                            "status": "done",
+                            "evidence": [],
+                            "touched_files": [],
+                            "next_focus": "None.",
+                            "rollback_reason": "",
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        json_args = parser.parse_args(["status", "--json"])
+        json_buffer = io.StringIO()
+        with redirect_stdout(json_buffer):
+            self.assertEqual(json_args.func(json_args), 0)
+        payload = json.loads(json_buffer.getvalue())
+
+        self.assertEqual(len(payload["recent_iterations"]), 1)
+        self.assertEqual(payload["recent_iterations"][0]["status"], "checks_failed")
+        self.assertEqual(payload["recent_iterations"][0]["next_focus"], "Fix the missing field.")
+        memory_index = json.loads((self.temp_root / ".hq" / "state" / "memory-index.json").read_text(encoding="utf-8"))
+        self.assertEqual(memory_index["recent_iterations"][0]["task_id"], "task-1")
+
+        text_args = parser.parse_args(["status"])
+        text_buffer = io.StringIO()
+        with redirect_stdout(text_buffer):
+            self.assertEqual(text_args.func(text_args), 0)
+        output = text_buffer.getvalue()
+        self.assertIn("Recent Iterations", output)
+        self.assertIn("task-1 [checks_failed]", output)
+        self.assertIn("Fix the missing field.", output)
+
     def test_status_scaffolds_missing_runtime_packets_for_live_tasks(self):
         parser = self.module.build_parser()
         args = parser.parse_args(["status", "--json"])

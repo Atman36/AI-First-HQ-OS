@@ -8,10 +8,17 @@ import json
 import os
 import re
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from hq_feedback_loop import load_recent_iterations
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
@@ -61,6 +68,7 @@ SPECIAL_TRANSITION_OWNERS = {"task_owner", "task_manager", "accepting_role"}
 VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
 ACTIONABLE_COLUMNS = {"review", "executing", "this_week", "scheduled", "policy_check", "triage", "intake"}
 STALE_PACKET_KINDS = ("spec", "handoff")
+RECENT_ITERATION_LIMIT = 5
 MARKDOWN_HEADING_PREFIX = "## "
 DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:Z|[+-][0-9]{2}:[0-9]{2})?)?\b")
 RUNTIME_REFERENCE_PATTERN = re.compile(r"(\.hq/(?:specs|handoffs)/[^\s`'\"),:;]+)")
@@ -1207,9 +1215,26 @@ def render_workflow_artifact(
             f"- Live Tasks: {len(status_payload.get('active_tasks', []) or [])}",
             f"- Blocked Tasks: {len(status_payload.get('blocked', []) or [])}",
             f"- Startup Focus: {startup_focus.get('id') or '-'} | {startup_focus.get('title') or '-'}",
+            f"- Recent Iterations: {len(status_payload.get('recent_iterations', []) or [])}",
             f"- Recommended Next Command: {status_payload.get('recommended_next_command') or '-'}",
         ]
     )
+
+    recent_iterations = status_payload.get("recent_iterations", []) or []
+    lines.extend(["", "## Recent Feedback Loop"])
+    if recent_iterations:
+        for item in recent_iterations:
+            lines.append(
+                "- {created_at} | {task_id} [{status}] hypothesis={hypothesis} | next_focus={next_focus}".format(
+                    created_at=normalize_text(item.get("created_at")) or "-",
+                    task_id=normalize_text(item.get("task_id")) or "-",
+                    status=normalize_text(item.get("status")) or "-",
+                    hypothesis=normalize_text(item.get("hypothesis")) or "-",
+                    next_focus=normalize_text(item.get("next_focus")) or "-",
+                )
+            )
+    else:
+        lines.append("- None")
 
     for column in column_order:
         column_tasks = [task for task in tasks if normalize_text(task.get("column")) == column]
@@ -1798,12 +1823,14 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
     blocked_tasks = status_payload.get("blocked", []) or []
     runtime_recovery = status_payload.get("runtime_recovery") or {}
     runtime_recovery_items = runtime_recovery.get("items", []) or []
+    recent_iterations = status_payload.get("recent_iterations", []) or []
     return {
         "generated_at": status_payload.get("generated_at") or "",
         "updated_at": status_payload.get("updated_at") or "",
         "objective": status_payload.get("objective") or "",
         "startup_focus": status_payload.get("startup_focus") or {},
         "support_tracks": status_payload.get("support_tracks", []) or [],
+        "recent_iterations": recent_iterations,
         "stale_summary": status_payload.get("stale_summary") or {},
         "runtime_recovery": {
             "summary": runtime_recovery.get("summary") or {},
@@ -2449,12 +2476,23 @@ def build_status_payload(
     stale_items = collect_stale_items(ordered_live_tasks, normalize_text(active_work.get("updated_at")))
     stale_items.extend(scaffolded_packet_stale_items(ordered_live_tasks, created_packets))
     runtime_recovery = build_runtime_recovery_payload()
+    live_task_ids = {
+        normalize_text(task.get("id"))
+        for task in ordered_live_tasks
+        if normalize_text(task.get("id"))
+    }
+    recent_iterations = load_recent_iterations(
+        PRIVATE_ROOT,
+        limit=RECENT_ITERATION_LIMIT,
+        task_ids=live_task_ids or None,
+    )
     payload = {
         "generated_at": utc_now(),
         "updated_at": normalize_text(active_work.get("updated_at")),
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "startup_focus": startup_focus_projection(startup_task),
         "runtime_recovery": runtime_recovery,
+        "recent_iterations": recent_iterations,
         "support_tracks": support_track_projection(ordered_live_tasks, startup_task),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
@@ -2556,6 +2594,20 @@ def render_status_text(payload: dict[str, Any]) -> str:
             lines.append(f"- ... {len(recovery_items) - 5} more recovery items hidden")
     else:
         lines.append("- None")
+
+    lines.extend(["", "Recent Iterations"])
+    recent_iterations = payload.get("recent_iterations", []) or []
+    if recent_iterations:
+        for item in recent_iterations:
+            evidence = item.get("evidence") or []
+            evidence_text = f" | evidence: {evidence[0]}" if evidence else ""
+            lines.append(
+                f"- {item.get('task_id') or '-'} [{item.get('status') or '-'}] "
+                f"{item.get('hypothesis') or '-'} | next: {item.get('next_focus') or '-'}{evidence_text}"
+            )
+    else:
+        lines.append("- None")
+
     lines.extend(["", "Support Tracks"])
     support_tracks = payload.get("support_tracks", []) or []
     if support_tracks:
