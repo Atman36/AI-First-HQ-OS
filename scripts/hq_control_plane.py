@@ -55,6 +55,8 @@ SCHEMA_PATHS = {
     "workflow_registry": SCHEMA_DIR / "workflow-registry.schema.json",
     "metrics_registry": SCHEMA_DIR / "metrics-registry.schema.json",
 }
+PERMISSION_GRANTS_PATH = CONTROL_PLANE_DIR / "permission-grants.json"
+PERMISSION_GRANTS_SCHEMA_PATH = SCHEMA_DIR / "permission-grants.schema.json"
 SPECIAL_TRANSITION_OWNERS = {"task_owner", "task_manager", "accepting_role"}
 VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
 ACTIONABLE_COLUMNS = {"review", "executing", "this_week", "scheduled", "policy_check", "triage", "intake"}
@@ -934,14 +936,40 @@ def lint_role_conflicts(task: dict[str, Any]) -> list[str]:
     return warnings
 
 
+def validate_permission_grants(
+    permission_grants: dict[str, Any] | None,
+    agent_registry: dict[str, Any],
+    context: ValidationContext,
+) -> None:
+    if permission_grants is None:
+        return
+    role_ids = get_role_ids(agent_registry)
+    for collection in ("grants", "denies"):
+        rows = permission_grants.get(collection, []) or []
+        if not isinstance(rows, list):
+            context.add(f"permission-grants.json.{collection}", f"{collection} must be a list")
+            continue
+        for index, row in enumerate(rows):
+            path = f"permission-grants.json.{collection}[{index}]"
+            if not isinstance(row, dict):
+                context.add(path, "entry must be an object")
+                continue
+            role_id = normalize_text(row.get("role_id"))
+            if role_id and role_id != "*" and role_id not in role_ids:
+                context.add(f"{path}.role_id", f"unknown role: {role_id}")
+
+
 def load_control_plane() -> dict[str, Any]:
-    return {
+    bundle = {
         "active_work": load_json(ACTIVE_WORK_PATH),
         "agent_registry": load_json(AGENT_REGISTRY_PATH),
         "policies": load_json(POLICIES_PATH),
         "workflow_registry": load_json(WORKFLOW_REGISTRY_PATH),
         "metrics_registry": load_json(METRICS_REGISTRY_PATH),
     }
+    if PERMISSION_GRANTS_PATH.exists():
+        bundle["permission_grants"] = load_json(PERMISSION_GRANTS_PATH)
+    return bundle
 
 
 def validate_control_plane() -> dict[str, Any]:
@@ -956,6 +984,16 @@ def validate_control_plane() -> dict[str, Any]:
     ):
         validate_schema(bundle[key], SCHEMA_PATHS[key], root_label, context)
     validate_role_registry(bundle["agent_registry"], context)
+    if "permission_grants" in bundle:
+        validate_schema(
+            bundle["permission_grants"],
+            PERMISSION_GRANTS_SCHEMA_PATH,
+            "permission-grants.json",
+            context,
+        )
+        validate_permission_grants(
+            bundle["permission_grants"], bundle["agent_registry"], context
+        )
     validate_metrics(bundle["metrics_registry"], bundle["agent_registry"], context)
     validate_workflows(bundle["workflow_registry"], bundle["agent_registry"], context)
     validate_policies(

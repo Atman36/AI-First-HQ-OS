@@ -39,6 +39,7 @@ class HqGateTests(unittest.TestCase):
             [name for name, _ in commands],
             [
                 "public-safety",
+                "reference-scan",
                 "instruction-lint",
                 "generated-check",
                 "ruff",
@@ -59,7 +60,7 @@ class HqGateTests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertEqual(runner.call_count, 2)
         self.assertEqual(runner.call_args_list[0].args[0][1], "scripts/hq_public_safety.py")
-        self.assertEqual(runner.call_args_list[1].args[0][1], "scripts/hq_instruction_lint.py")
+        self.assertEqual(runner.call_args_list[1].args[0][1], "scripts/hq_reference_scan.py")
 
     def test_build_commands_runs_generated_check_and_static_quality_before_tests(self):
         self.module.REPO_ROOT = self.temp_root
@@ -67,9 +68,10 @@ class HqGateTests(unittest.TestCase):
         commands = self.module.build_commands()
 
         self.assertEqual(
-            [(name, command[:4]) for name, command in commands[:4]],
+            [(name, command[:4]) for name, command in commands[:5]],
             [
                 ("public-safety", [self.module.sys.executable, "scripts/hq_public_safety.py"]),
+                ("reference-scan", [self.module.sys.executable, "scripts/hq_reference_scan.py", "scan"]),
                 ("instruction-lint", [self.module.sys.executable, "scripts/hq_instruction_lint.py"]),
                 ("generated-check", [self.module.sys.executable, "scripts/hq_control_plane.py", "generated-check"]),
                 ("ruff", [self.module.sys.executable, "-m", "ruff", "check"]),

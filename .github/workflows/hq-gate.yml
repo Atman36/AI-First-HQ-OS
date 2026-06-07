@@ -22,5 +22,8 @@ jobs:
       - name: Bootstrap local HQ scaffold
         run: python3 scripts/hq_runtime.py bootstrap
 
+      - name: Reference-project identifier scan
+        run: python3 scripts/hq_reference_scan.py scan
+
       - name: Run HQ gate
         run: python3 scripts/hq_gate.py
