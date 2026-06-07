@@ -96,5 +96,154 @@ class HqFeedbackLoopTests(unittest.TestCase):
         self.assertEqual(recent[1]["next_focus"], "Fix the failing assertion.")
 
 
+    def test_after_iteration_id_collapses_superseded_running_record(self):
+        before = self.module.build_iteration_payload(
+            task_id="task-1",
+            hypothesis="Packet will pass review.",
+            action="Draft the packet.",
+            metric="review_ready",
+            status="running",
+            evidence=[],
+            touched_files=[],
+            next_focus="Run the review.",
+            rollback_reason="",
+            actor="delivery",
+            created_at="2026-04-20T09:00:00Z",
+        )
+        after = self.module.build_iteration_payload(
+            task_id="task-1",
+            hypothesis="Packet will pass review.",
+            action="Reviewed the packet.",
+            metric="review_ready",
+            status="done",
+            evidence=["Review passed."],
+            touched_files=[],
+            next_focus="Ship the packet.",
+            rollback_reason="",
+            actor="delivery",
+            parent_id=before["id"],
+            created_at="2026-04-20T09:30:00Z",
+        )
+        self.module.write_iteration(before)
+        self.module.write_iteration(after)
+
+        recent = self.module.load_recent_iterations(self.temp_root / ".hq", limit=10)
+
+        self.assertEqual([item["status"] for item in recent], ["done"])
+        self.assertEqual(recent[0]["parent_id"], before["id"])
+
+    def test_open_running_attempt_stays_visible(self):
+        before = self.module.build_iteration_payload(
+            task_id="task-1",
+            hypothesis="In-flight work.",
+            action="Started the attempt.",
+            metric="progress",
+            status="running",
+            evidence=[],
+            touched_files=[],
+            next_focus="Finish the attempt.",
+            rollback_reason="",
+            actor="delivery",
+            created_at="2026-04-20T09:00:00Z",
+        )
+        self.module.write_iteration(before)
+
+        summary = self.module.build_feedback_summary(self.temp_root / ".hq")
+
+        self.assertEqual(summary["overall"]["open_attempts"], 1)
+
+    def test_summary_reports_baseline_best_and_delta(self):
+        common = dict(
+            task_id="task-1",
+            hypothesis="Higher revenue is better.",
+            action="Ran the experiment.",
+            metric="revenue",
+            metric_direction="higher",
+            evidence=[],
+            touched_files=[],
+            next_focus="Try the next lever.",
+            rollback_reason="",
+            actor="growth",
+        )
+        self.module.write_iteration(
+            self.module.build_iteration_payload(
+                status="done", metric_value=100, created_at="2026-04-20T09:00:00Z", **common
+            )
+        )
+        self.module.write_iteration(
+            self.module.build_iteration_payload(
+                status="hypothesis_failed", metric_value=80, created_at="2026-04-20T10:00:00Z", **common
+            )
+        )
+        self.module.write_iteration(
+            self.module.build_iteration_payload(
+                status="done", metric_value=150, created_at="2026-04-20T11:00:00Z", **common
+            )
+        )
+
+        summary = self.module.build_feedback_summary(self.temp_root / ".hq")
+        task = summary["tasks"]["task-1"]
+
+        self.assertEqual(task["metric_direction"], "higher")
+        self.assertEqual(task["baseline"]["metric_value"], 100.0)
+        self.assertEqual(task["best"]["metric_value"], 150.0)
+        self.assertEqual(task["latest"]["metric_value"], 150.0)
+        self.assertEqual(task["latest_delta_pct"], 50.0)
+        self.assertEqual(task["status_counts"], {"done": 2, "hypothesis_failed": 1})
+
+    def test_open_next_steps_uses_latest_per_task(self):
+        self.module.write_iteration(
+            self.module.build_iteration_payload(
+                task_id="task-1",
+                hypothesis="First.",
+                action="Did first.",
+                metric="m",
+                status="done",
+                evidence=[],
+                touched_files=[],
+                next_focus="Old focus.",
+                rollback_reason="",
+                actor="delivery",
+                created_at="2026-04-20T09:00:00Z",
+            )
+        )
+        self.module.write_iteration(
+            self.module.build_iteration_payload(
+                task_id="task-1",
+                hypothesis="Second.",
+                action="Did second.",
+                metric="m",
+                status="checks_failed",
+                evidence=[],
+                touched_files=[],
+                next_focus="New focus.",
+                rollback_reason="",
+                actor="delivery",
+                created_at="2026-04-20T10:00:00Z",
+            )
+        )
+
+        summary = self.module.build_feedback_summary(self.temp_root / ".hq")
+
+        self.assertEqual(len(summary["open_next_steps"]), 1)
+        self.assertEqual(summary["open_next_steps"][0]["next_focus"], "New focus.")
+
+    def test_invalid_metric_direction_rejected(self):
+        with self.assertRaises(ValueError):
+            self.module.build_iteration_payload(
+                task_id="task-1",
+                hypothesis="x",
+                action="y",
+                metric="m",
+                status="done",
+                evidence=[],
+                touched_files=[],
+                next_focus="z",
+                rollback_reason="",
+                actor="delivery",
+                metric_direction="sideways",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

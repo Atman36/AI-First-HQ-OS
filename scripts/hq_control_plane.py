@@ -18,7 +18,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from hq_feedback_loop import load_recent_iterations
+from hq_feedback_loop import build_feedback_summary, load_recent_iterations
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
@@ -1236,6 +1236,8 @@ def render_workflow_artifact(
     else:
         lines.append("- None")
 
+    lines.extend(feedback_summary_lines(status_payload.get("feedback_summary") or {}, heading_prefix="## "))
+
     for column in column_order:
         column_tasks = [task for task in tasks if normalize_text(task.get("column")) == column]
         if not column_tasks:
@@ -1831,6 +1833,7 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
         "startup_focus": status_payload.get("startup_focus") or {},
         "support_tracks": status_payload.get("support_tracks", []) or [],
         "recent_iterations": recent_iterations,
+        "feedback_summary": status_payload.get("feedback_summary") or {},
         "stale_summary": status_payload.get("stale_summary") or {},
         "runtime_recovery": {
             "summary": runtime_recovery.get("summary") or {},
@@ -2486,6 +2489,10 @@ def build_status_payload(
         limit=RECENT_ITERATION_LIMIT,
         task_ids=live_task_ids or None,
     )
+    feedback_summary = build_feedback_summary(
+        PRIVATE_ROOT,
+        task_ids=live_task_ids or None,
+    )
     payload = {
         "generated_at": utc_now(),
         "updated_at": normalize_text(active_work.get("updated_at")),
@@ -2493,6 +2500,7 @@ def build_status_payload(
         "startup_focus": startup_focus_projection(startup_task),
         "runtime_recovery": runtime_recovery,
         "recent_iterations": recent_iterations,
+        "feedback_summary": feedback_summary,
         "support_tracks": support_track_projection(ordered_live_tasks, startup_task),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
@@ -2536,6 +2544,52 @@ def write_session_bootstrap(
         encoding="utf-8",
     )
     return payload
+
+
+def feedback_summary_lines(summary: dict[str, Any], *, heading_prefix: str = "") -> list[str]:
+    """Render the aggregated loop view (counts, baseline/best/delta, next steps)."""
+    summary = summary or {}
+    overall = summary.get("overall") or {}
+    lines = ["", f"{heading_prefix}Feedback Loop Summary"]
+    counts = overall.get("status_counts") or {}
+    if counts:
+        counts_text = " · ".join(f"{count} {status}" for status, count in sorted(counts.items()))
+        lines.append(f"- attempts: {overall.get('total', 0)} ({counts_text})")
+    else:
+        lines.append("- attempts: 0")
+    open_attempts = overall.get("open_attempts") or 0
+    if open_attempts:
+        lines.append(f"- open (running) attempts: {open_attempts}")
+
+    def metric_text(point: dict[str, Any] | None) -> str:
+        if not point or point.get("metric_value") is None:
+            return "-"
+        label = point.get("metric") or "metric"
+        return f"{label}={point['metric_value']}"
+
+    for task_id, task_summary in sorted((summary.get("tasks") or {}).items()):
+        baseline = task_summary.get("baseline")
+        best = task_summary.get("best")
+        latest = task_summary.get("latest")
+        if not any([baseline, best, latest]):
+            continue
+        delta = task_summary.get("latest_delta_pct")
+        delta_text = "" if delta is None else f" (delta {delta:+}% vs baseline)"
+        lines.append(
+            f"- {task_id} [{task_summary.get('metric_direction', 'higher')} is better]: "
+            f"baseline {metric_text(baseline)} | best {metric_text(best)} | "
+            f"latest {metric_text(latest)}{delta_text}"
+        )
+
+    next_steps = summary.get("open_next_steps") or []
+    if next_steps:
+        lines.append("- open next steps:")
+        for step in next_steps[:RECENT_ITERATION_LIMIT]:
+            lines.append(
+                f"  - {step.get('task_id') or '-'} [{step.get('status') or '-'}]: "
+                f"{step.get('next_focus') or '-'}"
+            )
+    return lines
 
 
 def render_status_text(payload: dict[str, Any]) -> str:
@@ -2607,6 +2661,8 @@ def render_status_text(payload: dict[str, Any]) -> str:
             )
     else:
         lines.append("- None")
+
+    lines.extend(feedback_summary_lines(payload.get("feedback_summary") or {}))
 
     lines.extend(["", "Support Tracks"])
     support_tracks = payload.get("support_tracks", []) or []

@@ -48,6 +48,28 @@ def normalize_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+DIRECTIONS = {"higher", "lower"}
+
+
+def normalize_direction(value: Any) -> str:
+    text = normalize_text(value).lower()
+    return text if text in DIRECTIONS else ""
+
+
+def coerce_metric_value(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = normalize_text(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def normalize_list(values: list[str] | None) -> list[str]:
     items: list[str] = []
     seen: set[str] = set()
@@ -76,6 +98,9 @@ def build_iteration_payload(
     next_focus: str,
     rollback_reason: str,
     actor: str,
+    metric_value: Any = None,
+    metric_direction: str = "",
+    parent_id: str = "",
     created_at: str | None = None,
 ) -> dict[str, Any]:
     normalized_status = normalize_text(status)
@@ -87,11 +112,14 @@ def build_iteration_payload(
         "hypothesis": normalize_text(hypothesis),
         "action": normalize_text(action),
         "metric": normalize_text(metric),
+        "metric_value": coerce_metric_value(metric_value),
+        "metric_direction": normalize_direction(metric_direction),
         "status": normalized_status,
         "evidence": normalize_list(evidence),
         "touched_files": normalize_list(touched_files),
         "next_focus": normalize_text(next_focus),
         "rollback_reason": normalize_text(rollback_reason),
+        "parent_id": normalize_text(parent_id),
     }
     missing = [
         key
@@ -104,6 +132,9 @@ def build_iteration_payload(
         raise ValueError("status must be one of: " + ", ".join(sorted(STATUSES)))
     if normalized_status == "rolled_back" and not payload["rollback_reason"]:
         raise ValueError("rollback_reason is required when status is rolled_back")
+    raw_direction = normalize_text(metric_direction)
+    if raw_direction and not payload["metric_direction"]:
+        raise ValueError("metric_direction must be one of: " + ", ".join(sorted(DIRECTIONS)))
     return payload
 
 
@@ -129,12 +160,41 @@ def iter_iteration_files(private_root: Path = PRIVATE_ROOT) -> list[Path]:
     )
 
 
-def load_recent_iterations(
+def normalize_record(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": normalize_text(payload.get("id")),
+        "created_at": normalize_text(payload.get("created_at")),
+        "task_id": normalize_text(payload.get("task_id")),
+        "actor": normalize_text(payload.get("actor")),
+        "hypothesis": normalize_text(payload.get("hypothesis")),
+        "action": normalize_text(payload.get("action")),
+        "metric": normalize_text(payload.get("metric")),
+        "metric_value": coerce_metric_value(payload.get("metric_value")),
+        "metric_direction": normalize_direction(payload.get("metric_direction")),
+        "status": normalize_text(payload.get("status")),
+        "evidence": normalize_list(payload.get("evidence") if isinstance(payload.get("evidence"), list) else []),
+        "touched_files": normalize_list(
+            payload.get("touched_files") if isinstance(payload.get("touched_files"), list) else []
+        ),
+        "next_focus": normalize_text(payload.get("next_focus")),
+        "rollback_reason": normalize_text(payload.get("rollback_reason")),
+        "parent_id": normalize_text(payload.get("parent_id")),
+    }
+
+
+def load_iterations(
     private_root: Path = PRIVATE_ROOT,
     *,
-    limit: int = 5,
     task_ids: set[str] | None = None,
+    collapse_running: bool = True,
 ) -> list[dict[str, Any]]:
+    """Load all normalized receipts, dropping running attempts that already closed.
+
+    A ``before`` receipt writes a ``running`` row; the matching ``after`` receipt
+    references it via ``parent_id``. Once closed, the running row is superseded and
+    must not pollute recent views or status counts. Truly open attempts (no closing
+    receipt yet) are kept so in-flight work stays visible.
+    """
     records: list[dict[str, Any]] = []
     for path in iter_iteration_files(private_root):
         for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -147,29 +207,115 @@ def load_recent_iterations(
                 continue
             if not isinstance(payload, dict):
                 continue
-            task_id = normalize_text(payload.get("task_id"))
-            if task_ids is not None and task_id not in task_ids:
+            record = normalize_record(payload)
+            if task_ids is not None and record["task_id"] not in task_ids:
                 continue
-            records.append(
-                {
-                    "id": normalize_text(payload.get("id")),
-                    "created_at": normalize_text(payload.get("created_at")),
-                    "task_id": task_id,
-                    "actor": normalize_text(payload.get("actor")),
-                    "hypothesis": normalize_text(payload.get("hypothesis")),
-                    "action": normalize_text(payload.get("action")),
-                    "metric": normalize_text(payload.get("metric")),
-                    "status": normalize_text(payload.get("status")),
-                    "evidence": normalize_list(payload.get("evidence") if isinstance(payload.get("evidence"), list) else []),
-                    "touched_files": normalize_list(
-                        payload.get("touched_files") if isinstance(payload.get("touched_files"), list) else []
-                    ),
-                    "next_focus": normalize_text(payload.get("next_focus")),
-                    "rollback_reason": normalize_text(payload.get("rollback_reason")),
-                }
-            )
+            records.append(record)
+    if collapse_running:
+        closed_parent_ids = {r["parent_id"] for r in records if r["parent_id"]}
+        records = [
+            r for r in records if not (r["status"] == "running" and r["id"] in closed_parent_ids)
+        ]
+    return records
+
+
+def load_recent_iterations(
+    private_root: Path = PRIVATE_ROOT,
+    *,
+    limit: int = 5,
+    task_ids: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    records = load_iterations(private_root, task_ids=task_ids)
     records.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     return records[: max(0, limit)]
+
+
+SUCCESS_STATUS = "done"
+
+
+def summarize_iterations(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate receipts into a loop view: counts, baseline, best, latest delta."""
+    chrono = sorted(records, key=lambda r: r.get("created_at") or "")
+    status_counts: dict[str, int] = {}
+    for record in chrono:
+        status = record["status"] or "unknown"
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    numeric = [r for r in chrono if r["metric_value"] is not None]
+    direction = next((r["metric_direction"] for r in numeric if r["metric_direction"]), "higher")
+
+    baseline = numeric[0] if numeric else None
+    latest = numeric[-1] if numeric else None
+    successes = [r for r in numeric if r["status"] == SUCCESS_STATUS]
+    if successes:
+        best = max(successes, key=lambda r: r["metric_value"]) if direction == "higher" else min(
+            successes, key=lambda r: r["metric_value"]
+        )
+    else:
+        best = None
+
+    def delta_pct(value: float | None) -> float | None:
+        if value is None or baseline is None or not baseline["metric_value"]:
+            return None
+        base = baseline["metric_value"]
+        return round((value - base) / base * 100, 1)
+
+    def point(record: dict[str, Any] | None) -> dict[str, Any] | None:
+        if record is None:
+            return None
+        return {
+            "metric": record["metric"],
+            "metric_value": record["metric_value"],
+            "created_at": record["created_at"],
+            "task_id": record["task_id"],
+        }
+
+    return {
+        "total": len(records),
+        "status_counts": status_counts,
+        "metric_direction": direction,
+        "baseline": point(baseline),
+        "best": point(best),
+        "latest": point(latest),
+        "latest_delta_pct": delta_pct(latest["metric_value"]) if latest else None,
+        "open_attempts": sum(1 for r in records if r["status"] == "running"),
+    }
+
+
+def build_open_next_steps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Latest non-empty next_focus per task — a backlog that survives compaction."""
+    latest_by_task: dict[str, dict[str, Any]] = {}
+    for record in sorted(records, key=lambda r: r.get("created_at") or ""):
+        if not record["next_focus"]:
+            continue
+        latest_by_task[record["task_id"]] = record
+    steps = [
+        {
+            "task_id": record["task_id"],
+            "next_focus": record["next_focus"],
+            "status": record["status"],
+            "created_at": record["created_at"],
+        }
+        for record in latest_by_task.values()
+    ]
+    steps.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return steps
+
+
+def build_feedback_summary(
+    private_root: Path = PRIVATE_ROOT,
+    *,
+    task_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    records = load_iterations(private_root, task_ids=task_ids)
+    by_task: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        by_task.setdefault(record["task_id"], []).append(record)
+    return {
+        "overall": summarize_iterations(records),
+        "tasks": {task_id: summarize_iterations(items) for task_id, items in by_task.items()},
+        "open_next_steps": build_open_next_steps(records),
+    }
 
 
 def load_active_task(task_id: str) -> dict[str, Any]:
@@ -200,6 +346,9 @@ def build_payload_from_args(args: argparse.Namespace, *, status: str) -> dict[st
         next_focus=args.next_focus,
         rollback_reason=getattr(args, "rollback_reason", ""),
         actor=args.actor,
+        metric_value=getattr(args, "metric_value", None),
+        metric_direction=getattr(args, "metric_direction", ""),
+        parent_id=getattr(args, "iteration_id", ""),
     )
 
 
@@ -243,6 +392,13 @@ def tail_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def summary_command(args: argparse.Namespace) -> int:
+    task_ids = {args.task_id} if args.task_id else None
+    summary = build_feedback_summary(PRIVATE_ROOT, task_ids=task_ids)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0
+
+
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--task-id", required=True, help="Control-plane task ID.")
     parser.add_argument("--hypothesis", required=True, help="Short hypothesis for this attempt.")
@@ -252,6 +408,18 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--touched-file", action="append", default=[], help="Touched path, repeatable.")
     parser.add_argument("--next-focus", required=True, help="Next best focus after this attempt.")
     parser.add_argument("--actor", default="assistant", help="Actor or role writing the receipt.")
+    parser.add_argument(
+        "--metric-value",
+        type=float,
+        default=None,
+        help="Numeric metric reading for this attempt (enables baseline/best/delta).",
+    )
+    parser.add_argument(
+        "--metric-direction",
+        choices=sorted(DIRECTIONS),
+        default="",
+        help="Which direction of metric_value is better.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -271,12 +439,23 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_args(after_parser)
     after_parser.add_argument("--status", required=True, choices=sorted(STATUSES - {"running"}))
     after_parser.add_argument("--rollback-reason", default="", help="Required for rolled_back status.")
+    after_parser.add_argument(
+        "--iteration-id",
+        default="",
+        help="ID returned by the matching `before` receipt; closes that running attempt.",
+    )
     after_parser.set_defaults(func=after_command)
 
     tail_parser = subparsers.add_parser("tail", help="Print recent feedback-loop receipts as JSON.")
     tail_parser.add_argument("--limit", type=int, default=5)
     tail_parser.add_argument("--task-id", default="")
     tail_parser.set_defaults(func=tail_command)
+
+    summary_parser = subparsers.add_parser(
+        "summary", help="Print aggregated loop summary (counts, baseline, best, next steps)."
+    )
+    summary_parser.add_argument("--task-id", default="")
+    summary_parser.set_defaults(func=summary_command)
     return parser
 
 
