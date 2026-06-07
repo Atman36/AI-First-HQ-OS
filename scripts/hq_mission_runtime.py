@@ -26,6 +26,7 @@ DEFAULT_REPO_ROOT = Path(
 os.environ.setdefault("HQ_TELEMETRY_REPO_ROOT", str(DEFAULT_REPO_ROOT))
 
 from hq_io import append_jsonl, write_json
+from hq_feedback_loop import build_iteration_payload as build_feedback_iteration_payload
 import hq_policy_hooks
 from hq_telemetry_store import append_event as append_telemetry_event
 from hq_telemetry_store import ensure_runtime as ensure_telemetry_runtime
@@ -693,6 +694,101 @@ def event_file_for_timestamp(timestamp: str) -> Path:
     day = timestamp[:10]
     month = day[:7]
     return RUNTIME_DIRS["events"] / month / f"{day}.jsonl"
+
+
+# Map terminal run statuses onto the feedback-loop status taxonomy so finished
+# runs become explicit loop outcomes rather than a flat "didn't work".
+RUN_STATUS_TO_FEEDBACK = {
+    "completed": "done",
+    "failed": "technical_error",
+    "blocked": "blocked_by_policy",
+    "cancelled": "rolled_back",
+}
+FEEDBACK_FINISH_NEXT_FOCUS = {
+    "done": "Review the outcome and choose the next task.",
+    "technical_error": "Investigate the failure, then retry or escalate.",
+    "blocked_by_policy": "Resolve the policy block or obtain the required approval.",
+    "rolled_back": "Re-plan the approach after the rollback.",
+}
+FEEDBACK_MAX_BYTES = 5 * 1024 * 1024
+FEEDBACK_MAX_RECORDS = 5000
+
+
+def feedback_loop_path_for(timestamp: str) -> Path:
+    return PRIVATE_ROOT / "telemetry" / "feedback-loop" / f"{timestamp[:7]}.jsonl"
+
+
+def _write_feedback_receipt(payload: dict[str, Any]) -> None:
+    append_jsonl(
+        feedback_loop_path_for(str(payload.get("created_at") or utc_now())),
+        payload,
+        max_bytes=FEEDBACK_MAX_BYTES,
+        max_records=FEEDBACK_MAX_RECORDS,
+    )
+
+
+def _feedback_hypothesis(mission: dict[str, Any]) -> str:
+    return f"Advancing the task via mission: {mission.get('title') or mission.get('id') or 'mission'}"
+
+
+def record_run_feedback_start(
+    *, mission: dict[str, Any], run_id: str, actor: str, created_at: str
+) -> str:
+    """Best-effort `before` receipt; only governed (task-linked) runs are recorded.
+
+    Returns the receipt id so the matching finish receipt can link to it, or ""
+    when nothing was recorded. Never raises — telemetry must not break a run.
+    """
+    task_id = str(mission.get("source_task_id") or "").strip()
+    if not task_id:
+        return ""
+    try:
+        payload = build_feedback_iteration_payload(
+            task_id=task_id,
+            hypothesis=_feedback_hypothesis(mission),
+            action=f"Started run {run_id}",
+            metric="run_outcome",
+            status="running",
+            evidence=[f"run_id={run_id}"],
+            touched_files=[],
+            next_focus="Complete the run and record verification.",
+            rollback_reason="",
+            actor=actor or mission.get("owner") or "runtime",
+            created_at=created_at,
+        )
+        _write_feedback_receipt(payload)
+        return str(payload["id"])
+    except Exception:
+        return ""
+
+
+def record_run_feedback_finish(
+    *, mission: dict[str, Any], run: dict[str, Any], status: str, parent_id: str
+) -> str:
+    """Best-effort `after` receipt closing the attempt opened at run start."""
+    task_id = str(mission.get("source_task_id") or "").strip()
+    if not task_id:
+        return ""
+    feedback_status = RUN_STATUS_TO_FEEDBACK.get(status, "technical_error")
+    verification = str((run.get("verification_state") or {}).get("status") or "-")
+    try:
+        payload = build_feedback_iteration_payload(
+            task_id=task_id,
+            hypothesis=_feedback_hypothesis(mission),
+            action=f"Finished run {run['id']} with status '{status}'",
+            metric="run_outcome",
+            status=feedback_status,
+            evidence=[f"run_status={status}", f"verification={verification}"],
+            touched_files=[],
+            next_focus=FEEDBACK_FINISH_NEXT_FOCUS.get(feedback_status, "Choose the next task."),
+            rollback_reason="Run cancelled." if feedback_status == "rolled_back" else "",
+            actor=run.get("actor") or mission.get("owner") or "runtime",
+            parent_id=parent_id,
+        )
+        _write_feedback_receipt(payload)
+        return str(payload["id"])
+    except Exception:
+        return ""
 
 
 def record_event(
@@ -1566,6 +1662,15 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
             "queued_at": created_at,
             "queued_after_run_id": active_run["id"],
         }
+    if run_status == "running":
+        feedback_iteration_id = record_run_feedback_start(
+            mission=mission,
+            run_id=run_id,
+            actor=actor,
+            created_at=created_at,
+        )
+        if feedback_iteration_id:
+            metadata["feedback_iteration_id"] = feedback_iteration_id
     payload = {
         "schema_version": 1,
         "entity_type": "run",
@@ -3280,6 +3385,12 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         snapshot_at=finished_at,
     )
     write_entity(run_path(run["id"]), run)
+    record_run_feedback_finish(
+        mission=mission,
+        run=run,
+        status=args.status,
+        parent_id=str((run.get("metadata") or {}).get("feedback_iteration_id") or ""),
+    )
     mission["status"] = "completed" if args.status == "completed" else args.status
     mission["updated_at"] = finished_at
     write_entity(mission_path(mission["id"]), mission)

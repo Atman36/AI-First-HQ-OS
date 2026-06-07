@@ -778,7 +778,11 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertIn(run["id"], inbox_text)
         self.assertNotIn("pending-runtime-record", inbox_text)
 
-        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        telemetry_files = sorted(
+            path
+            for path in (self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl")
+            if "feedback-loop" not in path.parts
+        )
         self.assertEqual(len(telemetry_files), 1)
         events = [
             json.loads(line)
@@ -832,7 +836,11 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertEqual(approval["status"], "pending")
         self.assertEqual(approval["policy_action"], "pause_for_founder_approval")
 
-        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        telemetry_files = sorted(
+            path
+            for path in (self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl")
+            if "feedback-loop" not in path.parts
+        )
         self.assertEqual(len(telemetry_files), 1)
         events = [
             json.loads(line)
@@ -964,7 +972,11 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertEqual(run["status"], "completed")
         self.assertEqual(run["verification_state"]["status"], "verified")
         self.assertEqual(run["verification_state"]["metadata"]["acceptance_check"], True)
-        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        telemetry_files = sorted(
+            path
+            for path in (self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl")
+            if "feedback-loop" not in path.parts
+        )
         self.assertEqual(len(telemetry_files), 1)
         events = [
             json.loads(line)

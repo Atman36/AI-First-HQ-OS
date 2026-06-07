@@ -1023,7 +1023,11 @@ class HqMissionRuntimeTests(unittest.TestCase):
             )
         )
 
-        telemetry_files = sorted((self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl"))
+        telemetry_files = sorted(
+            path
+            for path in (self.temp_root / ".hq" / "telemetry").glob("**/*.jsonl")
+            if "feedback-loop" not in path.parts
+        )
         self.assertEqual(len(telemetry_files), 1)
         events = [
             json.loads(line)
@@ -1038,6 +1042,102 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(step_events[-1]["step_id"], step["id"])
         self.assertEqual(step_events[-1]["mission_id"], mission["id"])
         self.assertEqual(step_events[-1]["thread_id"], mission["thread_id"])
+
+    def test_run_lifecycle_emits_linked_feedback_receipts(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                [
+                    "create-mission",
+                    "--title",
+                    "Run First Live Pilot",
+                    "--source-task-id",
+                    "run-first-live-pilot",
+                    "--workflow",
+                    "delegated-execution",
+                ]
+            )
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        iteration_id = run["metadata"].get("feedback_iteration_id")
+        self.assertTrue(iteration_id)
+
+        self.module.finish_run(
+            self.module.build_parser().parse_args(
+                ["finish-run", "--run-id", run["id"], "--status", "failed"]
+            )
+        )
+
+        feedback_files = sorted(
+            (self.temp_root / ".hq" / "telemetry" / "feedback-loop").glob("*.jsonl")
+        )
+        self.assertEqual(len(feedback_files), 1)
+        records = [
+            json.loads(line)
+            for line in feedback_files[0].read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(len(records), 2)
+        start_record, finish_record = records
+        self.assertEqual(start_record["status"], "running")
+        self.assertEqual(start_record["id"], iteration_id)
+        self.assertEqual(start_record["task_id"], "run-first-live-pilot")
+        self.assertEqual(finish_record["status"], "technical_error")
+        self.assertEqual(finish_record["parent_id"], iteration_id)
+
+    def test_queued_run_does_not_emit_feedback_receipt(self):
+        mission_one = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                [
+                    "create-mission",
+                    "--title",
+                    "Primary Mission",
+                    "--source-task-id",
+                    "primary-task",
+                    "--workflow",
+                    "delegated-execution",
+                ]
+            )
+        )
+        self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission_one["id"], "--actor", "delivery"]
+            )
+        )
+        thread_id = mission_one["thread_id"]
+        mission_two = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                [
+                    "create-mission",
+                    "--title",
+                    "Queued Mission",
+                    "--thread-id",
+                    thread_id,
+                    "--source-task-id",
+                    "queued-task",
+                    "--workflow",
+                    "delegated-execution",
+                ]
+            )
+        )
+        queued = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id",
+                    mission_two["id"],
+                    "--actor",
+                    "delivery",
+                    "--if-busy",
+                    "queue",
+                ]
+            )
+        )
+        self.assertEqual(queued["status"], self.module.QUEUED_RUN_STATUS)
+        self.assertNotIn("feedback_iteration_id", queued["metadata"])
 
     def test_link_thread_command_updates_spec_and_handoff_pointers(self):
         thread = self.module.create_thread_record(title="Reference Donor Analysis", owner="delivery")
