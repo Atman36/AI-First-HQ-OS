@@ -5,7 +5,7 @@
 ![Markdown](https://img.shields.io/badge/Docs-Markdown-000000?logo=markdown&logoColor=white)
 ![Codex](https://img.shields.io/badge/Built%20with-Codex-412991)
 
-AI-First operating system for running a small company with Markdown source of truth, agent prompts, governance rules, and Python scripts for control-plane workflows, telemetry, and safe delegation.
+AI-First operating system for running a small company with Markdown source of truth, agent prompts, and an agent control plane: deny-by-default permissions, runtime governance, telemetry, and a feedback loop for safe delegation.
 
 ## Overview
 
@@ -24,6 +24,11 @@ This repository packages the reusable public shell of an AI-first company operat
 
 - AI-first control plane for governed delegation
 - additive `Mission` / `Run` / `Step` / `Approval` state nucleus for durable local execution
+- deny-by-default permission model with a `can()` decision function and capability grants
+- pre-action approval gates with approval-as-continuation and RESUMED-state handling
+- byte-stable, secret-scrubbed run receipts for an audit trail
+- release gate with required-evidence checks and diff-based permission-expansion enforcement
+- short feedback loop: per-run receipts, baseline/best metrics, and a review-due trigger
 - role-based agent prompts
 - shared role-prompt skeleton with generator-backed normalization
 - reusable skills with UI metadata
@@ -41,10 +46,13 @@ This repository packages the reusable public shell of an AI-first company operat
 - `docs/` public-safe architecture and project documentation
 - `scripts/` validation, runtime, telemetry, and publication-safety tools
 - `tests/` automated coverage for core behavior
-- `agents/*/AGENTS.md` role prompts safe for publication
-- `skills/` agent skills safe for publication
 - `scripts/hq_role_prompt_scaffold.py` shared role-prompt generator for `agents/*/AGENTS.md`
 - `scripts/hq_private_prompt_lint.py` local lint for private `.hq/prompts/`
+- `scripts/hq_permissions.py` deny-by-default `can()` authorization decisions
+- `scripts/hq_policy_hooks.py` pre-action gates, approval checkpoints, and run receipts
+- `scripts/hq_feedback_loop.py` per-run feedback receipts, metrics, and the review-due trigger
+- `scripts/hq_gate.py` release gate with required-evidence and permission-expansion checks
+- `scripts/hq_reference_scan.py` reference-pattern analysis with a dynamic identifier scan
 
 ## Quick Start
 
@@ -76,6 +84,9 @@ python3 scripts/hq_runtime.py handoff --task "Example large task" --spec-file .h
 python3 scripts/hq_control_plane.py validate
 python3 scripts/hq_control_plane.py sync
 python3 scripts/hq_role_prompt_scaffold.py --check
+python3 scripts/hq_permissions.py check --agent ai_operations_lead --action update_task_state --scope hq:control-plane/task-board
+python3 scripts/hq_feedback_loop.py summary
+python3 scripts/hq_feedback_loop.py review-status
 python3 -m unittest discover tests
 python3 scripts/hq_public_safety.py
 python3 scripts/hq_private_prompt_lint.py
@@ -104,6 +115,26 @@ Use `spec` for large or ambiguous work. The spec is a private, task-scoped conte
 Tracked role prompts are generated from the shared skeleton. The generated prompts now include a short `Quick Start` plus split `Always Read` / `Read When Needed` paths, so update `scripts/hq_role_prompt_scaffold.py` and regenerate instead of hand-editing `agents/*/AGENTS.md`. After changing the scaffold, run `python3 scripts/hq_role_prompt_scaffold.py --write` and then `python3 scripts/hq_role_prompt_scaffold.py --check`.
 
 When `.hq/prompts/` exists locally, run `python3 scripts/hq_private_prompt_lint.py` to catch broken local paths, invalid absolute references, and weak audit-prompt feedback loops before relying on those prompts in a new session.
+
+## Permissions and Governance
+
+Agent authority is least-privilege and policy-as-code. The agent registry carries `capability_grants`, and `05 AI Control Plane/permission-grants.json` holds the grant/deny table (live data files are gitignored, so CI bootstrap samples mirror them).
+
+- `python3 scripts/hq_permissions.py check ...` evaluates a single request through `can()`: deny-by-default, fixed deny precedence (`explicit_deny` > `invalid_input` > `too_broad_scope` > `unsatisfied_approval` > `no_matching_grant`), scope-hierarchy inheritance, and a frozen `Decision`.
+- Pre-action gates in `scripts/hq_policy_hooks.py` enforce approval checkpoints, approval-as-continuation, and `RESUMED`-state handling before risky steps run.
+- Every governed step can emit a byte-stable, secret- and timestamp-scrubbed run receipt under `.hq/receipts/` for an audit trail.
+- `python3 scripts/hq_gate.py` runs the release gate: required-evidence checks plus a redundant diff-based permission-expansion enforcement layer that requires a recorded human approval for any widened grant.
+
+Relevant schemas (draft 2020-12, `additionalProperties: false`): `permission-grants`, `approval-checkpoint`, `run-receipt`, `agent-release`, and the `capability_grants` extension to `agent-registry`.
+
+## Feedback Loop
+
+The control plane keeps a short feedback loop on disk so execution learns across sessions instead of relying on chat memory:
+
+- governed runs auto-write append-only receipts (`before`/`after`) under `.hq/telemetry/feedback-loop/`, linked by attempt id
+- receipts carry a numeric metric plus direction, so `summary` reports baseline, best, and latest delta per task
+- `python3 scripts/hq_feedback_loop.py review-status` reports whether a review is due — immediately on any adverse outcome, or by cadence after a batch of clean successes (`HQ_FEEDBACK_REVIEW_CADENCE`, default 5); `mark-reviewed` resets it
+- the aggregated summary and review signal are surfaced in `status`, `.hq/state/session-bootstrap.json`, and the memory index so they survive context compaction
 
 ## Public GitHub Boundary
 
