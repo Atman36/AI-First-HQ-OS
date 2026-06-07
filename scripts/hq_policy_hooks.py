@@ -8,6 +8,7 @@ import json
 import os
 import shlex
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -313,6 +314,158 @@ def emit_hooks_command(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Sensitive-tool pre-action gates
+# ---------------------------------------------------------------------------
+
+SENSITIVE_TOOL_CLASSES = (
+    "external_write",
+    "money_movement",
+    "production_deploy",
+    "public_publish",
+    "permission_change",
+    "customer_data_access",
+    "destructive_delete",
+)
+
+APPROVAL_CHECKPOINT_SCHEMA_PATH = SCHEMA_DIR / "approval-checkpoint.schema.json"
+
+# Run states relevant to gate execution authority.
+RUN_STATE_PAUSED = "PAUSED"
+RUN_STATE_RESUMED = "RESUMED"
+
+
+@dataclass(frozen=True)
+class ToolRequest:
+    """A tool invocation request evaluated by the pre-action gate.
+
+    ``tool_class`` must be present on every request (including MCP-server and
+    model built-in tool calls) so nothing can bypass HQ policy.
+    """
+
+    agent_id: str
+    role_id: str
+    action: str
+    resource_scope: str
+    tool_class: str
+    approval_class: str
+    run_id: str
+    step_id: str
+    checkpoint_id: str = ""
+
+
+@dataclass(frozen=True)
+class GateResult:
+    """Outcome of evaluating a :class:`ToolRequest` against the gate."""
+
+    execute: bool
+    checkpoint: dict[str, Any] | None = None
+    reason: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "execute": self.execute,
+            "checkpoint": self.checkpoint,
+            "reason": self.reason,
+        }
+
+
+def is_sensitive_tool_class(tool_class: str) -> bool:
+    return str(tool_class or "").strip() in SENSITIVE_TOOL_CLASSES
+
+
+def build_checkpoint_record(request: ToolRequest) -> dict[str, Any]:
+    """Construct an Approval_Checkpoint_Record (pending) for a gated request."""
+
+    checkpoint_id = request.checkpoint_id or f"chk-{request.run_id}-{request.step_id}"
+    return {
+        "schema_version": 1,
+        "entity_type": "approval_checkpoint",
+        "id": checkpoint_id,
+        "run_id": request.run_id,
+        "step_id": request.step_id,
+        "agent_id": request.agent_id,
+        "role_id": request.role_id,
+        "action": request.action,
+        "resource_scope": request.resource_scope,
+        "tool_class": request.tool_class,
+        "approval_class": request.approval_class,
+        "status": "pending",
+        "decision": "",
+        "resumption_pointer": {"step_id": request.step_id},
+    }
+
+
+def pre_action_gate(
+    request: ToolRequest,
+    *,
+    run_state: str = RUN_STATE_PAUSED,
+    checkpoint: dict[str, Any] | None = None,
+) -> GateResult:
+    """Deterministically gate a sensitive tool request.
+
+    Behavior (keyed on ``(agent_id, action, resource_scope, approval_class,
+    tool_class)`` plus run state):
+
+    - Non-sensitive tool class -> execute immediately.
+    - Sensitive class with no existing checkpoint -> create an
+      Approval_Checkpoint_Record (pending) and do not execute.
+    - Sensitive class, checkpoint pending, run paused -> do not execute.
+    - Run state ``RESUMED`` -> execute from the recorded resumption pointer,
+      even when the checkpoint record is still pending.
+    - Checkpoint decided ``approved`` -> execute from ``resumption_pointer``
+      without requiring the run to automatically leave the paused state.
+    - Checkpoint decided ``rejected``/``blocked`` -> do not execute; the run
+      follows the non-approved path.
+    """
+
+    if not is_sensitive_tool_class(request.tool_class):
+        return GateResult(execute=True, reason="non_sensitive_tool_class")
+
+    # RESUMED run state authorizes execution from the resumption pointer even
+    # if the checkpoint record is still pending (Req 3, AC 3a).
+    if str(run_state).strip() == RUN_STATE_RESUMED:
+        return GateResult(execute=True, checkpoint=checkpoint, reason="run_resumed")
+
+    if checkpoint is None:
+        record = build_checkpoint_record(request)
+        return GateResult(execute=False, checkpoint=record, reason="checkpoint_created")
+
+    status = str(checkpoint.get("status") or "").strip()
+    decision = str(checkpoint.get("decision") or "").strip()
+
+    if status == "decided" and decision == "approved":
+        return GateResult(execute=True, checkpoint=checkpoint, reason="approved")
+    if status == "decided" and decision in {"rejected", "blocked"}:
+        return GateResult(execute=False, checkpoint=checkpoint, reason=decision)
+
+    # Pending checkpoint while paused: do not execute.
+    return GateResult(execute=False, checkpoint=checkpoint, reason="pending")
+
+
+def gate_command(args: argparse.Namespace) -> int:
+    request = ToolRequest(
+        agent_id=str(args.agent or "").strip(),
+        role_id=str(args.role or "").strip(),
+        action=str(args.gate_action or "").strip(),
+        resource_scope=str(args.scope or "").strip(),
+        tool_class=str(args.tool_class or "").strip(),
+        approval_class=str(args.approval_class or "").strip(),
+        run_id=str(args.run_id or "").strip(),
+        step_id=str(args.step_id or "").strip(),
+    )
+    checkpoint = args.checkpoint or None
+    result = pre_action_gate(request, run_state=args.run_state, checkpoint=checkpoint)
+    if result.checkpoint is not None:
+        try:
+            validate_schema(result.checkpoint, APPROVAL_CHECKPOINT_SCHEMA_PATH, "approval_checkpoint")
+        except (OSError, ValueError) as exc:
+            print(f"error={exc}")
+            return 2
+    print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))
+    return 0 if result.execute else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate explicit HQ runtime policy and hooks.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -364,6 +517,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inline JSON payload delivered to matching hooks over stdin.",
     )
     emit_hooks.set_defaults(func=emit_hooks_command)
+
+    gate = subparsers.add_parser(
+        "gate",
+        help="Evaluate a sensitive-tool pre-action gate for one tool request.",
+    )
+    gate.add_argument("--agent", required=True, help="Requesting agent id.")
+    gate.add_argument("--role", required=True, help="Requesting role id.")
+    gate.add_argument("--gate-action", required=True, help="Requested action.")
+    gate.add_argument("--scope", required=True, help="Requested resource scope.")
+    gate.add_argument("--tool-class", required=True, help="Tool class for the request.")
+    gate.add_argument("--approval-class", default="", help="Approval class for the request.")
+    gate.add_argument("--run-id", required=True, help="Run id.")
+    gate.add_argument("--step-id", required=True, help="Step id / resumption pointer.")
+    gate.add_argument(
+        "--run-state",
+        default=RUN_STATE_PAUSED,
+        help="Run state (PAUSED or RESUMED).",
+    )
+    gate.add_argument(
+        "--checkpoint",
+        type=parse_json_object,
+        default=None,
+        help="Existing Approval_Checkpoint_Record JSON, if any.",
+    )
+    gate.set_defaults(func=gate_command)
 
     return parser
 

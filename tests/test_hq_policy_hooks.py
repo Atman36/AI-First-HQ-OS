@@ -16,6 +16,7 @@ def load_module(temp_root: Path):
     spec = importlib.util.spec_from_file_location("hq_policy_hooks_test_module", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
