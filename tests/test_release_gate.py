@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "hq_gate.py"
@@ -114,6 +117,54 @@ class DeriveExpansionTests(unittest.TestCase):
         self.assertTrue(
             gate.derive_permission_expansion(None, None, prev_caps, curr_caps)
         )
+
+    def test_release_gate_command_blocks_capability_expansion_diff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "manifest.json"
+            previous_registry = root / "previous-registry.json"
+            current_registry = root / "current-registry.json"
+            manifest.write_text(
+                json.dumps(valid_manifest(permission_expansion=False)),
+                encoding="utf-8",
+            )
+            previous_registry.write_text(
+                json.dumps(
+                    {
+                        "capability_grants": [
+                            {
+                                "role_id": "delivery",
+                                "resource_scopes": ["a:b"],
+                                "tool_classes": ["internal_write"],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            current_registry.write_text(
+                json.dumps(
+                    {
+                        "capability_grants": [
+                            {
+                                "role_id": "delivery",
+                                "resource_scopes": ["a:b", "x:y"],
+                                "tool_classes": ["internal_write"],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                manifest=str(manifest),
+                previous_grants=None,
+                current_grants=None,
+                previous_registry=str(previous_registry),
+                current_registry=str(current_registry),
+            )
+
+            self.assertEqual(gate.release_gate_command(args), 1)
 
 
 class HumanOnlyCategoryTests(unittest.TestCase):

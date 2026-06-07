@@ -152,6 +152,18 @@ def release_gate_command(args: argparse.Namespace) -> int:
         return 2
 
     derived = None
+    previous_capability_grants = None
+    current_capability_grants = None
+    if args.previous_registry and args.current_registry:
+        try:
+            prev_registry = json.loads(Path(args.previous_registry).read_text(encoding="utf-8"))
+            curr_registry = json.loads(Path(args.current_registry).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"[fail] release-gate: {exc}", flush=True)
+            return 2
+        previous_capability_grants = prev_registry.get("capability_grants")
+        current_capability_grants = curr_registry.get("capability_grants")
+
     if args.previous_grants and args.current_grants:
         try:
             prev = json.loads(Path(args.previous_grants).read_text(encoding="utf-8"))
@@ -160,7 +172,17 @@ def release_gate_command(args: argparse.Namespace) -> int:
             print(f"[fail] release-gate: {exc}", flush=True)
             return 2
         derived = derive_permission_expansion(
-            prev.get("grants"), curr.get("grants")
+            prev.get("grants"),
+            curr.get("grants"),
+            previous_capability_grants,
+            current_capability_grants,
+        )
+    elif args.previous_registry and args.current_registry:
+        derived = derive_permission_expansion(
+            None,
+            None,
+            previous_capability_grants,
+            current_capability_grants,
         )
 
     reasons = evaluate_release_gate(manifest, derived_permission_expansion=derived)
@@ -219,6 +241,16 @@ def main(argv: list[str] | None = None) -> int:
             "--current-grants",
             default=None,
             help="Path to the current permission-grants.json (for diff-based enforcement).",
+        )
+        parser.add_argument(
+            "--previous-registry",
+            default=None,
+            help="Path to the previous agent-registry.json (for capability_grants diff enforcement).",
+        )
+        parser.add_argument(
+            "--current-registry",
+            default=None,
+            help="Path to the current agent-registry.json (for capability_grants diff enforcement).",
         )
         args = parser.parse_args(argv[1:])
         return release_gate_command(args)

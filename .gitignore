@@ -58,6 +58,7 @@ venv/
 /HANDOFF.md
 /SESSION.md
 /SESSION-*.md
+/.kiro/
 
 # Live operating state must stay local, not on public GitHub
 /00 Home.md

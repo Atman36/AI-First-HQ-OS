@@ -54,6 +54,12 @@ class PreActionGateTests(unittest.TestCase):
         self.assertTrue(result.execute)
         self.assertIsNone(result.checkpoint)
 
+    def test_missing_tool_class_does_not_execute(self):
+        result = hooks.pre_action_gate(make_request(tool_class=""))
+        self.assertFalse(result.execute)
+        self.assertIsNone(result.checkpoint)
+        self.assertEqual(result.reason, "missing_tool_class")
+
     def test_each_sensitive_class_triggers_checkpoint(self):
         for tool_class in hooks.SENSITIVE_TOOL_CLASSES:
             result = hooks.pre_action_gate(make_request(tool_class=tool_class))

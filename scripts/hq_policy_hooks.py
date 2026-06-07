@@ -419,6 +419,9 @@ def pre_action_gate(
       follows the non-approved path.
     """
 
+    if not str(request.tool_class or "").strip():
+        return GateResult(execute=False, reason="missing_tool_class")
+
     if not is_sensitive_tool_class(request.tool_class):
         return GateResult(execute=True, reason="non_sensitive_tool_class")
 
