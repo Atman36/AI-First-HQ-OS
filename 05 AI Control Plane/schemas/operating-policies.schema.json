@@ -157,6 +157,143 @@
         }
       }
     },
+    "tool_plane_policy": {
+      "type": "object",
+      "required": [
+        "purpose",
+        "owner",
+        "default_rule",
+        "required_request_fields",
+        "sensitive_tool_classes",
+        "rules"
+      ],
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_rule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_request_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sensitive_tool_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "run_receipts_and_provenance": {
+      "type": "object",
+      "required": [
+        "owner",
+        "runtime_paths",
+        "receipt_required_for",
+        "minimum_receipt_fields",
+        "provenance_edges",
+        "tracked_truth_rule"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_paths": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "receipt_required_for": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "minimum_receipt_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "provenance_edges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "tracked_truth_rule": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "agent_release_discipline": {
+      "type": "object",
+      "required": [
+        "owner",
+        "applies_when",
+        "required_release_evidence",
+        "rollback_rule"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applies_when": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_release_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rollback_rule": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "subagent_context_protocol": {
       "type": "object",
       "additionalProperties": false,
@@ -335,6 +472,15 @@
         "policy_surface",
         "hook_events"
       ]
+    },
+    "tool_plane_policy": {
+      "$ref": "#/$defs/tool_plane_policy"
+    },
+    "run_receipts_and_provenance": {
+      "$ref": "#/$defs/run_receipts_and_provenance"
+    },
+    "agent_release_discipline": {
+      "$ref": "#/$defs/agent_release_discipline"
     },
     "subagent_context_protocol": {
       "$ref": "#/$defs/subagent_context_protocol"

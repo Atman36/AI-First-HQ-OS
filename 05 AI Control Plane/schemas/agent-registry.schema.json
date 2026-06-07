@@ -41,6 +41,26 @@
           "$ref": "#/$defs/string_list"
         }
       }
+    },
+    "principal_contract": {
+      "type": "object",
+      "required": [
+        "purpose",
+        "required_identity_fields",
+        "default_constraints"
+      ],
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_identity_fields": {
+          "$ref": "#/$defs/string_list"
+        },
+        "default_constraints": {
+          "$ref": "#/$defs/string_list"
+        }
+      }
     }
   },
   "type": "object",
@@ -57,6 +77,9 @@
     "updated_at": {
       "type": "string",
       "format": "date"
+    },
+    "principal_contract": {
+      "$ref": "#/$defs/principal_contract"
     },
     "roles": {
       "type": "array",
