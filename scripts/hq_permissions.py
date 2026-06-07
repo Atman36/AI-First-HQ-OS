@@ -287,6 +287,193 @@ def can(
     return Decision("allow", "allow", best_grant)
 
 
+# ---------------------------------------------------------------------------
+# Run receipt normalization and validation (Req 4, 9)
+# ---------------------------------------------------------------------------
+
+RUN_RECEIPT_SCHEMA_PATH = CONTROL_PLANE_DIR / "schemas" / "run-receipt.schema.json"
+RECEIPTS_DIR = REPO_ROOT / ".hq" / "receipts"
+
+RECEIPT_REQUIRED_IDENTIFIERS = ("run_id", "task_id", "agent_id", "role_id")
+RECEIPT_REQUIRED_COLLECTIONS = (
+    "steps",
+    "sources",
+    "approvals",
+    "changed_artifacts",
+    "verification_checks",
+    "open_questions",
+)
+
+# Keys whose names indicate secret-bearing content that must never be tracked.
+SECRET_KEY_TOKENS = (
+    "secret",
+    "token",
+    "password",
+    "passwd",
+    "api_key",
+    "apikey",
+    "access_key",
+    "private_key",
+    "credential",
+    "authorization",
+    "bearer",
+)
+
+# Keys that carry only volatile timestamp content (stripped before tracking).
+TIMESTAMP_ONLY_KEYS = (
+    "timestamp",
+    "created_at",
+    "updated_at",
+    "decided_at",
+    "started_at",
+    "finished_at",
+    "requested_at",
+)
+
+# Top-level keys that are part of the normalized, tracked receipt surface.
+RECEIPT_ALLOWED_KEYS = frozenset(
+    ("schema_version", "entity_type", *RECEIPT_REQUIRED_IDENTIFIERS, *RECEIPT_REQUIRED_COLLECTIONS)
+)
+
+
+class ReceiptError(Exception):
+    """Raised when a receipt proposed for tracking is unsafe or malformed.
+
+    The ``field`` attribute names the offending field for deterministic
+    error reporting. Raw traces are never mutated by validation.
+    """
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(f"{field}: {message}")
+        self.field = field
+        self.message = message
+
+
+def _is_secret_key(key: str) -> bool:
+    lowered = str(key).lower()
+    return any(token in lowered for token in SECRET_KEY_TOKENS)
+
+
+def _is_timestamp_only_key(key: str) -> bool:
+    return str(key).lower() in TIMESTAMP_ONLY_KEYS
+
+
+def _scrub(value: Any) -> Any:
+    """Recursively drop timestamp-only and secret-bearing keys from a mapping.
+
+    Raw private payloads (mappings keyed by a secret token) are removed rather
+    than carried into the tracked surface.
+    """
+
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            if _is_secret_key(key) or _is_timestamp_only_key(key):
+                continue
+            cleaned[key] = _scrub(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub(item) for item in value]
+    return value
+
+
+def _sorted_for_serialization(value: Any) -> Any:
+    """Return ``value`` with all mapping keys recursively sorted."""
+
+    if isinstance(value, dict):
+        return {key: _sorted_for_serialization(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_sorted_for_serialization(item) for item in value]
+    return value
+
+
+def normalize_receipt(receipt: dict[str, Any]) -> str:
+    """Return a stable, tracked-safe JSON string for ``receipt``.
+
+    Drops timestamp-only and secret-bearing keys, sorts keys recursively, and
+    serializes deterministically so the same receipt content always yields
+    byte-identical output.
+    """
+
+    scrubbed = _scrub(receipt)
+    ordered = _sorted_for_serialization(scrubbed)
+    return json.dumps(ordered, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _contains_secret_or_timestamp(value: Any) -> str | None:
+    """Return the first offending key found anywhere in ``value``, else None."""
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if _is_secret_key(key):
+                return f"secret-bearing key '{key}'"
+            if _is_timestamp_only_key(key):
+                return f"timestamp-only key '{key}'"
+            nested = _contains_secret_or_timestamp(item)
+            if nested:
+                return nested
+    elif isinstance(value, list):
+        for item in value:
+            nested = _contains_secret_or_timestamp(item)
+            if nested:
+                return nested
+    return None
+
+
+def validate_receipt(
+    receipt: dict[str, Any],
+    *,
+    schema_path: Path = RUN_RECEIPT_SCHEMA_PATH,
+) -> None:
+    """Validate a receipt proposed for tracking.
+
+    Rejects missing required fields, schema non-conformance, and any
+    secret-bearing / raw-private / timestamp-only content, raising
+    :class:`ReceiptError` naming the failing field. Raw traces are not mutated.
+    """
+
+    if not isinstance(receipt, dict):
+        raise ReceiptError("<root>", "receipt must be a JSON object")
+
+    for field in RECEIPT_REQUIRED_IDENTIFIERS:
+        value = receipt.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ReceiptError(field, "required non-empty identifier is missing")
+
+    for field in RECEIPT_REQUIRED_COLLECTIONS:
+        if field not in receipt:
+            raise ReceiptError(field, "required collection is missing")
+        if not isinstance(receipt[field], list):
+            raise ReceiptError(field, "must be a list")
+
+    offending = _contains_secret_or_timestamp(receipt)
+    if offending is not None:
+        field_name = offending.split("'")[1] if "'" in offending else offending
+        raise ReceiptError(field_name, f"tracked receipt must not contain {offending}")
+
+    # Schema conformance (when jsonschema is available).
+    try:
+        from jsonschema import Draft202012Validator, FormatChecker
+    except ModuleNotFoundError:  # pragma: no cover - environments without jsonschema
+        return
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(receipt), key=lambda item: list(item.absolute_path))
+    if errors:
+        error = errors[0]
+        path = ".".join(str(part) for part in error.absolute_path) or "<root>"
+        raise ReceiptError(path, error.message)
+
+
+def receipt_path(run_id: str) -> Path:
+    return RECEIPTS_DIR / f"{run_id}.json"
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
 def _check_command(args: argparse.Namespace) -> int:
     model = load_model()
     scope: str | list[str]
