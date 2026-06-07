@@ -228,6 +228,70 @@ class HqFeedbackLoopTests(unittest.TestCase):
         self.assertEqual(len(summary["open_next_steps"]), 1)
         self.assertEqual(summary["open_next_steps"][0]["next_focus"], "New focus.")
 
+    def _write(self, *, status, created_at, task_id="task-1", parent_id=""):
+        self.module.write_iteration(
+            self.module.build_iteration_payload(
+                task_id=task_id,
+                hypothesis="h",
+                action="a",
+                metric="m",
+                status=status,
+                evidence=[],
+                touched_files=[],
+                next_focus="n",
+                rollback_reason="Rolled back." if status == "rolled_back" else "",
+                actor="delivery",
+                parent_id=parent_id,
+                created_at=created_at,
+            )
+        )
+
+    def test_review_signal_immediate_on_adverse_outcome(self):
+        self._write(status="done", created_at="2026-04-20T09:00:00Z")
+        self._write(status="checks_failed", created_at="2026-04-20T10:00:00Z")
+
+        signal = self.module.build_review_signal(self.temp_root / ".hq")
+
+        self.assertTrue(signal["review_due"])
+        self.assertIn("adverse_outcomes:checks_failed", signal["reason"])
+        self.assertEqual(signal["adverse_since_review"], 1)
+
+    def test_review_signal_cadence_after_batch_of_successes(self):
+        for hour in range(5):
+            self._write(status="done", created_at=f"2026-04-20T0{hour}:00:00Z")
+
+        os.environ["HQ_FEEDBACK_REVIEW_CADENCE"] = "5"
+        try:
+            signal = self.module.build_review_signal(self.temp_root / ".hq")
+        finally:
+            os.environ.pop("HQ_FEEDBACK_REVIEW_CADENCE", None)
+
+        self.assertTrue(signal["review_due"])
+        self.assertTrue(signal["reason"].startswith("cadence:"))
+        self.assertEqual(signal["successful_since_review"], 5)
+
+    def test_review_signal_not_due_below_cadence(self):
+        for hour in range(3):
+            self._write(status="done", created_at=f"2026-04-20T0{hour}:00:00Z")
+
+        signal = self.module.build_review_signal(self.temp_root / ".hq")
+
+        self.assertFalse(signal["review_due"])
+        self.assertEqual(signal["reason"], "")
+
+    def test_mark_reviewed_resets_cadence(self):
+        self._write(status="checks_failed", created_at="2026-04-20T09:00:00Z")
+        self.assertTrue(self.module.build_review_signal(self.temp_root / ".hq")["review_due"])
+
+        self.module.mark_reviewed(self.temp_root / ".hq")
+
+        after = self.module.build_review_signal(self.temp_root / ".hq")
+        self.assertFalse(after["review_due"])
+        self.assertEqual(after["adverse_since_review"], 0)
+
+        self._write(status="technical_error", created_at="2026-04-20T11:00:00Z")
+        self.assertTrue(self.module.build_review_signal(self.temp_root / ".hq")["review_due"])
+
     def test_invalid_metric_direction_rejected(self):
         with self.assertRaises(ValueError):
             self.module.build_iteration_payload(

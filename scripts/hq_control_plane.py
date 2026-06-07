@@ -18,7 +18,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from hq_feedback_loop import build_feedback_summary, load_recent_iterations
+from hq_feedback_loop import build_feedback_summary, build_review_signal, load_recent_iterations
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
@@ -1236,7 +1236,13 @@ def render_workflow_artifact(
     else:
         lines.append("- None")
 
-    lines.extend(feedback_summary_lines(status_payload.get("feedback_summary") or {}, heading_prefix="## "))
+    lines.extend(
+        feedback_summary_lines(
+            status_payload.get("feedback_summary") or {},
+            review_signal=status_payload.get("review_signal") or {},
+            heading_prefix="## ",
+        )
+    )
 
     for column in column_order:
         column_tasks = [task for task in tasks if normalize_text(task.get("column")) == column]
@@ -1834,6 +1840,7 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
         "support_tracks": status_payload.get("support_tracks", []) or [],
         "recent_iterations": recent_iterations,
         "feedback_summary": status_payload.get("feedback_summary") or {},
+        "review_signal": status_payload.get("review_signal") or {},
         "stale_summary": status_payload.get("stale_summary") or {},
         "runtime_recovery": {
             "summary": runtime_recovery.get("summary") or {},
@@ -2493,6 +2500,10 @@ def build_status_payload(
         PRIVATE_ROOT,
         task_ids=live_task_ids or None,
     )
+    review_signal = build_review_signal(
+        PRIVATE_ROOT,
+        task_ids=live_task_ids or None,
+    )
     payload = {
         "generated_at": utc_now(),
         "updated_at": normalize_text(active_work.get("updated_at")),
@@ -2501,6 +2512,7 @@ def build_status_payload(
         "runtime_recovery": runtime_recovery,
         "recent_iterations": recent_iterations,
         "feedback_summary": feedback_summary,
+        "review_signal": review_signal,
         "support_tracks": support_track_projection(ordered_live_tasks, startup_task),
         "active_tasks": [project_live_task(task) for task in ordered_live_tasks],
         "current_packets": [task_packet_summary(task) for task in ordered_live_tasks],
@@ -2546,7 +2558,12 @@ def write_session_bootstrap(
     return payload
 
 
-def feedback_summary_lines(summary: dict[str, Any], *, heading_prefix: str = "") -> list[str]:
+def feedback_summary_lines(
+    summary: dict[str, Any],
+    *,
+    review_signal: dict[str, Any] | None = None,
+    heading_prefix: str = "",
+) -> list[str]:
     """Render the aggregated loop view (counts, baseline/best/delta, next steps)."""
     summary = summary or {}
     overall = summary.get("overall") or {}
@@ -2589,6 +2606,18 @@ def feedback_summary_lines(summary: dict[str, Any], *, heading_prefix: str = "")
                 f"  - {step.get('task_id') or '-'} [{step.get('status') or '-'}]: "
                 f"{step.get('next_focus') or '-'}"
             )
+
+    review = review_signal or {}
+    if review:
+        due = bool(review.get("review_due"))
+        review_line = f"- review_due: {str(due).lower()}"
+        if review.get("reason"):
+            review_line += f" ({review['reason']})"
+        review_line += (
+            f" | adverse={review.get('adverse_since_review', 0)}"
+            f" successes={review.get('successful_since_review', 0)}/{review.get('batch_size', 0)}"
+        )
+        lines.append(review_line)
     return lines
 
 
@@ -2662,7 +2691,12 @@ def render_status_text(payload: dict[str, Any]) -> str:
     else:
         lines.append("- None")
 
-    lines.extend(feedback_summary_lines(payload.get("feedback_summary") or {}))
+    lines.extend(
+        feedback_summary_lines(
+            payload.get("feedback_summary") or {},
+            review_signal=payload.get("review_signal") or {},
+        )
+    )
 
     lines.extend(["", "Support Tracks"])
     support_tracks = payload.get("support_tracks", []) or []

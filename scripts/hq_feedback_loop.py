@@ -40,6 +40,13 @@ STATUSES = {
 }
 
 
+# Adverse = any closed outcome that is not a clean success; these warrant an
+# immediate review. Cadence reviews fire after a batch of clean successes.
+ADVERSE_STATUSES = STATUSES - {"running", "done"}
+DEFAULT_REVIEW_CADENCE = 5
+REVIEW_MARKER_PATH = PRIVATE_ROOT / "state" / "feedback-review-marker.json"
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -318,6 +325,111 @@ def build_feedback_summary(
     }
 
 
+def review_cadence_batch_size() -> int:
+    try:
+        value = int(os.environ.get("HQ_FEEDBACK_REVIEW_CADENCE", str(DEFAULT_REVIEW_CADENCE)))
+    except ValueError:
+        return DEFAULT_REVIEW_CADENCE
+    return max(1, value)
+
+
+def review_marker_path(private_root: Path = PRIVATE_ROOT) -> Path:
+    return private_root / "state" / "feedback-review-marker.json"
+
+
+def load_review_marker(private_root: Path = PRIVATE_ROOT) -> dict[str, Any]:
+    path = review_marker_path(private_root)
+    if not path.exists():
+        return {"last_reviewed_created_at": "", "last_reviewed_id": ""}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"last_reviewed_created_at": "", "last_reviewed_id": ""}
+    if not isinstance(payload, dict):
+        return {"last_reviewed_created_at": "", "last_reviewed_id": ""}
+    return {
+        "last_reviewed_created_at": normalize_text(payload.get("last_reviewed_created_at")),
+        "last_reviewed_id": normalize_text(payload.get("last_reviewed_id")),
+    }
+
+
+def records_since_marker(
+    records: list[dict[str, Any]], marker: dict[str, Any]
+) -> list[dict[str, Any]]:
+    chrono = sorted(records, key=lambda r: (r.get("created_at") or "", r.get("id") or ""))
+    last_id = normalize_text(marker.get("last_reviewed_id"))
+    if last_id:
+        for index, record in enumerate(chrono):
+            if record["id"] == last_id:
+                return chrono[index + 1 :]
+    last_at = normalize_text(marker.get("last_reviewed_created_at"))
+    if last_at:
+        return [record for record in chrono if (record.get("created_at") or "") > last_at]
+    return chrono
+
+
+def evaluate_review_signal(
+    records: list[dict[str, Any]],
+    *,
+    batch_size: int,
+    marker: dict[str, Any],
+) -> dict[str, Any]:
+    """Decide whether a review is due from receipts not yet acknowledged.
+
+    Immediate when any adverse outcome appears; cadence when a batch of clean
+    successes accrues. Mirrors the trigger/cadence policy from the claw project.
+    """
+    pending = [r for r in records_since_marker(records, marker) if r["status"] != "running"]
+    adverse = [r for r in pending if r["status"] in ADVERSE_STATUSES]
+    successes = [r for r in pending if r["status"] == SUCCESS_STATUS]
+    immediate_due = bool(adverse)
+    cadence_due = len(successes) >= batch_size
+    if immediate_due:
+        reason = "adverse_outcomes:" + ",".join(sorted({r["status"] for r in adverse}))
+    elif cadence_due:
+        reason = f"cadence:{len(successes)}_successful_since_review"
+    else:
+        reason = ""
+    return {
+        "review_due": immediate_due or cadence_due,
+        "reason": reason,
+        "adverse_since_review": len(adverse),
+        "successful_since_review": len(successes),
+        "batch_size": batch_size,
+        "last_reviewed_created_at": normalize_text(marker.get("last_reviewed_created_at")),
+    }
+
+
+def build_review_signal(
+    private_root: Path = PRIVATE_ROOT,
+    *,
+    task_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    records = load_iterations(private_root, task_ids=task_ids)
+    return evaluate_review_signal(
+        records,
+        batch_size=review_cadence_batch_size(),
+        marker=load_review_marker(private_root),
+    )
+
+
+def mark_reviewed(private_root: Path = PRIVATE_ROOT) -> dict[str, Any]:
+    """Advance the review marker to the latest receipt (resets the cadence)."""
+    records = load_iterations(private_root)
+    chrono = sorted(records, key=lambda r: (r.get("created_at") or "", r.get("id") or ""))
+    latest = chrono[-1] if chrono else None
+    marker = {
+        "last_reviewed_created_at": latest["created_at"] if latest else "",
+        "last_reviewed_id": latest["id"] if latest else "",
+        "reviewed_at": utc_now(),
+        "reviewed_through_count": len(chrono),
+    }
+    path = review_marker_path(private_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(marker, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return marker
+
+
 def load_active_task(task_id: str) -> dict[str, Any]:
     import hq_control_plane
 
@@ -399,6 +511,19 @@ def summary_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def review_status_command(args: argparse.Namespace) -> int:
+    task_ids = {args.task_id} if args.task_id else None
+    signal = build_review_signal(PRIVATE_ROOT, task_ids=task_ids)
+    print(json.dumps(signal, ensure_ascii=False, indent=2))
+    return 0
+
+
+def mark_reviewed_command(args: argparse.Namespace) -> int:
+    marker = mark_reviewed(PRIVATE_ROOT)
+    print(json.dumps(marker, ensure_ascii=False, indent=2))
+    return 0
+
+
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--task-id", required=True, help="Control-plane task ID.")
     parser.add_argument("--hypothesis", required=True, help="Short hypothesis for this attempt.")
@@ -456,6 +581,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     summary_parser.add_argument("--task-id", default="")
     summary_parser.set_defaults(func=summary_command)
+
+    review_status_parser = subparsers.add_parser(
+        "review-status", help="Print whether a review is due (immediate or cadence)."
+    )
+    review_status_parser.add_argument("--task-id", default="")
+    review_status_parser.set_defaults(func=review_status_command)
+
+    mark_reviewed_parser = subparsers.add_parser(
+        "mark-reviewed", help="Advance the review marker to the latest receipt (resets cadence)."
+    )
+    mark_reviewed_parser.set_defaults(func=mark_reviewed_command)
     return parser
 
 
