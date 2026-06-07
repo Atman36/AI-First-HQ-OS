@@ -129,6 +129,106 @@ def sample_agent_registry() -> dict[str, Any]:
                 "escalates_to": "ai_operations_lead",
             },
         ],
+        "capability_grants": [
+            {
+                "role_id": "ai_operations_lead",
+                "tool_classes": ["internal_write", "queue_state"],
+                "resource_scopes": ["hq:control-plane/*"],
+                "approval_class": "auto_low_risk",
+                "max_autonomy_tier": "A2",
+                "memory_boundary": "runtime_only",
+                "delegation_scope": ["delivery", "documentation"],
+            },
+            {
+                "role_id": "delivery",
+                "tool_classes": ["internal_write"],
+                "resource_scopes": ["project:*/private-packet"],
+                "approval_class": "auto_low_risk",
+                "max_autonomy_tier": "A2",
+                "memory_boundary": "task_scoped",
+                "delegation_scope": [],
+            },
+            {
+                "role_id": "growth",
+                "tool_classes": ["internal_write"],
+                "resource_scopes": ["account:*/private-research"],
+                "approval_class": "human_before_external",
+                "max_autonomy_tier": "A1",
+                "memory_boundary": "task_scoped",
+                "delegation_scope": [],
+            },
+            {
+                "role_id": "governor",
+                "tool_classes": ["policy_review"],
+                "resource_scopes": ["policy:*"],
+                "approval_class": "required_review",
+                "max_autonomy_tier": "A3",
+                "memory_boundary": "runtime_only",
+                "delegation_scope": [],
+            },
+            {
+                "role_id": "ceo",
+                "tool_classes": ["external_write"],
+                "resource_scopes": ["external:*"],
+                "approval_class": "founder_only",
+                "max_autonomy_tier": "A4",
+                "memory_boundary": "runtime_only",
+                "delegation_scope": [],
+            },
+        ],
+    }
+
+
+def sample_permission_grants() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "2026-04-16",
+        "grants": [
+            {
+                "agent_id": "*",
+                "role_id": "ai_operations_lead",
+                "resource_scope": "hq:control-plane/task-board",
+                "action": "update_task_state",
+                "approval_class": "auto_low_risk",
+            },
+            {
+                "agent_id": "*",
+                "role_id": "delivery",
+                "resource_scope": "project:*/private-packet",
+                "action": "draft_internal_material",
+                "approval_class": "auto_low_risk",
+            },
+            {
+                "agent_id": "*",
+                "role_id": "growth",
+                "resource_scope": "account:*/private-research",
+                "action": "prepare_founder_review",
+                "approval_class": "human_before_external",
+            },
+            {
+                "agent_id": "*",
+                "role_id": "governor",
+                "resource_scope": "policy:*",
+                "action": "review_policy_change",
+                "approval_class": "required_review",
+            },
+            {
+                "agent_id": "*",
+                "role_id": "ceo",
+                "resource_scope": "external:*",
+                "action": "approve_send_or_publish",
+                "approval_class": "founder_only",
+            },
+        ],
+        "denies": [
+            {
+                "agent_id": "*",
+                "role_id": "*",
+                "resource_scope": "tool:destructive_or_payment",
+                "action": "execute",
+                "reason": "forbidden_without_explicit_approval",
+            }
+        ],
     }
 
 
@@ -474,6 +574,7 @@ def local_text_files() -> dict[Path, str]:
 def local_json_files() -> dict[Path, dict[str, Any]]:
     return {
         REPO_ROOT / "05 AI Control Plane" / "agent-registry.json": sample_agent_registry(),
+        REPO_ROOT / "05 AI Control Plane" / "permission-grants.json": sample_permission_grants(),
         REPO_ROOT / "05 AI Control Plane" / "operating-policies.json": sample_policies(),
         REPO_ROOT / "05 AI Control Plane" / "workflow-registry.json": sample_workflow_registry(),
         REPO_ROOT / "05 AI Control Plane" / "metrics-registry.json": sample_metrics_registry(),
