@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "entity_type",
+    "id",
+    "run_id",
+    "step_id",
+    "agent_id",
+    "role_id",
+    "action",
+    "resource_scope",
+    "tool_class",
+    "approval_class",
+    "status",
+    "decision",
+    "resumption_pointer"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entity_type": {
+      "type": "string",
+      "const": "approval_checkpoint"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "step_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resource_scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool_class": {
+      "type": "string",
+      "enum": [
+        "external_write",
+        "money_movement",
+        "production_deploy",
+        "public_publish",
+        "permission_change",
+        "customer_data_access",
+        "destructive_delete"
+      ]
+    },
+    "approval_class": {
+      "type": "string",
+      "enum": [
+        "auto_low_risk",
+        "human_before_external",
+        "required_review",
+        "founder_only",
+        "forbidden_without_explicit_approval"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "decided"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "",
+        "approved",
+        "rejected",
+        "blocked"
+      ]
+    },
+    "resumption_pointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

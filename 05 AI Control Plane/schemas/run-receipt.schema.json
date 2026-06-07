@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "entity_type",
+    "run_id",
+    "task_id",
+    "agent_id",
+    "role_id",
+    "steps",
+    "sources",
+    "approvals",
+    "changed_artifacts",
+    "verification_checks",
+    "open_questions"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entity_type": {
+      "type": "string",
+      "const": "run_receipt"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "steps": {
+      "type": "array"
+    },
+    "sources": {
+      "type": "array"
+    },
+    "approvals": {
+      "type": "array"
+    },
+    "changed_artifacts": {
+      "type": "array"
+    },
+    "verification_checks": {
+      "type": "array"
+    },
+    "open_questions": {
+      "type": "array"
+    }
+  }
+}
