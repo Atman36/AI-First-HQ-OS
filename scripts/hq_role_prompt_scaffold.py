@@ -257,6 +257,7 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
     },
     "delivery": {
         "name": "Delivery",
+        "definite_article": False,
         "intro": (
             "Your job is to turn scoped work into concrete outputs inside the authority limits of the control plane."
         ),
@@ -314,6 +315,7 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
     },
     "documentation": {
         "name": "Documentation",
+        "definite_article": False,
         "intro": (
             "Your job is to sync accepted outcomes back into tracked company truth and keep the "
             "human-readable layer aligned with the control plane."
@@ -373,6 +375,7 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
     },
     "finance": {
         "name": "Finance",
+        "definite_article": False,
         "intro": (
             "Your job is to make money impact, entity path, and invoicing constraints visible before and "
             "after AI-first operating decisions."
@@ -492,6 +495,7 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
     },
     "growth": {
         "name": "Growth",
+        "definite_article": False,
         "intro": (
             "Your job is to identify the shortest path from the AI-first operating system to revenue, "
             "conversion, or founder leverage."
@@ -552,6 +556,7 @@ ROLE_PROMPTS: dict[str, dict[str, object]] = {
     },
     "research": {
         "name": "Research",
+        "definite_article": False,
         "intro": (
             "Your job is to gather evidence that improves strategic, operating, and governance decisions for "
             "the AI-first company."
@@ -639,8 +644,11 @@ def render_numbered_section(title: str, items: list[str]) -> list[str]:
 
 def render_prompt(role_id: str) -> str:
     config = ROLE_PROMPTS[role_id]
+    name = config["name"]
+    # Titles take "the" ("the CEO"); department names don't ("Delivery").
+    opening = f"You are the {name}." if config.get("definite_article", True) else f"You are {name}."
     lines = [
-        f"You are the {config['name']}.",
+        opening,
         "",
         GENERATED_NOTE,
         "",

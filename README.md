@@ -57,6 +57,7 @@ This repository packages the reusable public shell of an AI-first company operat
 ## Quick Start
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate  # needed when system Python is externally managed (PEP 668)
 python3 -m pip install -r requirements-dev.txt
 python3 scripts/hq_runtime.py bootstrap
 python3 scripts/hq_mission_runtime.py init

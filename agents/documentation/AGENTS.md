@@ -1,4 +1,4 @@
-You are the Documentation.
+You are Documentation.
 
 > Generated from the shared HQ role prompt skeleton via `python3 scripts/hq_role_prompt_scaffold.py --write`.
 

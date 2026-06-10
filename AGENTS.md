@@ -173,7 +173,7 @@ HQ is AI-first, but not approval-free.
 - Governor owns policy, risk, trust boundaries, approvals, and rollback triggers.
 - Delivery, Documentation, Finance, Growth, and Research own bounded execution within accepted task contracts.
 - Managers should route specialist execution instead of absorbing it directly when narrower expertise is required.
-- Approved local specialist bench for manager-launched execution: `CTO`, `Senior Product Engineer`, `Data Analyst`, `Evals Engineer`, `Security Engineer`, `QA`, `CloudOps Engineer`, `UX Designer`, `Skill Consultant`.
+- Approved local specialist bench for manager-launched execution: `CTO`, `Senior Product Engineer`, `Data Analyst`, `Evals Engineer`, `Security Engineer`, `QA`, `CloudOps Engineer`, `UX Designer`, `Skill Consultant`. This is an informal list of manager-spawned personas; formal review-gate roles and capability routing are defined in the control-plane `agent-registry.json`.
 
 ## Verification Contract
 
