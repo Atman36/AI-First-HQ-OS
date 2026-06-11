@@ -24,6 +24,8 @@ This repository packages the reusable public shell of an AI-first company operat
 
 - AI-first control plane for governed delegation
 - additive `Mission` / `Run` / `Step` / `Approval` state nucleus for durable local execution
+- append-only runtime event log with a schema-validated envelope: actor, correlation/causation ids, and privacy class for causal audit
+- optional per-run execution budgets (`--max-steps`, `--max-failed-steps`) that stop runaway step loops before they burn the session
 - deny-by-default permission model with a `can()` decision function and capability grants
 - pre-action approval gates with approval-as-continuation and RESUMED-state handling
 - byte-stable, secret-scrubbed run receipts for an audit trail
@@ -112,6 +114,8 @@ The same run also refreshes `.hq/state/memory-index.json` as a smaller startup c
 Use `spec` for large or ambiguous work. The spec is a private, task-scoped context packet under `.hq/specs/` so the next chat can read the narrow brief first instead of reloading broad bootstrap context. Use `handoff` to capture execution continuity, blockers, and next steps around that spec.
 
 `scripts/hq_runtime.py` remains the compatibility surface for bootstrap, spec, and handoff helpers. `scripts/hq_mission_runtime.py` is the additive runtime nucleus for first-class `Mission`, `Run`, `Step`, `Approval`, and `Artifact` records; it should grow before any deep rewrite of the older helper surface.
+
+Every runtime mutation appends an event to `.hq/state/mission-runtime/events/` using the `runtime-event` schema envelope (`actor`, `correlation_id`, `causation_id`, `privacy_class`), so a run's history can be read causally instead of as flat log lines. `start-run` accepts optional `--max-steps` and `--max-failed-steps` budgets; once a budget is exhausted, `checkpoint-step` refuses new steps with a `run_budget_exhausted` event, and the run must be finished, interrupted, or restarted with a higher budget.
 
 Tracked role prompts are generated from the shared skeleton. The generated prompts now include a short `Quick Start` plus split `Always Read` / `Read When Needed` paths, so update `scripts/hq_role_prompt_scaffold.py` and regenerate instead of hand-editing `agents/*/AGENTS.md`. After changing the scaffold, run `python3 scripts/hq_role_prompt_scaffold.py --write` and then `python3 scripts/hq_role_prompt_scaffold.py --check`.
 

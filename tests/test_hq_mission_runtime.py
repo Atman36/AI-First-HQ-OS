@@ -2150,6 +2150,166 @@ class HqMissionRuntimeTests(unittest.TestCase):
         run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
         self.assertEqual(run_state["status"], "running")
 
+    def read_runtime_events(self) -> list[dict]:
+        events = []
+        for path in sorted(self.module.RUNTIME_DIRS["events"].glob("**/*.jsonl")):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    events.append(json.loads(line))
+        return events
+
+    def test_runtime_events_carry_envelope_and_causation(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Envelope Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+        step = self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "planner",
+                    "--actor", "delivery",
+                    "--status", "completed",
+                    "--summary", "Planner checkpoint completed.",
+                ]
+            )
+        )
+
+        events = self.read_runtime_events()
+        self.assertTrue(events)
+        for event in events:
+            self.assertEqual(event["schema_version"], 1)
+            self.assertTrue(event["actor"])
+            self.assertIn("correlation_id", event)
+            self.assertIn("causation_id", event)
+            self.assertEqual(event["privacy_class"], "internal")
+
+        step_events = [
+            event for event in events
+            if event["event_type"] == "step_checkpointed" and event["entity_id"] == step["id"]
+        ]
+        policy_events = [
+            event for event in events
+            if event["event_type"] == "step_tool_policy_evaluated" and event["entity_id"] == step["id"]
+        ]
+        self.assertEqual(len(step_events), 1)
+        self.assertEqual(len(policy_events), 1)
+        self.assertEqual(step_events[0]["actor"], "delivery")
+        self.assertEqual(step_events[0]["correlation_id"], run["id"])
+        self.assertEqual(policy_events[0]["causation_id"], step_events[0]["id"])
+        self.assertEqual(policy_events[0]["correlation_id"], run["id"])
+
+    def test_run_budget_blocks_new_steps_after_exhaustion(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Budgeted Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id", mission["id"],
+                    "--actor", "delivery",
+                    "--max-steps", "1",
+                ]
+            )
+        )
+        run_state = json.loads(self.module.run_path(run["id"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_state["budgets"], {"max_steps": 1})
+
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "planner",
+                    "--actor", "delivery",
+                    "--status", "completed",
+                    "--summary", "First and only budgeted step.",
+                ]
+            )
+        )
+        with self.assertRaises(ValueError) as raised:
+            self.module.checkpoint_step(
+                self.module.build_parser().parse_args(
+                    [
+                        "checkpoint-step",
+                        "--run-id", run["id"],
+                        "--key", "executor",
+                        "--actor", "delivery",
+                        "--status", "completed",
+                        "--summary", "Step beyond the budget.",
+                    ]
+                )
+            )
+        self.assertIn("run budget exhausted (max_steps=1)", str(raised.exception))
+
+        events = self.read_runtime_events()
+        budget_events = [event for event in events if event["event_type"] == "run_budget_exhausted"]
+        self.assertEqual(len(budget_events), 1)
+        self.assertEqual(budget_events[0]["entity_id"], run["id"])
+        self.assertEqual(budget_events[0]["correlation_id"], run["id"])
+
+        # The budget blocks new steps only; the run itself can still be interrupted.
+        interrupted = self.module.interrupt_run(
+            self.module.build_parser().parse_args(
+                [
+                    "interrupt-run",
+                    "--run-id", run["id"],
+                    "--requested-by", "delivery",
+                    "--reason", "Budget exhausted; pausing for review.",
+                ]
+            )
+        )
+        self.assertEqual(interrupted["status"], "interrupted")
+
+    def test_run_budget_blocks_new_steps_after_failed_step_budget(self):
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(["create-mission", "--title", "Failure Budgeted Mission"])
+        )
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id", mission["id"],
+                    "--actor", "delivery",
+                    "--max-failed-steps", "1",
+                ]
+            )
+        )
+        self.module.checkpoint_step(
+            self.module.build_parser().parse_args(
+                [
+                    "checkpoint-step",
+                    "--run-id", run["id"],
+                    "--key", "api-call",
+                    "--actor", "delivery",
+                    "--status", "failed",
+                    "--error-type", "transient",
+                    "--summary", "Transient failure consuming the budget.",
+                ]
+            )
+        )
+        with self.assertRaises(ValueError) as raised:
+            self.module.checkpoint_step(
+                self.module.build_parser().parse_args(
+                    [
+                        "checkpoint-step",
+                        "--run-id", run["id"],
+                        "--key", "api-call",
+                        "--actor", "delivery",
+                        "--status", "failed",
+                        "--error-type", "transient",
+                        "--summary", "Retry beyond the failure budget.",
+                    ]
+                )
+            )
+        self.assertIn("run budget exhausted (max_failed_steps=1)", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

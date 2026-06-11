@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "created_at",
+    "event_type",
+    "entity_id",
+    "actor",
+    "correlation_id",
+    "causation_id",
+    "privacy_class",
+    "summary",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entity_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "causation_id": {
+      "type": "string"
+    },
+    "privacy_class": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "sensitive"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

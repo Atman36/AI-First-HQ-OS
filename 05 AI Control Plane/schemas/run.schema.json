@@ -185,6 +185,20 @@
     },
     "metadata": {
       "type": "object"
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_failed_steps": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   }
 }

@@ -62,6 +62,7 @@ ENTITY_SCHEMA_PATHS = {
     "artifact": CONTROL_PLANE_DIR / "artifact.schema.json",
 }
 TELEMETRY_SCHEMA_PATH = CONTROL_PLANE_DIR / "telemetry-event.schema.json"
+RUNTIME_EVENT_SCHEMA_PATH = CONTROL_PLANE_DIR / "runtime-event.schema.json"
 TRACE_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "trace-state.schema.json"
 APPROVAL_KEY_SCHEMA_PATH = CONTROL_PLANE_DIR / "approval-key.schema.json"
 VERIFICATION_STATE_SCHEMA_PATH = CONTROL_PLANE_DIR / "verification-state.schema.json"
@@ -77,6 +78,8 @@ ALLOWED_STEP_STATUSES = {
     "skipped",
 }
 ALLOWED_ERROR_TYPES = {"", "transient", "recoverable", "user_fixable", "unexpected"}
+ALLOWED_EVENT_PRIVACY_CLASSES = {"public", "internal", "sensitive"}
+ALLOWED_RUN_BUDGET_KEYS = {"max_steps", "max_failed_steps"}
 MAX_TRANSIENT_RETRIES = 2
 ALLOWED_APPROVAL_DECISIONS = {"approved", "rejected", "blocked"}
 ALLOWED_POLICY_ACTIONS = {"allow", "allow_with_review", "pause_for_founder_approval", "block"}
@@ -797,17 +800,33 @@ def record_event(
     entity_id: str,
     summary: str,
     payload: dict[str, Any] | None = None,
-) -> None:
+    actor: str = "",
+    correlation_id: str = "",
+    causation_id: str = "",
+    privacy_class: str = "internal",
+) -> dict[str, Any]:
+    if privacy_class not in ALLOWED_EVENT_PRIVACY_CLASSES:
+        raise ValueError(
+            "event privacy_class must be one of: "
+            + ", ".join(sorted(ALLOWED_EVENT_PRIVACY_CLASSES))
+        )
     created_at = utc_now()
     event = {
+        "schema_version": 1,
         "id": str(uuid.uuid4()),
         "created_at": created_at,
         "event_type": event_type,
         "entity_id": entity_id,
+        "actor": str(actor or "").strip() or "runtime",
+        "correlation_id": str(correlation_id or "").strip(),
+        "causation_id": str(causation_id or "").strip(),
+        "privacy_class": privacy_class,
         "summary": summary,
         "payload": payload or {},
     }
+    validate_payload_against_schema(event, RUNTIME_EVENT_SCHEMA_PATH, label="runtime_event")
     append_jsonl(event_file_for_timestamp(created_at), event)
+    return event
 
 
 def emit_runtime_telemetry(
@@ -973,6 +992,7 @@ def upgrade_entity_payload(payload: dict[str, Any], entity_type: str) -> dict[st
             snapshot_at=snapshot_at,
         )
     elif entity_type == "run":
+        upgraded["budgets"] = normalize_run_budgets(upgraded.get("budgets"))
         upgraded.setdefault("handoff_ids", [])
         upgraded.setdefault("latest_checkpoint_id", "")
         upgraded.setdefault("latest_checkpoint_path", "")
@@ -1127,6 +1147,8 @@ def create_thread_record(
         entity_id=payload["id"],
         summary=f"Created execution thread '{payload['title']}'.",
         payload={"owner": payload["owner"]},
+        actor=payload["owner"] or "runtime",
+        correlation_id=payload["id"],
     )
     emit_runtime_telemetry(
         event_type="thread_created",
@@ -1261,6 +1283,8 @@ def update_thread_context(
                 "handoff_path": handoff_path or "",
                 "checkpoint_path": checkpoint_path or "",
             },
+            actor=thread["owner"] or "runtime",
+            correlation_id=thread["id"],
         )
         emit_runtime_telemetry(
             event_type="thread_updated",
@@ -1322,6 +1346,8 @@ def create_mission(args: argparse.Namespace) -> dict[str, Any]:
             "source_task_id": payload["source_task_id"],
             "thread_id": payload["thread_id"],
         },
+        actor=payload["owner"] or payload["manager"] or "runtime",
+        correlation_id=payload["thread_id"],
     )
     emit_runtime_telemetry(
         event_type="mission_created",
@@ -1514,6 +1540,8 @@ def emit_run_lifecycle(
         entity_id=run["id"],
         summary=summary,
         payload={"mission_id": mission["id"], "actor": run["actor"], "thread_id": thread["id"]},
+        actor=run["actor"] or mission["owner"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type=event_type,
@@ -1653,6 +1681,12 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
     actor = str(args.actor or "").strip()
     if verification_stages and not actor:
         raise ValueError("verification stages require a run actor to set the return target")
+    budgets = normalize_run_budgets(
+        {
+            "max_steps": getattr(args, "max_steps", None) or 0,
+            "max_failed_steps": getattr(args, "max_failed_steps", None) or 0,
+        }
+    )
     run_status = "running"
     metadata = dict(args.metadata or {})
     if active_run is not None and active_run["status"] in ACTIVE_RUN_STATUSES:
@@ -1688,6 +1722,7 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
         "handoff_ids": [],
         "artifact_ids": [],
         "verification_stages": verification_stages,
+        "budgets": budgets,
         "checkpoint_count": 0,
         "latest_checkpoint_id": "",
         "latest_checkpoint_path": "",
@@ -1892,6 +1927,8 @@ def record_packet_step(
         entity_id=step_id,
         summary=f"Recorded {packet_kind} packet step for task '{task}'.",
         payload={"run_id": run["id"], "thread_id": run["thread_id"], "packet_path": packet_path},
+        actor=payload["actor"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="packet_step_recorded",
@@ -1971,6 +2008,44 @@ def dispatch_queued_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def normalize_run_budgets(payload: dict[str, Any] | None) -> dict[str, int]:
+    raw = payload or {}
+    if not isinstance(raw, dict):
+        raise ValueError("run budgets must be an object")
+    unknown_keys = set(raw) - ALLOWED_RUN_BUDGET_KEYS
+    if unknown_keys:
+        raise ValueError("unsupported run budget keys: " + ", ".join(sorted(unknown_keys)))
+    normalized: dict[str, int] = {}
+    for key in sorted(ALLOWED_RUN_BUDGET_KEYS):
+        value = raw.get(key)
+        if value in (None, "", 0):
+            continue
+        number = int(value)
+        if number < 1:
+            raise ValueError(f"run budget {key} must be a positive integer")
+        normalized[key] = number
+    return normalized
+
+
+def exhausted_run_budget(run: dict[str, Any]) -> str:
+    """Return the exhausted budget label, or "" when the run may take new steps."""
+    budgets = run.get("budgets") or {}
+    step_ids = run.get("step_ids", [])
+    max_steps = int(budgets.get("max_steps") or 0)
+    if max_steps and len(step_ids) >= max_steps:
+        return f"max_steps={max_steps}"
+    max_failed_steps = int(budgets.get("max_failed_steps") or 0)
+    if max_failed_steps:
+        failed = 0
+        for step_id in step_ids:
+            sp = step_path(step_id)
+            if sp.exists() and load_json(sp).get("status") == "failed":
+                failed += 1
+        if failed >= max_failed_steps:
+            return f"max_failed_steps={max_failed_steps}"
+    return ""
+
+
 def _count_transient_retries_for_key(run: dict[str, Any], step_key: str) -> int:
     """Count the number of consecutive transient-error retries for a step key."""
     count = 0
@@ -1998,6 +2073,43 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("error_type can only be set when status is 'failed'")
     run = require_file(run_path(args.run_id), "run", "run")
     mission = require_file(mission_path(run["mission_id"]), "mission", "mission")
+
+    # --- Run budget enforcement ---
+    exhausted_budget = exhausted_run_budget(run)
+    if exhausted_budget:
+        budget_actor = str(args.actor or "").strip() or run["actor"] or "runtime"
+        budget_summary = (
+            f"Run budget exhausted ({exhausted_budget}); refusing new step '{args.key.strip()}'."
+        )
+        record_event(
+            event_type="run_budget_exhausted",
+            entity_id=run["id"],
+            summary=budget_summary,
+            payload={
+                "thread_id": run["thread_id"],
+                "mission_id": run["mission_id"],
+                "step_key": args.key.strip(),
+                "budgets": run.get("budgets", {}),
+            },
+            actor=budget_actor,
+            correlation_id=run["id"],
+        )
+        emit_runtime_telemetry(
+            event_type="run_budget_exhausted",
+            status="blocked",
+            summary=budget_summary,
+            actor=budget_actor,
+            thread_id=run["thread_id"],
+            mission_id=mission["id"],
+            source_task_id=mission["source_task_id"],
+            workflow=mission["workflow"],
+            run_id=run["id"],
+            metadata={"entity_type": "run", "budgets": run.get("budgets", {})},
+        )
+        raise ValueError(
+            f"run budget exhausted ({exhausted_budget}); finish or interrupt run "
+            f"{run['id']}, or start a new run with a higher budget"
+        )
 
     # --- Transient retry logic ---
     retry_count = 0
@@ -2130,11 +2242,13 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
         trace_state=run["trace_state"],
     )
     refresh_resume_status(run["id"])
-    record_event(
+    step_event = record_event(
         event_type="step_checkpointed",
         entity_id=step_id,
         summary=f"Recorded step '{payload['key']}' with status '{payload['status']}'.",
         payload={"run_id": run["id"], "actor": payload["actor"], "thread_id": run["thread_id"]},
+        actor=payload["actor"] or run["actor"] or "runtime",
+        correlation_id=run["id"],
     )
     record_event(
         event_type="step_tool_policy_evaluated",
@@ -2147,6 +2261,9 @@ def checkpoint_step(args: argparse.Namespace) -> dict[str, Any]:
             "allowed_tool_classes": payload["allowed_tool_classes"],
             "approval_id": str(payload["policy_context"].get("approval_id") or "").strip(),
         },
+        actor=payload["actor"] or run["actor"] or "runtime",
+        correlation_id=run["id"],
+        causation_id=step_event["id"],
     )
     emit_runtime_telemetry(
         event_type="step_checkpointed",
@@ -2987,6 +3104,8 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
             "policy_action": args.policy_action,
             "thread_id": run["thread_id"],
         },
+        actor=payload["requested_by"] or run["actor"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="approval_requested",
@@ -3092,6 +3211,8 @@ def decide_approval(args: argparse.Namespace) -> dict[str, Any]:
         entity_id=approval["id"],
         summary=f"Approval decision '{args.decision}' recorded.",
         payload={"run_id": run["id"], "step_id": step["id"], "decided_by": approval["decided_by"]},
+        actor=approval["decided_by"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="approval_decided",
@@ -3225,6 +3346,8 @@ def create_handoff_record(
         entity_id=handoff_id,
         summary=f"Recorded handoff for task '{payload['task']}'.",
         payload={"thread_id": thread_id, "run_id": run_id, "handoff_path": handoff_file},
+        actor=payload["owner"] or "runtime",
+        correlation_id=run_id or thread_id,
     )
     emit_runtime_telemetry(
         event_type="handoff_recorded",
@@ -3317,6 +3440,8 @@ def attach_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "path": payload["path"],
             "thread_id": run["thread_id"],
         },
+        actor=step["actor"] or run["actor"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="artifact_attached",
@@ -3574,6 +3699,8 @@ def finish_run(args: argparse.Namespace) -> dict[str, Any]:
         entity_id=run["id"],
         summary=f"Finished run with status '{args.status}'.",
         payload={"mission_id": mission["id"], "thread_id": thread["id"]},
+        actor=run["actor"] or mission["owner"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="run_finished",
@@ -3706,6 +3833,8 @@ def interrupt_run(args: argparse.Namespace) -> dict[str, Any]:
             "thread_id": thread["id"],
             "requested_by": interruption_state["requested_by"],
         },
+        actor=interruption_state["requested_by"] or run["actor"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="run_interrupted",
@@ -3847,6 +3976,8 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
             "thread_id": thread["id"],
             "resumed_by": str(args.resumed_by or "").strip(),
         },
+        actor=str(args.resumed_by or "").strip() or run["actor"] or "runtime",
+        correlation_id=run["id"],
     )
     emit_runtime_telemetry(
         event_type="run_resumed",
@@ -4148,6 +4279,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Repeat for each blocked tool class attached to the execution context.",
+    )
+    start_run_parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=0,
+        help="Optional run budget: refuse new steps once this many steps exist.",
+    )
+    start_run_parser.add_argument(
+        "--max-failed-steps",
+        type=int,
+        default=0,
+        help="Optional run budget: refuse new steps once this many steps failed.",
     )
     start_run_parser.add_argument(
         "--metadata",
