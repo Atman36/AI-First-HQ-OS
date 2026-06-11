@@ -1755,6 +1755,158 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
     return payload
 
 
+def ensure_packet_runtime(
+    *,
+    thread_id: str,
+    task: str,
+    owner: str = "",
+    goal: str = "",
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Ensure a thread has first-class Mission/Run state for packet writes."""
+
+    thread = require_file(thread_path(thread_id), "thread", "thread")
+    mission_id = str(thread.get("active_mission_id") or "").strip()
+    if mission_id:
+        mission = require_file(mission_path(mission_id), "mission", "mission")
+    else:
+        mission = create_mission(
+            argparse.Namespace(
+                title=task,
+                goal=goal or task,
+                workflow="task-packet-runtime",
+                project="",
+                owner=str(owner or "").strip(),
+                manager="",
+                accepts_result=str(owner or "").strip(),
+                source_task_id=slugify(task),
+                thread_id=thread_id,
+                thread_title="",
+                metadata={"origin": "packet_runtime"},
+            )
+        )
+        thread = require_file(thread_path(thread_id), "thread", "thread")
+
+    run_id = str(thread.get("active_run_id") or "").strip()
+    run: dict[str, Any] | None = None
+    if run_id:
+        run = require_file(run_path(run_id), "run", "run")
+        if run["status"] not in ACTIVE_RUN_STATUSES:
+            run = None
+
+    if run is None:
+        run = start_run(
+            argparse.Namespace(
+                mission_id=mission["id"],
+                actor=str(owner or mission.get("owner") or "runtime").strip(),
+                loop="spec/handoff packet runtime",
+                if_busy="queue",
+                session_id="",
+                work_dir="",
+                runtime_home="",
+                runtime_home_mode="scoped",
+                parent_session_id="",
+                blocked_tool_class=[],
+                verification_stage=[],
+                metadata={"origin": "packet_runtime"},
+            )
+        )
+        thread = require_file(thread_path(thread_id), "thread", "thread")
+
+    return thread, mission, run
+
+
+def record_packet_step(
+    *,
+    thread_id: str,
+    task: str,
+    packet_kind: str,
+    packet_path: str,
+    owner: str = "",
+    goal: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    _thread, _mission, run = ensure_packet_runtime(
+        thread_id=thread_id,
+        task=task,
+        owner=owner,
+        goal=goal,
+    )
+    step_key = f"{packet_kind}_packet"
+    packet_metadata = {
+        "origin": "packet_runtime",
+        f"{packet_kind}_path": packet_path,
+        **(metadata or {}),
+    }
+    created_at = utc_now()
+    step_id = make_id("step", f"{step_key}-{owner or 'runtime'}")
+    payload = {
+        "schema_version": 1,
+        "entity_type": "step",
+        "id": step_id,
+        "thread_id": run["thread_id"],
+        "run_id": run["id"],
+        "mission_id": run["mission_id"],
+        "key": step_key,
+        "actor": str(owner or run.get("actor") or "runtime").strip(),
+        "status": "completed",
+        "error_type": "",
+        "retry_count": 0,
+        "allowed_tool_classes": [],
+        "policy_action": "allow",
+        "policy_context": {
+            "origin": "packet_runtime",
+            "summary": f"Recorded {packet_kind} packet for task '{task}'.",
+        },
+        "summary": f"Recorded {packet_kind} packet for task '{task}'.",
+        "evidence": [packet_path],
+        "metadata": packet_metadata,
+        "created_at": created_at,
+        "updated_at": created_at,
+        "completed_at": created_at,
+    }
+    write_entity(step_path(step_id), payload)
+    run = require_file(run_path(run["id"]), "run", "run")
+    run["step_ids"] = list(dict.fromkeys([*run.get("step_ids", []), step_id]))
+    run["current_step_id"] = step_id
+    run["updated_at"] = created_at
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["trace_id"] = run["id"]
+    trace_state["current_step_id"] = step_id
+    trace_state["snapshot_at"] = created_at
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=run["thread_id"],
+        default_trace_id=run["id"],
+        snapshot_at=created_at,
+    )
+    write_entity(run_path(run["id"]), run)
+    update_thread_context(
+        run["thread_id"],
+        mission_id=run["mission_id"],
+        run_id=run["id"],
+        status="active",
+        trace_state=run["trace_state"],
+    )
+    record_event(
+        event_type="packet_step_recorded",
+        entity_id=step_id,
+        summary=f"Recorded {packet_kind} packet step for task '{task}'.",
+        payload={"run_id": run["id"], "thread_id": run["thread_id"], "packet_path": packet_path},
+    )
+    emit_runtime_telemetry(
+        event_type="packet_step_recorded",
+        status="completed",
+        summary=f"Recorded {packet_kind} packet step for task '{task}'.",
+        actor=payload["actor"] or "runtime",
+        thread_id=run["thread_id"],
+        mission_id=run["mission_id"],
+        run_id=run["id"],
+        step_id=step_id,
+        metadata={"entity_type": "step", "step_key": step_key, "packet_path": packet_path},
+    )
+    return payload
+
+
 def start_run_command(args: argparse.Namespace) -> int:
     ensure_runtime()
     try:
@@ -2775,6 +2927,13 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         if isinstance(getattr(args, "policy_context", None), dict)
         else {}
     )
+    metadata = dict(args.metadata or {})
+    approval_class = str(getattr(args, "approval_class", None) or "").strip()
+    expires_at = str(getattr(args, "expires_at", None) or "").strip()
+    if approval_class:
+        metadata["approval_class"] = approval_class
+    if expires_at:
+        metadata["expires_at"] = expires_at
     payload = {
         "schema_version": 1,
         "entity_type": "approval",
@@ -2797,7 +2956,7 @@ def request_approval(args: argparse.Namespace) -> dict[str, Any]:
         "updated_at": created_at,
         "decided_at": "",
         "decided_by": "",
-        "metadata": args.metadata or {},
+        "metadata": metadata,
     }
     write_entity(approval_path(approval_id), payload)
     run["approval_ids"] = list(dict.fromkeys([*run.get("approval_ids", []), approval_id]))
@@ -2981,9 +3140,14 @@ def create_handoff_record(
 ) -> dict[str, Any]:
     if status not in ALLOWED_HANDOFF_STATUSES:
         raise ValueError("handoff status must be one of: " + ", ".join(sorted(ALLOWED_HANDOFF_STATUSES)))
-    thread = require_file(thread_path(thread_id), "thread", "thread")
-    mission_id = thread.get("active_mission_id", "")
-    run_id = thread.get("active_run_id", "")
+    thread, mission, active_run = ensure_packet_runtime(
+        thread_id=thread_id,
+        task=task,
+        owner=owner,
+        goal=f"Handoff packet for {task}",
+    )
+    mission_id = mission["id"]
+    run_id = active_run["id"]
     created_at = utc_now()
     handoff_id = make_id("handoff", f"{task}-{session}")
     payload = {
@@ -3015,39 +3179,24 @@ def create_handoff_record(
     }
     payload["metadata"]["execution_context"] = dict(thread.get("execution_context", {}))
     write_entity(handoff_path(handoff_id), payload)
-    if run_id:
-        run = require_file(run_path(run_id), "run", "run")
-        run["handoff_ids"] = list(dict.fromkeys([*run.get("handoff_ids", []), handoff_id]))
-        trace_state = dict(run.get("trace_state", {}))
-        trace_state["handoff_id"] = handoff_id
-        trace_state["handoff_path"] = handoff_file
-        trace_state["resume_packet_path"] = handoff_file
-        trace_state["session_id"] = run["execution_context"]["session_id"]
-        trace_state["work_dir"] = run["execution_context"]["work_dir"]
-        trace_state["snapshot_at"] = created_at
-        run["trace_state"] = normalize_trace_state(
-            trace_state,
-            grouping_id=thread_id,
-            default_trace_id=run["id"],
-            snapshot_at=created_at,
-        )
-        run["updated_at"] = created_at
-        write_entity(run_path(run["id"]), run)
-        trace_state_payload = run["trace_state"]
-    else:
-        trace_state_payload = dict(thread.get("trace_state", {}))
-        trace_state_payload["handoff_id"] = handoff_id
-        trace_state_payload["handoff_path"] = handoff_file
-        trace_state_payload["resume_packet_path"] = handoff_file
-        trace_state_payload["session_id"] = thread["execution_context"]["session_id"]
-        trace_state_payload["work_dir"] = thread["execution_context"]["work_dir"]
-        trace_state_payload["snapshot_at"] = created_at
-        trace_state_payload = normalize_trace_state(
-            trace_state_payload,
-            grouping_id=thread_id,
-            default_trace_id=str(trace_state_payload.get("trace_id") or ""),
-            snapshot_at=created_at,
-        )
+    run = require_file(run_path(run_id), "run", "run")
+    run["handoff_ids"] = list(dict.fromkeys([*run.get("handoff_ids", []), handoff_id]))
+    trace_state = dict(run.get("trace_state", {}))
+    trace_state["handoff_id"] = handoff_id
+    trace_state["handoff_path"] = handoff_file
+    trace_state["resume_packet_path"] = handoff_file
+    trace_state["session_id"] = run["execution_context"]["session_id"]
+    trace_state["work_dir"] = run["execution_context"]["work_dir"]
+    trace_state["snapshot_at"] = created_at
+    run["trace_state"] = normalize_trace_state(
+        trace_state,
+        grouping_id=thread_id,
+        default_trace_id=run["id"],
+        snapshot_at=created_at,
+    )
+    run["updated_at"] = created_at
+    write_entity(run_path(run["id"]), run)
+    trace_state_payload = run["trace_state"]
     update_thread_context(
         thread_id,
         mission_id=mission_id,
@@ -3059,6 +3208,18 @@ def create_handoff_record(
         execution_context=dict(thread.get("execution_context", {})),
         trace_state=trace_state_payload,
     )
+    step = record_packet_step(
+        thread_id=thread_id,
+        task=task,
+        packet_kind="handoff",
+        packet_path=handoff_file,
+        owner=owner,
+        metadata={"handoff_id": handoff_id},
+    )
+    payload = require_file(handoff_path(handoff_id), "handoff", "handoff")
+    payload["metadata"] = dict(payload.get("metadata", {}))
+    payload["metadata"]["step_id"] = step["id"]
+    write_entity(handoff_path(handoff_id), payload)
     record_event(
         event_type="handoff_recorded",
         entity_id=handoff_id,
@@ -4116,6 +4277,14 @@ def build_parser() -> argparse.ArgumentParser:
     request_approval_parser.add_argument(
         "--approval-name",
         help="Stable target name inside the namespace. Defaults to the step key.",
+    )
+    request_approval_parser.add_argument(
+        "--approval-class",
+        help="Permission approval class covered by this approval record.",
+    )
+    request_approval_parser.add_argument(
+        "--expires-at",
+        help="UTC expiry timestamp for permission checks, e.g. 2026-04-20T11:00:00Z.",
     )
     request_approval_parser.add_argument(
         "--approval-call-id",

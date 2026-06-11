@@ -478,6 +478,10 @@ class HqMissionRuntimeTests(unittest.TestCase):
                     "governor",
                     "--policy-action",
                     "pause_for_founder_approval",
+                    "--approval-class",
+                    "founder_only",
+                    "--expires-at",
+                    "2026-04-20T11:00:00Z",
                 ]
             )
         )
@@ -486,6 +490,8 @@ class HqMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(run_state["approval_ids"], [approval["id"]])
         self.assertEqual(approval["approval_key"]["namespace"], "hq.runtime")
         self.assertEqual(approval["approval_key"]["name"], "policy_gate")
+        self.assertEqual(approval["metadata"]["approval_class"], "founder_only")
+        self.assertEqual(approval["metadata"]["expires_at"], "2026-04-20T11:00:00Z")
 
         decided = self.module.decide_approval(
             self.module.build_parser().parse_args(

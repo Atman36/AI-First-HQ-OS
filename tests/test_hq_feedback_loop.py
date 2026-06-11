@@ -292,6 +292,25 @@ class HqFeedbackLoopTests(unittest.TestCase):
         self._write(status="technical_error", created_at="2026-04-20T11:00:00Z")
         self.assertTrue(self.module.build_review_signal(self.temp_root / ".hq")["review_due"])
 
+    def test_task_review_marker_does_not_hide_other_task_receipts(self):
+        self._write(status="checks_failed", task_id="task-1", created_at="2026-04-20T09:00:00Z")
+        self._write(status="done", task_id="task-2", created_at="2026-04-20T10:00:00Z")
+
+        self.module.mark_reviewed(self.temp_root / ".hq", task_ids={"task-2"})
+
+        task_1_signal = self.module.build_review_signal(
+            self.temp_root / ".hq",
+            task_ids={"task-1"},
+        )
+        task_2_signal = self.module.build_review_signal(
+            self.temp_root / ".hq",
+            task_ids={"task-2"},
+        )
+
+        self.assertTrue(task_1_signal["review_due"])
+        self.assertEqual(task_1_signal["adverse_since_review"], 1)
+        self.assertFalse(task_2_signal["review_due"])
+
     def test_invalid_metric_direction_rejected(self):
         with self.assertRaises(ValueError):
             self.module.build_iteration_payload(

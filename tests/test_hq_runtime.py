@@ -1090,11 +1090,31 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         self.assertEqual(manifest["thread_id"], thread["id"])
         self.assertEqual(manifest["read_first"], ["scripts/hq_runtime.py"])
         self.assertEqual(manifest["primary_file"], "scripts/hq_runtime.py")
+        self.assertTrue(manifest["mission_id"])
+        self.assertTrue(manifest["run_id"])
+        self.assertTrue(manifest["step_id"])
         thread_state = json.loads(
             self.module.hq_mission_runtime.thread_path(thread["id"]).read_text(encoding="utf-8")
         )
         self.assertEqual(thread_state["latest_spec_path"], ".hq/specs/launch-scheduler-hardening/LATEST.md")
         self.assertEqual(thread_state["resume_packet_path"], ".hq/specs/launch-scheduler-hardening/LATEST.md")
+        self.assertEqual(thread_state["active_mission_id"], manifest["mission_id"])
+        self.assertEqual(thread_state["active_run_id"], manifest["run_id"])
+        run_state = json.loads(
+            self.module.hq_mission_runtime.run_path(manifest["run_id"]).read_text(encoding="utf-8")
+        )
+        self.assertIn(manifest["step_id"], run_state["step_ids"])
+        step_state = json.loads(
+            self.module.hq_mission_runtime.step_path(manifest["step_id"]).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(step_state["key"], "spec_packet")
+        self.assertEqual(step_state["status"], "completed")
+        self.assertEqual(
+            step_state["metadata"]["spec_path"],
+            ".hq/specs/launch-scheduler-hardening/LATEST.md",
+        )
 
     def test_handoff_command_records_spec_file_in_read_first(self):
         thread = self.module.hq_mission_runtime.create_thread_record(
@@ -1147,6 +1167,9 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         )
         self.assertEqual(manifest["thread_id"], thread["id"])
         self.assertTrue(manifest["handoff_id"])
+        self.assertTrue(manifest["mission_id"])
+        self.assertTrue(manifest["run_id"])
+        self.assertTrue(manifest["step_id"])
         thread_state = json.loads(
             self.module.hq_mission_runtime.thread_path(thread["id"]).read_text(encoding="utf-8")
         )
@@ -1166,6 +1189,20 @@ class HqRuntimeReflectionTests(unittest.TestCase):
         )
         self.assertEqual(handoff_state["handoff_path"], ".hq/handoffs/launch-scheduler-hardening/LATEST.md")
         self.assertEqual(handoff_state["thread_id"], thread["id"])
+        self.assertEqual(handoff_state["mission_id"], manifest["mission_id"])
+        self.assertEqual(handoff_state["run_id"], manifest["run_id"])
+        run_state = json.loads(
+            self.module.hq_mission_runtime.run_path(manifest["run_id"]).read_text(encoding="utf-8")
+        )
+        self.assertIn(manifest["step_id"], run_state["step_ids"])
+        step_state = json.loads(
+            self.module.hq_mission_runtime.step_path(manifest["step_id"]).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(step_state["key"], "handoff_packet")
+        self.assertEqual(step_state["status"], "completed")
+        self.assertEqual(step_state["metadata"]["handoff_id"], manifest["handoff_id"])
 
 
 if __name__ == "__main__":

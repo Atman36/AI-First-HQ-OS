@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -23,6 +24,8 @@ REPO_ROOT = Path(
 CONTROL_PLANE_DIR = REPO_ROOT / "05 AI Control Plane"
 PERMISSION_GRANTS_PATH = CONTROL_PLANE_DIR / "permission-grants.json"
 AGENT_REGISTRY_PATH = CONTROL_PLANE_DIR / "agent-registry.json"
+PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
+MISSION_APPROVALS_DIR = PRIVATE_ROOT / "state" / "mission-runtime" / "approvals"
 
 WILDCARD = "*"
 
@@ -196,11 +199,133 @@ def _grant_rank(grant: dict, agent_id: str, scope: Scope) -> tuple[int, int] | N
     return (direct, grant_scope.depth)
 
 
-def _approval_satisfied(approval_class: str, approvals: Iterable[str] | None) -> bool:
+def _parse_instant(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _load_approval_record(
+    candidate: Any,
+    *,
+    approval_lookup_dir: Path | None,
+) -> dict[str, Any] | None:
+    if isinstance(candidate, dict):
+        return candidate
+    if not isinstance(candidate, str):
+        return None
+    text = candidate.strip()
+    if not text:
+        return None
+
+    path: Path | None = None
+    candidate_path = Path(text)
+    if candidate_path.is_absolute() and candidate_path.is_file():
+        path = candidate_path
+    elif (REPO_ROOT / candidate_path).is_file():
+        path = REPO_ROOT / candidate_path
+    else:
+        lookup_dir = approval_lookup_dir or MISSION_APPROVALS_DIR
+        id_path = lookup_dir / f"{text}.json"
+        if id_path.is_file():
+            path = id_path
+
+    if path is None:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if path.name == f"{text}.json" and str(payload.get("id") or "").strip() != text:
+        return None
+    return payload
+
+
+def _approval_record_class(record: dict[str, Any]) -> str:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    for key in ("approval_class", "class"):
+        value = str(metadata.get(key) or "").strip()
+        if value:
+            return value
+    policy_context = (
+        record.get("policy_context") if isinstance(record.get("policy_context"), dict) else {}
+    )
+    value = str(policy_context.get("approval_class") or "").strip()
+    if value:
+        return value
+    approval_key = record.get("approval_key") if isinstance(record.get("approval_key"), dict) else {}
+    key_metadata = (
+        approval_key.get("metadata") if isinstance(approval_key.get("metadata"), dict) else {}
+    )
+    value = str(key_metadata.get("approval_class") or "").strip()
+    if value:
+        return value
+    return str(approval_key.get("name") or "").strip()
+
+
+def _approval_record_expires_at(record: dict[str, Any]) -> datetime | None:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    policy_context = (
+        record.get("policy_context") if isinstance(record.get("policy_context"), dict) else {}
+    )
+    return _parse_instant(metadata.get("expires_at") or policy_context.get("expires_at"))
+
+
+def _approval_record_satisfies(
+    record: dict[str, Any],
+    *,
+    approval_class: str,
+    now: datetime,
+) -> bool:
+    approval_id = str(record.get("id") or "").strip()
+    if not approval_id:
+        return False
+    if str(record.get("status") or "").strip() != "decided":
+        return False
+    if str(record.get("decision") or "").strip() != "approved":
+        return False
+    if _approval_record_class(record) != approval_class:
+        return False
+    expires_at = _approval_record_expires_at(record)
+    if expires_at is None:
+        return False
+    return expires_at > now
+
+
+def _approval_satisfied(
+    approval_class: str,
+    approvals: Iterable[Any] | None,
+    *,
+    now: str | datetime | None = None,
+    approval_lookup_dir: Path | None = None,
+) -> bool:
     if approval_class in AUTO_SATISFIED_APPROVAL_CLASSES:
         return True
-    granted = set(approvals or ())
-    return approval_class in granted
+    now_value = _parse_instant(now) if now is not None else datetime.now(timezone.utc)
+    if now_value is None:
+        return False
+    for candidate in approvals or ():
+        record = _load_approval_record(candidate, approval_lookup_dir=approval_lookup_dir)
+        if record is None:
+            continue
+        if _approval_record_satisfies(record, approval_class=approval_class, now=now_value):
+            return True
+    return False
 
 
 def can(
@@ -210,7 +335,9 @@ def can(
     *,
     model: PermissionModel,
     task_scope: str | None = None,
-    approvals: Iterable[str] | None = None,
+    approvals: Iterable[Any] | None = None,
+    approval_lookup_dir: Path | None = None,
+    now: str | datetime | None = None,
 ) -> Decision:
     """Evaluate an authorization request deterministically.
 
@@ -280,7 +407,12 @@ def can(
         return Decision("deny", "no_matching_grant", None)
 
     approval_class = str(best_grant.get("approval_class", ""))
-    if not _approval_satisfied(approval_class, approvals):
+    if not _approval_satisfied(
+        approval_class,
+        approvals,
+        approval_lookup_dir=approval_lookup_dir,
+        now=now,
+    ):
         return Decision("deny", "unsatisfied_approval", best_grant)
 
     return Decision("allow", "allow", best_grant)
@@ -480,7 +612,7 @@ def _check_command(args: argparse.Namespace) -> int:
         scope = args.scope[0]
     else:
         scope = list(args.scope)
-    approvals = list(args.approval or [])
+    approvals = list(args.approval or []) + list(args.approval_id or [])
     decision = can(
         args.agent,
         args.action,
@@ -488,6 +620,7 @@ def _check_command(args: argparse.Namespace) -> int:
         model=model,
         task_scope=args.task_scope,
         approvals=approvals,
+        approval_lookup_dir=Path(args.approval_dir).resolve() if args.approval_dir else None,
     )
     print(json.dumps(decision.as_dict(), ensure_ascii=False, indent=2))
     return 0 if decision.decision == "allow" else 1
@@ -510,7 +643,16 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument(
         "--approval",
         action="append",
-        help="Approval class explicitly satisfied (repeatable).",
+        help="Approval record id or JSON file path to verify (repeatable).",
+    )
+    check.add_argument(
+        "--approval-id",
+        action="append",
+        help="Approval record id to verify (repeatable).",
+    )
+    check.add_argument(
+        "--approval-dir",
+        help="Directory containing approval JSON records. Defaults to mission runtime approvals.",
     )
     check.set_defaults(func=_check_command)
     return parser

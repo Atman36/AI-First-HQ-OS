@@ -333,23 +333,44 @@ def review_cadence_batch_size() -> int:
     return max(1, value)
 
 
-def review_marker_path(private_root: Path = PRIVATE_ROOT) -> Path:
+def marker_task_key(task_id: str) -> str:
+    text = normalize_text(task_id)
+    safe = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in text)
+    return safe.strip("-_") or "task"
+
+
+def review_marker_path(private_root: Path = PRIVATE_ROOT, *, task_id: str = "") -> Path:
+    if task_id:
+        return private_root / "state" / f"feedback-review-marker.{marker_task_key(task_id)}.json"
     return private_root / "state" / "feedback-review-marker.json"
 
 
-def load_review_marker(private_root: Path = PRIVATE_ROOT) -> dict[str, Any]:
-    path = review_marker_path(private_root)
+def marker_task_id(task_ids: set[str] | None) -> str:
+    if task_ids is None:
+        return ""
+    normalized = sorted(normalize_text(item) for item in task_ids if normalize_text(item))
+    return normalized[0] if len(normalized) == 1 else ""
+
+
+def load_review_marker(
+    private_root: Path = PRIVATE_ROOT,
+    *,
+    task_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    task_id = marker_task_id(task_ids)
+    path = review_marker_path(private_root, task_id=task_id)
     if not path.exists():
-        return {"last_reviewed_created_at": "", "last_reviewed_id": ""}
+        return {"last_reviewed_created_at": "", "last_reviewed_id": "", "task_id": task_id}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"last_reviewed_created_at": "", "last_reviewed_id": ""}
+        return {"last_reviewed_created_at": "", "last_reviewed_id": "", "task_id": task_id}
     if not isinstance(payload, dict):
-        return {"last_reviewed_created_at": "", "last_reviewed_id": ""}
+        return {"last_reviewed_created_at": "", "last_reviewed_id": "", "task_id": task_id}
     return {
         "last_reviewed_created_at": normalize_text(payload.get("last_reviewed_created_at")),
         "last_reviewed_id": normalize_text(payload.get("last_reviewed_id")),
+        "task_id": normalize_text(payload.get("task_id")) or task_id,
     }
 
 
@@ -409,22 +430,28 @@ def build_review_signal(
     return evaluate_review_signal(
         records,
         batch_size=review_cadence_batch_size(),
-        marker=load_review_marker(private_root),
+        marker=load_review_marker(private_root, task_ids=task_ids),
     )
 
 
-def mark_reviewed(private_root: Path = PRIVATE_ROOT) -> dict[str, Any]:
+def mark_reviewed(
+    private_root: Path = PRIVATE_ROOT,
+    *,
+    task_ids: set[str] | None = None,
+) -> dict[str, Any]:
     """Advance the review marker to the latest receipt (resets the cadence)."""
-    records = load_iterations(private_root)
+    records = load_iterations(private_root, task_ids=task_ids)
     chrono = sorted(records, key=lambda r: (r.get("created_at") or "", r.get("id") or ""))
     latest = chrono[-1] if chrono else None
+    task_id = marker_task_id(task_ids)
     marker = {
         "last_reviewed_created_at": latest["created_at"] if latest else "",
         "last_reviewed_id": latest["id"] if latest else "",
+        "task_id": task_id,
         "reviewed_at": utc_now(),
         "reviewed_through_count": len(chrono),
     }
-    path = review_marker_path(private_root)
+    path = review_marker_path(private_root, task_id=task_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(marker, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return marker
@@ -519,7 +546,8 @@ def review_status_command(args: argparse.Namespace) -> int:
 
 
 def mark_reviewed_command(args: argparse.Namespace) -> int:
-    marker = mark_reviewed(PRIVATE_ROOT)
+    task_ids = {args.task_id} if args.task_id else None
+    marker = mark_reviewed(PRIVATE_ROOT, task_ids=task_ids)
     print(json.dumps(marker, ensure_ascii=False, indent=2))
     return 0
 
@@ -591,6 +619,7 @@ def build_parser() -> argparse.ArgumentParser:
     mark_reviewed_parser = subparsers.add_parser(
         "mark-reviewed", help="Advance the review marker to the latest receipt (resets cadence)."
     )
+    mark_reviewed_parser.add_argument("--task-id", default="")
     mark_reviewed_parser.set_defaults(func=mark_reviewed_command)
     return parser
 

@@ -839,6 +839,25 @@ def spec_command(args: argparse.Namespace) -> int:
 
     atomic_write_text(spec_path, markdown)
     atomic_write_text(latest_path, markdown)
+    latest_rel = latest_path.relative_to(REPO_ROOT).as_posix()
+    spec_step = None
+    if args.thread_id:
+        try:
+            spec_step = hq_mission_runtime.record_packet_step(
+                thread_id=args.thread_id,
+                task=args.task,
+                packet_kind="spec",
+                packet_path=latest_rel,
+                owner=args.owner or "",
+                goal=args.goal or args.task,
+                metadata={
+                    "primary_file": args.primary_file or "",
+                    "status": args.status,
+                },
+            )
+        except (ValueError, RuntimeError) as exc:
+            print(f"error={exc}")
+            return 2
     write_json(
         manifest_path,
         {
@@ -846,10 +865,13 @@ def spec_command(args: argparse.Namespace) -> int:
             "task_slug": task_slug,
             "session": args.session,
             "thread_id": args.thread_id or "",
+            "mission_id": spec_step["mission_id"] if spec_step else "",
+            "run_id": spec_step["run_id"] if spec_step else "",
+            "step_id": spec_step["id"] if spec_step else "",
             "owner": args.owner or "",
             "status": args.status,
             "updated_at": updated_at,
-            "latest_file": latest_path.relative_to(REPO_ROOT).as_posix(),
+            "latest_file": latest_rel,
             "session_file": spec_path.relative_to(REPO_ROOT).as_posix(),
             "goal": args.goal or args.task,
             "primary_file": args.primary_file or "",
@@ -922,6 +944,7 @@ def handoff_command(args: argparse.Namespace) -> int:
 
     atomic_write_text(handoff_path, markdown)
     atomic_write_text(latest_path, markdown)
+    latest_rel = latest_path.relative_to(REPO_ROOT).as_posix()
     read_first = list(dict.fromkeys(([args.spec_file] if args.spec_file else []) + args.read_first))
     handoff_record = None
     if args.thread_id:
@@ -930,7 +953,7 @@ def handoff_command(args: argparse.Namespace) -> int:
                 thread_id=args.thread_id,
                 task=args.task,
                 session=args.session,
-                handoff_file=latest_path.relative_to(REPO_ROOT).as_posix(),
+                handoff_file=latest_rel,
                 owner=args.owner or "",
                 status=args.status,
                 accepting_role=args.accepting_role or "",
@@ -955,10 +978,17 @@ def handoff_command(args: argparse.Namespace) -> int:
             "task_slug": task_slug,
             "session": args.session,
             "thread_id": args.thread_id or "",
+            "mission_id": handoff_record["mission_id"] if handoff_record else "",
+            "run_id": handoff_record["run_id"] if handoff_record else "",
+            "step_id": (
+                str(handoff_record.get("metadata", {}).get("step_id") or "")
+                if handoff_record
+                else ""
+            ),
             "owner": args.owner or "",
             "status": args.status,
             "updated_at": updated_at,
-            "latest_file": latest_path.relative_to(REPO_ROOT).as_posix(),
+            "latest_file": latest_rel,
             "session_file": handoff_path.relative_to(REPO_ROOT).as_posix(),
             "handoff_id": handoff_record["id"] if handoff_record else "",
             "continue_from": args.continue_from or "",

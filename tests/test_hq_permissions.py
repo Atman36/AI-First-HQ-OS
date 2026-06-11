@@ -4,6 +4,7 @@ import importlib.util
 import random
 import string
 import unittest
+import tempfile
 from pathlib import Path
 
 
@@ -22,6 +23,33 @@ def load_module():
 
 
 hq = load_module()
+
+
+def approval_record(
+    *,
+    approval_id="approval-1",
+    approval_class="founder_only",
+    status="decided",
+    decision="approved",
+    expires_at="2026-04-20T11:00:00Z",
+):
+    return {
+        "id": approval_id,
+        "status": status,
+        "decision": decision,
+        "approval_key": {
+            "kind": "permission",
+            "namespace": "hq.permissions",
+            "name": approval_class,
+            "call_id": "",
+            "action": ["approve"],
+            "metadata": {},
+        },
+        "metadata": {
+            "approval_class": approval_class,
+            "expires_at": expires_at,
+        },
+    }
 
 
 def build_model(*, grants=None, denies=None, role_ids=None, agent_role_map=None):
@@ -128,7 +156,13 @@ class ReasonCodeTableTests(unittest.TestCase):
             "review_policy_change",
             "policy:autonomy/tiers",
             model=self.model,
-            approvals=["required_review"],
+            approvals=[
+                approval_record(
+                    approval_id="approval-required-review",
+                    approval_class="required_review",
+                )
+            ],
+            now="2026-04-20T10:00:00Z",
         )
         self.assertEqual((d.decision, d.reason_code), ("allow", "allow"))
 
@@ -147,7 +181,8 @@ class ReasonCodeTableTests(unittest.TestCase):
             "approve_send_or_publish",
             "external:buyer-email",
             model=self.model,
-            approvals=["founder_only"],
+            approvals=[approval_record()],
+            now="2026-04-20T10:00:00Z",
         )
         self.assertEqual(d.decision, "allow")
 
@@ -299,7 +334,8 @@ class ScopeBoundaryTests(unittest.TestCase):
             "policy:autonomy",
             model=self.model,
             task_scope="policy:autonomy/tiers",
-            approvals=["required_review"],
+            approvals=[approval_record(approval_class="required_review")],
+            now="2026-04-20T10:00:00Z",
         )
         self.assertEqual((d.decision, d.reason_code), ("deny", "too_broad_scope"))
 
@@ -310,7 +346,8 @@ class ScopeBoundaryTests(unittest.TestCase):
             "policy:autonomy/tiers",
             model=self.model,
             task_scope="policy:autonomy",
-            approvals=["required_review"],
+            approvals=[approval_record(approval_class="required_review")],
+            now="2026-04-20T10:00:00Z",
         )
         self.assertEqual(d.decision, "allow")
 
@@ -336,9 +373,80 @@ class InheritedForbiddenApprovalTests(unittest.TestCase):
             "execute",
             "tool:payment/charge",
             model=model,
-            approvals=["forbidden_without_explicit_approval"],
+            approvals=[
+                approval_record(
+                    approval_class="forbidden_without_explicit_approval",
+                )
+            ],
+            now="2026-04-20T10:00:00Z",
         )
         self.assertEqual(d_yes.decision, "allow")
+
+
+class ApprovalRecordTests(unittest.TestCase):
+    def setUp(self):
+        self.model = build_model()
+
+    def test_raw_approval_class_does_not_satisfy_approval(self):
+        d = hq.can(
+            "ceo",
+            "approve_send_or_publish",
+            "external:buyer-email",
+            model=self.model,
+            approvals=["founder_only"],
+            now="2026-04-20T10:00:00Z",
+        )
+        self.assertEqual((d.decision, d.reason_code), ("deny", "unsatisfied_approval"))
+
+    def test_approved_unexpired_record_satisfies_matching_class(self):
+        d = hq.can(
+            "ceo",
+            "approve_send_or_publish",
+            "external:buyer-email",
+            model=self.model,
+            approvals=[approval_record()],
+            now="2026-04-20T10:00:00Z",
+        )
+        self.assertEqual(d.decision, "allow")
+
+    def test_pending_rejected_and_expired_records_do_not_satisfy(self):
+        cases = [
+            approval_record(status="pending", decision="", expires_at="2026-04-20T11:00:00Z"),
+            approval_record(status="decided", decision="rejected", expires_at="2026-04-20T11:00:00Z"),
+            approval_record(status="decided", decision="approved", expires_at="2026-04-20T09:00:00Z"),
+        ]
+        for record in cases:
+            with self.subTest(record=record):
+                d = hq.can(
+                    "ceo",
+                    "approve_send_or_publish",
+                    "external:buyer-email",
+                    model=self.model,
+                    approvals=[record],
+                    now="2026-04-20T10:00:00Z",
+                )
+                self.assertEqual((d.decision, d.reason_code), ("deny", "unsatisfied_approval"))
+
+    def test_can_load_approval_by_id_from_runtime_approval_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            approval_dir = Path(temp_dir)
+            record = approval_record(approval_id="approval-runtime-id")
+            (approval_dir / "approval-runtime-id.json").write_text(
+                hq.json.dumps(record, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            d = hq.can(
+                "ceo",
+                "approve_send_or_publish",
+                "external:buyer-email",
+                model=self.model,
+                approvals=["approval-runtime-id"],
+                approval_lookup_dir=approval_dir,
+                now="2026-04-20T10:00:00Z",
+            )
+
+        self.assertEqual(d.decision, "allow")
 
 
 class DeterminismPropertyTests(unittest.TestCase):
