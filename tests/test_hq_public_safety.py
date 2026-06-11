@@ -35,6 +35,7 @@ class HqPublicSafetyTests(unittest.TestCase):
     def test_public_safe_files_pass(self):
         tracked_files = [
             self.write_file("README.md", "# AI-First HQ OS\n"),
+            self.write_file("CLAUDE.md", "Use `AGENTS.md` as the source of truth.\n"),
             self.write_file("scripts/tool.py", "print('ok')\n"),
             self.write_file("agents/delivery/AGENTS.md", "# Delivery\n"),
             self.write_file("skills/ceo/SKILL.md", "---\nname: ceo\ndescription: CEO skill.\n---\n"),

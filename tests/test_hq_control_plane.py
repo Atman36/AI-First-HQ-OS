@@ -1241,6 +1241,77 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertIn("total=", output)
         self.assertIn("Recommended Next Command", output)
 
+    def test_status_includes_active_runtime_budgets(self):
+        runs_dir = self.temp_root / ".hq" / "state" / "mission-runtime" / "runs"
+        steps_dir = self.temp_root / ".hq" / "state" / "mission-runtime" / "steps"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        steps_dir.mkdir(parents=True, exist_ok=True)
+        active_run = {
+            "id": "run-active",
+            "mission_id": "mission-1",
+            "thread_id": "thread-1",
+            "status": "running",
+            "updated_at": "2026-04-20T12:00:00Z",
+            "step_ids": ["step-1", "step-2"],
+            "budgets": {"max_steps": 7, "max_failed_steps": 2},
+        }
+        completed_run = {
+            "id": "run-completed",
+            "mission_id": "mission-2",
+            "thread_id": "thread-2",
+            "status": "completed",
+            "updated_at": "2026-04-20T11:00:00Z",
+            "step_ids": ["step-1"],
+            "budgets": {"max_steps": 3},
+        }
+        (runs_dir / "run-active.json").write_text(
+            json.dumps(active_run, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (runs_dir / "run-completed.json").write_text(
+            json.dumps(completed_run, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (steps_dir / "step-1.json").write_text(
+            json.dumps({"id": "step-1", "status": "failed"}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (steps_dir / "step-2.json").write_text(
+            json.dumps({"id": "step-2", "status": "completed"}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        parser = self.module.build_parser()
+        json_args = parser.parse_args(["status", "--json"])
+        json_buffer = io.StringIO()
+        with redirect_stdout(json_buffer):
+            self.assertEqual(json_args.func(json_args), 0)
+        payload = json.loads(json_buffer.getvalue())
+
+        self.assertEqual(payload["runtime_budgets"]["summary"]["total"], 1)
+        self.assertEqual(payload["runtime_budgets"]["summary"]["with_step_budget"], 1)
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["run_id"], "run-active")
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["max_steps"], 7)
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["steps_used"], 2)
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["steps_remaining"], 5)
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["max_failed_steps"], 2)
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["failed_steps"], 1)
+        self.assertEqual(payload["runtime_budgets"]["items"][0]["failed_steps_remaining"], 1)
+        self.assertNotIn(
+            "run-completed",
+            [item["run_id"] for item in payload["runtime_budgets"]["items"]],
+        )
+
+        text_args = parser.parse_args(["status"])
+        text_buffer = io.StringIO()
+        with redirect_stdout(text_buffer):
+            self.assertEqual(text_args.func(text_args), 0)
+        output = text_buffer.getvalue()
+        self.assertIn("Runtime Budgets", output)
+        self.assertIn("run-active [running]", output)
+        self.assertIn("steps=2/7", output)
+        self.assertIn("failed_steps=1/2", output)
+
     def test_status_includes_recent_feedback_loop_iterations(self):
         feedback_path = self.temp_root / ".hq" / "telemetry" / "feedback-loop" / "2026-04.jsonl"
         feedback_path.parent.mkdir(parents=True, exist_ok=True)

@@ -50,6 +50,7 @@ TELEMETRY_REVIEW_PATH = TELEMETRY_ROOT / "reviews" / "LATEST.json"
 MISSION_RUNTIME_ROOT = PRIVATE_ROOT / "state" / "mission-runtime"
 MISSION_RUNTIME_RUNS_DIR = MISSION_RUNTIME_ROOT / "runs"
 MISSION_RUNTIME_RESUME_STATUS_DIR = MISSION_RUNTIME_ROOT / "resume-status"
+MISSION_RUNTIME_STEPS_DIR = MISSION_RUNTIME_ROOT / "steps"
 SCHEMA_DIR = CONTROL_PLANE_DIR / "schemas"
 FOUNDER_WEEKLY_REVIEW_BRIDGE_SCHEMA_PATH = (
     SCHEMA_DIR / "founder-weekly-review-bridge.schema.json"
@@ -67,6 +68,7 @@ PERMISSION_GRANTS_SCHEMA_PATH = SCHEMA_DIR / "permission-grants.schema.json"
 SPECIAL_TRANSITION_OWNERS = {"task_owner", "task_manager", "accepting_role"}
 VALID_THRESHOLD_COMPARISONS = {"<", "<=", "=", ">=", ">"}
 ACTIONABLE_COLUMNS = {"review", "executing", "this_week", "scheduled", "policy_check", "triage", "intake"}
+RUNTIME_BUDGET_STATUSES = {"queued", "running", "waiting_approval", "interrupted"}
 STALE_PACKET_KINDS = ("spec", "handoff")
 RECENT_ITERATION_LIMIT = 5
 MARKDOWN_HEADING_PREFIX = "## "
@@ -1831,6 +1833,8 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
     blocked_tasks = status_payload.get("blocked", []) or []
     runtime_recovery = status_payload.get("runtime_recovery") or {}
     runtime_recovery_items = runtime_recovery.get("items", []) or []
+    runtime_budgets = status_payload.get("runtime_budgets") or {}
+    runtime_budget_items = runtime_budgets.get("items", []) or []
     recent_iterations = status_payload.get("recent_iterations", []) or []
     return {
         "generated_at": status_payload.get("generated_at") or "",
@@ -1845,6 +1849,10 @@ def build_memory_index(status_payload: dict[str, Any]) -> dict[str, Any]:
         "runtime_recovery": {
             "summary": runtime_recovery.get("summary") or {},
             "first_run": runtime_recovery_items[0] if runtime_recovery_items else {},
+        },
+        "runtime_budgets": {
+            "summary": runtime_budgets.get("summary") or {},
+            "first_run": runtime_budget_items[0] if runtime_budget_items else {},
         },
         "recommended_next_command": status_payload.get("recommended_next_command") or "",
         "counts": {
@@ -1891,6 +1899,87 @@ def summarize_runtime_recovery(items: list[dict[str, Any]]) -> dict[str, int]:
             1 for item in items if normalize_text(item.get("resume_status_state")) == "invalid"
         ),
     }
+
+
+def summarize_runtime_budgets(items: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "total": len(items),
+        "with_step_budget": sum(1 for item in items if item.get("max_steps") is not None),
+        "with_failed_step_budget": sum(1 for item in items if item.get("max_failed_steps") is not None),
+        "exhausted": sum(1 for item in items if bool(item.get("exhausted"))),
+    }
+
+
+def runtime_budget_sort_key(item: dict[str, Any]) -> tuple[bool, float, str]:
+    updated_at = parse_datetime(normalize_text(item.get("updated_at")))
+    timestamp = updated_at.timestamp() if updated_at is not None else 0.0
+    return (not bool(item.get("exhausted")), -timestamp, normalize_text(item.get("run_id")))
+
+
+def count_failed_runtime_steps(step_ids: list[Any]) -> int:
+    failed = 0
+    for step_id in step_ids:
+        normalized_step_id = normalize_text(step_id)
+        if not normalized_step_id:
+            continue
+        step, _ = load_json_object_safe(MISSION_RUNTIME_STEPS_DIR / f"{normalized_step_id}.json")
+        if step is not None and normalize_text(step.get("status")) == "failed":
+            failed += 1
+    return failed
+
+
+def build_runtime_budgets_payload() -> dict[str, Any]:
+    if not MISSION_RUNTIME_RUNS_DIR.exists():
+        items: list[dict[str, Any]] = []
+        return {"summary": summarize_runtime_budgets(items), "items": items}
+
+    items: list[dict[str, Any]] = []
+    for run_file in sorted(MISSION_RUNTIME_RUNS_DIR.glob("*.json")):
+        run, _ = load_json_object_safe(run_file)
+        if run is None:
+            continue
+        run_status = normalize_text(run.get("status"))
+        if run_status not in RUNTIME_BUDGET_STATUSES:
+            continue
+        budgets = run.get("budgets")
+        if not isinstance(budgets, dict) or not budgets:
+            continue
+        max_steps = budgets.get("max_steps")
+        max_failed_steps = budgets.get("max_failed_steps")
+        max_steps_value = parse_int(max_steps, 0) if max_steps is not None else 0
+        max_failed_steps_value = parse_int(max_failed_steps, 0) if max_failed_steps is not None else 0
+        if max_steps_value <= 0 and max_failed_steps_value <= 0:
+            continue
+        step_ids = run.get("step_ids") if isinstance(run.get("step_ids"), list) else []
+        steps_used = len(step_ids)
+        failed_steps = count_failed_runtime_steps(step_ids)
+        steps_remaining = max(max_steps_value - steps_used, 0) if max_steps_value else None
+        failed_steps_remaining = (
+            max(max_failed_steps_value - failed_steps, 0) if max_failed_steps_value else None
+        )
+        exhausted = (
+            (steps_remaining is not None and steps_remaining <= 0)
+            or (failed_steps_remaining is not None and failed_steps_remaining <= 0)
+        )
+        items.append(
+            {
+                "run_id": normalize_text(run.get("id")) or run_file.stem,
+                "mission_id": normalize_text(run.get("mission_id")),
+                "thread_id": normalize_text(run.get("thread_id")),
+                "run_status": run_status,
+                "updated_at": normalize_text(run.get("updated_at")),
+                "max_steps": max_steps_value if max_steps_value else None,
+                "steps_used": steps_used,
+                "steps_remaining": steps_remaining,
+                "max_failed_steps": max_failed_steps_value if max_failed_steps_value else None,
+                "failed_steps": failed_steps,
+                "failed_steps_remaining": failed_steps_remaining,
+                "exhausted": exhausted,
+            }
+        )
+
+    items = sorted(items, key=runtime_budget_sort_key)
+    return {"summary": summarize_runtime_budgets(items), "items": items}
 
 
 def build_runtime_recovery_payload() -> dict[str, Any]:
@@ -2486,6 +2575,7 @@ def build_status_payload(
     stale_items = collect_stale_items(ordered_live_tasks, normalize_text(active_work.get("updated_at")))
     stale_items.extend(scaffolded_packet_stale_items(ordered_live_tasks, created_packets))
     runtime_recovery = build_runtime_recovery_payload()
+    runtime_budgets = build_runtime_budgets_payload()
     live_task_ids = {
         normalize_text(task.get("id"))
         for task in ordered_live_tasks
@@ -2510,6 +2600,7 @@ def build_status_payload(
         "objective": normalize_text(active_work.get("objective", {}).get("title")),
         "startup_focus": startup_focus_projection(startup_task),
         "runtime_recovery": runtime_recovery,
+        "runtime_budgets": runtime_budgets,
         "recent_iterations": recent_iterations,
         "feedback_summary": feedback_summary,
         "review_signal": review_signal,
@@ -2675,6 +2766,33 @@ def render_status_text(payload: dict[str, Any]) -> str:
             )
         if len(recovery_items) > 5:
             lines.append(f"- ... {len(recovery_items) - 5} more recovery items hidden")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "Runtime Budgets"])
+    runtime_budgets = payload.get("runtime_budgets") or {}
+    budget_items = runtime_budgets.get("items", []) or []
+    budget_summary = runtime_budgets.get("summary") or {}
+    if budget_items:
+        summary_parts = [f"total={budget_summary.get('total', len(budget_items))}"]
+        for key in ("with_step_budget", "with_failed_step_budget", "exhausted"):
+            value = budget_summary.get(key, 0)
+            if value:
+                summary_parts.append(f"{key}={value}")
+        lines.append("- " + " | ".join(summary_parts))
+        for item in budget_items[:5]:
+            steps_text = "-"
+            if item.get("max_steps") is not None:
+                steps_text = f"{item.get('steps_used', 0)}/{item.get('max_steps')}"
+            failed_steps_text = "-"
+            if item.get("max_failed_steps") is not None:
+                failed_steps_text = f"{item.get('failed_steps', 0)}/{item.get('max_failed_steps')}"
+            lines.append(
+                f"- {item['run_id']} [{item['run_status'] or '-'}] mission={item['mission_id'] or '-'} | "
+                f"steps={steps_text} | failed_steps={failed_steps_text} | exhausted={bool_text(item.get('exhausted'))}"
+            )
+        if len(budget_items) > 5:
+            lines.append(f"- ... {len(budget_items) - 5} more budget items hidden")
     else:
         lines.append("- None")
 

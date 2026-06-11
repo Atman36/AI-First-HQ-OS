@@ -56,6 +56,7 @@ ALLOWED_EXACT_PATHS = {
     ".gitignore",
     "README.md",
     "AGENTS.md",
+    "CLAUDE.md",
     "requirements-dev.txt",
 }
 
