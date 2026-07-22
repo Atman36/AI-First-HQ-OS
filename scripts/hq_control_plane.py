@@ -105,6 +105,10 @@ EXECUTION_PRESETS: dict[str, dict[str, Any]] = {
             "auto_generate_workflow_artifact": True,
             "verification_depth": "minimal",
             "runner_model_selection": "explicit_required",
+            "run_budgets": {
+                "max_steps": 30,
+                "max_failed_steps": 5,
+            },
         },
     },
     "normal": {
@@ -123,6 +127,10 @@ EXECUTION_PRESETS: dict[str, dict[str, Any]] = {
             "auto_generate_workflow_artifact": True,
             "verification_depth": "standard",
             "runner_model_selection": "explicit_required",
+            "run_budgets": {
+                "max_steps": 20,
+                "max_failed_steps": 3,
+            },
         },
     },
     "strict": {
@@ -141,6 +149,10 @@ EXECUTION_PRESETS: dict[str, dict[str, Any]] = {
             "auto_generate_workflow_artifact": True,
             "verification_depth": "strict",
             "runner_model_selection": "explicit_required",
+            "run_budgets": {
+                "max_steps": 12,
+                "max_failed_steps": 2,
+            },
         },
     },
 }

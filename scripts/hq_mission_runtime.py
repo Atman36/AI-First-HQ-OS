@@ -36,6 +36,7 @@ from hq_telemetry_store import event_file_for_timestamp as telemetry_event_file_
 REPO_ROOT = DEFAULT_REPO_ROOT
 PRIVATE_ROOT = Path(os.environ.get("HQ_RUNTIME_PRIVATE_ROOT", REPO_ROOT / ".hq")).resolve()
 CONTROL_PLANE_DIR = REPO_ROOT / "05 AI Control Plane" / "schemas"
+EXECUTION_CONFIG_PATH = REPO_ROOT / "05 AI Control Plane" / "execution-config.json"
 RUNTIME_ROOT = PRIVATE_ROOT / "state" / "mission-runtime"
 RUNTIME_DIRS = {
     "threads": PRIVATE_ROOT / "state" / "threads",
@@ -1681,11 +1682,14 @@ def start_run(args: argparse.Namespace) -> dict[str, Any]:
     actor = str(args.actor or "").strip()
     if verification_stages and not actor:
         raise ValueError("verification stages require a run actor to set the return target")
-    budgets = normalize_run_budgets(
-        {
-            "max_steps": getattr(args, "max_steps", None) or 0,
-            "max_failed_steps": getattr(args, "max_failed_steps", None) or 0,
-        }
+    budgets = load_default_run_budgets()
+    budgets.update(
+        normalize_run_budgets(
+            {
+                "max_steps": getattr(args, "max_steps", None) or 0,
+                "max_failed_steps": getattr(args, "max_failed_steps", None) or 0,
+            }
+        )
     )
     run_status = "running"
     metadata = dict(args.metadata or {})
@@ -2025,6 +2029,14 @@ def normalize_run_budgets(payload: dict[str, Any] | None) -> dict[str, int]:
             raise ValueError(f"run budget {key} must be a positive integer")
         normalized[key] = number
     return normalized
+
+
+def load_default_run_budgets() -> dict[str, int]:
+    if not EXECUTION_CONFIG_PATH.exists():
+        return {}
+    execution_config = load_json(EXECUTION_CONFIG_PATH)
+    execution_profile = execution_config.get("execution_profile") or {}
+    return normalize_run_budgets(execution_profile.get("run_budgets") or {})
 
 
 def exhausted_run_budget(run: dict[str, Any]) -> str:

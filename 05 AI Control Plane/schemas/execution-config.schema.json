@@ -124,6 +124,24 @@
           "enum": [
             "explicit_required"
           ]
+        },
+        "run_budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_steps",
+            "max_failed_steps"
+          ],
+          "properties": {
+            "max_steps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_failed_steps": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         }
       }
     },

@@ -424,6 +424,10 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(bundle["active_work"]["tasks"][0]["id"], "task-1")
         self.assertEqual(bundle["execution_config_state"], "inferred")
         self.assertEqual(bundle["execution_config"]["profile"], "normal")
+        self.assertEqual(
+            bundle["execution_config"]["execution_profile"]["run_budgets"],
+            {"max_steps": 20, "max_failed_steps": 3},
+        )
 
     def test_sync_writes_task_board(self):
         parser = self.module.build_parser()
@@ -488,6 +492,10 @@ class HqControlPlaneTests(unittest.TestCase):
         self.assertEqual(payload["profile_source"], "materialized")
         self.assertEqual(payload["workflow_mode"], "strict")
         self.assertTrue(payload["execution_profile"]["preflight_required"])
+        self.assertEqual(
+            payload["execution_profile"]["run_budgets"],
+            {"max_steps": 12, "max_failed_steps": 2},
+        )
         workflow_artifact = self.temp_root / ".hq" / "state" / "WORKFLOW.generated.md"
         self.assertTrue(workflow_artifact.exists())
         artifact_content = workflow_artifact.read_text(encoding="utf-8")

@@ -2267,6 +2267,64 @@ class HqMissionRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(interrupted["status"], "interrupted")
 
+    def test_start_run_loads_default_budgets_from_execution_config(self):
+        config_path = self.temp_root / "05 AI Control Plane" / "execution-config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "execution_profile": {
+                        "run_budgets": {"max_steps": 20, "max_failed_steps": 3}
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                ["create-mission", "--title", "Default Budget Mission"]
+            )
+        )
+
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                ["start-run", "--mission-id", mission["id"], "--actor", "delivery"]
+            )
+        )
+
+        self.assertEqual(run["budgets"], {"max_steps": 20, "max_failed_steps": 3})
+
+    def test_explicit_run_budgets_override_execution_config_defaults(self):
+        config_path = self.temp_root / "05 AI Control Plane" / "execution-config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "execution_profile": {
+                        "run_budgets": {"max_steps": 20, "max_failed_steps": 3}
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        mission = self.module.create_mission(
+            self.module.build_parser().parse_args(
+                ["create-mission", "--title", "Explicit Budget Mission"]
+            )
+        )
+
+        run = self.module.start_run(
+            self.module.build_parser().parse_args(
+                [
+                    "start-run",
+                    "--mission-id", mission["id"],
+                    "--actor", "delivery",
+                    "--max-steps", "7",
+                    "--max-failed-steps", "1",
+                ]
+            )
+        )
+
+        self.assertEqual(run["budgets"], {"max_steps": 7, "max_failed_steps": 1})
+
     def test_run_budget_blocks_new_steps_after_failed_step_budget(self):
         mission = self.module.create_mission(
             self.module.build_parser().parse_args(["create-mission", "--title", "Failure Budgeted Mission"])
